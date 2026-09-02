@@ -15,6 +15,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
 import { AlertTriangle, Check, Loader2, Wrench } from 'lucide-react';
 import { apiEnabled, apiFetch } from '@/lib/api/client';
+import { useMe } from '@/lib/api/hooks';
+import { rolTienePermiso, type Rol } from '@/lib/permisos';
 import { formatFecha, formatMonto } from '@/lib/format';
 import { toast } from '@llave/ui/use-toast';
 
@@ -31,6 +33,12 @@ interface CargoPanel {
 }
 
 export function CargosContratoCard({ contratoId }: { contratoId: string }) {
+  // "Deshacer" resucita una deuda del inquilino Y borra el ingreso de caja que la respaldaba:
+  // el server lo gatea con `pago.revertir` (ADMIN). Sin esto el botón se le mostraba también a
+  // CAJA, OPERADOR, CARGA y LECTURA, sólo para darles un 403 después del click.
+  // Con /auth/me caído no se recorta en silencio: el 403 del server sigue siendo la frontera.
+  const { me, isError: meError } = useMe();
+  const puedeDeshacer = !apiEnabled || meError || rolTienePermiso((me?.rol ?? 'LECTURA') as Rol, 'pago.revertir');
   const qc = useQueryClient();
   const [saldando, setSaldando] = useState<string | null>(null);
   const q = useQuery({
@@ -42,6 +50,33 @@ export function CargosContratoCard({ contratoId }: { contratoId: string }) {
 
   if (!apiEnabled) return null;
   const cargos = q.data ?? [];
+  // "NO HAY CARGOS" Y "NO PUDIMOS PREGUNTAR" NO SON LO MISMO.
+  //
+  // `q.data ?? []` aplastaba las dos cosas —en error `data` queda undefined y `isPending` pasa a
+  // false— y la línea de abajo escondía la card ENTERA. Esta es la única vista del operador
+  // sobre reparaciones imputadas al inquilino y penalidades de rescisión: con el endpoint caído
+  // veía un detalle limpio, concluía que no hay nada que cobrar y daba de baja el contrato.
+  //
+  // La regla ya estaba escrita en `use-rendiciones.ts`: "'0 rendiciones' y 'no pudimos
+  // preguntar' son cosas distintas, y la pantalla que las confunde le dice al operador que ya
+  // se le rindió a todo el mundo".
+  if (q.isError) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <AlertTriangle className="h-4 w-4 text-amber-600" /> Cargos del inquilino
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            No pudimos traer los cargos de este contrato. <strong>No quiere decir que no haya</strong>:
+            volvé a cargar la página antes de dar de baja el contrato o cerrar la cuenta.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
   if (q.isPending || cargos.length === 0) return null;
 
   const saldar = async (id: string) => {
@@ -106,15 +141,17 @@ export function CargosContratoCard({ contratoId }: { contratoId: string }) {
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
                     <Check className="h-3.5 w-3.5" /> Cobrado
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => descobrar(c.id)}
-                    disabled={saldando === c.id}
-                    className="rounded px-1.5 py-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline disabled:opacity-60"
-                    title="Volver a marcarlo como deuda pendiente del inquilino"
-                  >
-                    {saldando === c.id ? '…' : 'Deshacer'}
-                  </button>
+                  {puedeDeshacer && (
+                    <button
+                      type="button"
+                      onClick={() => descobrar(c.id)}
+                      disabled={saldando === c.id}
+                      className="rounded px-1.5 py-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline disabled:opacity-60"
+                      title="Volver a marcarlo como deuda pendiente del inquilino"
+                    >
+                      {saldando === c.id ? '…' : 'Deshacer'}
+                    </button>
+                  )}
                 </span>
               ) : c.contraDeposito ? (
                 <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">

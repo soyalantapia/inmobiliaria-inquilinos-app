@@ -49,7 +49,7 @@ const EVENTOS_DEMO: EventoAuditoria[] = [
  * Rastro de auditoría (GET /eventos). En prod trae los eventos reales del tenant;
  * en demo (!apiEnabled) muestra una muestra para que la pantalla no quede vacía.
  */
-export function useEventos(): { eventos: EventoAuditoria[]; cargando: boolean; deApi: boolean } {
+export function useEventos(): { eventos: EventoAuditoria[]; cargando: boolean; deApi: boolean; error?: boolean } {
   const q = useQuery({
     queryKey: ['eventos'],
     queryFn: async () => {
@@ -62,7 +62,10 @@ export function useEventos(): { eventos: EventoAuditoria[]; cargando: boolean; d
   });
 
   if (!apiEnabled) return { eventos: EVENTOS_DEMO, cargando: false, deApi: false };
-  // Prod con API caída: vacío, nunca inventamos eventos.
-  if (q.isError) return { eventos: [], cargando: false, deApi: true };
-  return { eventos: q.data ?? [], cargando: q.isLoading, deApi: true };
+  // Prod con API caída: vacío, nunca inventamos eventos — pero AVISANDO. Sin el flag, la
+  // pantalla decía "Todavía no hay eventos registrados. Aparecen acá a medida que tu equipo
+  // concilia pagos, rinde a propietarios…", y el admin concluía que su equipo no tocó nada.
+  // No inventar datos y afirmar que no hay son cosas distintas.
+  if (q.isError) return { eventos: [], cargando: false, deApi: true, error: true };
+  return { eventos: q.data ?? [], cargando: q.isLoading, deApi: true, error: false };
 }

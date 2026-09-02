@@ -23,7 +23,7 @@ import {
   formatFechaCorta,
   formatMonto,
 } from '@/lib/format';
-import { generarGaranteToken, leerGaranteToken } from '@/lib/garante-token';
+import { generarTokenDemoGarante, leerTokenDemoGarante } from '@/lib/garante-token';
 
 // Mismo criterio que `apiEnabled` de '@/lib/api/client', pero calculado acá
 // para no importar un módulo 'use client' dentro de este server component.
@@ -36,7 +36,7 @@ const API_HABILITADO = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, ''
 // contratoId del demo, así que con uno alcanza.
 export function generateStaticParams() {
   // token de larga duración para el contrato del demo
-  const tokenDemo = generarGaranteToken(contratoMock.id, 365 * 5);
+  const tokenDemo = generarTokenDemoGarante(contratoMock.id, 365 * 5);
   return [{ token: tokenDemo }, { token: 'demo' }];
 }
 
@@ -65,12 +65,18 @@ const DEMO_PAYLOAD = {
 };
 
 export default function GarantePublicPage({ params }: { params: { token: string } }) {
-  const payload = params.token === 'demo' ? DEMO_PAYLOAD : leerGaranteToken(params.token);
-  if (!payload) return notFound();
-
-  // En producción todavía no hay endpoint para resolver un contrato por token
-  // de garante: la vista actual lee de los mocks. Mostramos un estado neutro
-  // "disponible pronto" en vez de exponer datos falsos de un contrato.
+  // EL CORTE DE PRODUCCIÓN VA PRIMERO, ANTES DE MIRAR EL TOKEN.
+  //
+  // No hay endpoint que resuelva un contrato por token de garante, así que en producción esta
+  // página sólo puede decir "disponible pronto". Antes igual PARSEABA el token para decidir
+  // entre 404 y ese cartel, y eso tenía dos costos:
+  //  1. Dejaba `leerTokenDemoGarante` en el camino caliente de producción — justo la línea que
+  //     un dev futuro copia para "resolver el contrato acá", creyendo que el token ya se validó.
+  //     No valida nada: es base64 de un JSON con un prefijo público (ver `lib/garante-token.ts`).
+  //  2. Un token bien formado daba el cartel y uno mal formado daba 404, así que desde afuera se
+  //     podía distinguir uno del otro. Poco, pero es información sobre un token que se puede
+  //     fabricar, y no compra nada.
+  // Ahora en producción todos los tokens ven exactamente lo mismo, sin abrir ninguno.
   if (API_HABILITADO) {
     return (
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col md:max-w-2xl">
@@ -104,6 +110,11 @@ export default function GarantePublicPage({ params }: { params: { token: string 
       </div>
     );
   }
+
+  // De acá para abajo es SÓLO el build demo de GitHub Pages (`API_HABILITADO === false`): sin
+  // backend, el token es lo único que dice qué contrato de los mocks mostrar.
+  const payload = params.token === 'demo' ? DEMO_PAYLOAD : leerTokenDemoGarante(params.token);
+  if (!payload) return notFound();
 
   // En real, buscaríamos el contrato por payload.contratoId. Acá usamos el mock.
   const c = contratoMock;

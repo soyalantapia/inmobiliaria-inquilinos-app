@@ -18,29 +18,50 @@
  * Acá lo tipamos en TS para que la app pueda usarlo directo.
  */
 
-export type Rol = 'ADMIN' | 'OPERADOR' | 'CARGA' | 'LECTURA';
+/**
+ * CAJA se agregó por pedido explícito de la administradora en la prueba del 03/08:
+ * "hay uno solo que se tiene que llamar caja y tiene que ser el usuario del cajero,
+ * nada más. Y yo como administradora. Los demás, nadie puede autorizar un pago."
+ *
+ * Antes OPERADOR tenía `pago.conciliar` y `pago.rechazar`, así que cualquiera del día
+ * a día podía dar por cobrada plata. Ahora esas dos capacidades son de ADMIN + CAJA.
+ */
+export type Rol = 'ADMIN' | 'CAJA' | 'OPERADOR' | 'CARGA' | 'LECTURA';
 
-export const ROLES_ORDEN: Rol[] = ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'];
+export const ROLES_ORDEN: Rol[] = ['ADMIN', 'CAJA', 'OPERADOR', 'CARGA', 'LECTURA'];
 
 // V2b-04: estos labels son la fuente de verdad para los badges de rol en
 // toda la app (auditoría, etc.). Antes decían "Carga"/"Lectura" pero Equipo
 // y permisos usa "Carga limitada"/"Solo lectura" — el mismo rol salía con
 // dos nombres. Unificados a los descriptivos.
+// Los nombres salen del vocabulario de la inmobiliaria, no del nuestro: en la prueba
+// del 03/08 la administradora dijo "no sé por qué usaste esos nombres" y "operador…
+// no tiene sentido". Los VALORES del enum se mantienen (son datos en producción);
+// lo que cambia es cómo se llaman en pantalla.
 export const ROL_LABEL: Record<Rol, string> = {
-  ADMIN: 'Admin',
+  ADMIN: 'Administradora',
+  CAJA: 'Caja',
   OPERADOR: 'Operador',
   CARGA: 'Carga limitada',
-  LECTURA: 'Solo lectura',
+  LECTURA: 'Consulta',
 };
 
 export const ROL_DESCRIPCION: Record<Rol, string> = {
   ADMIN:
-    'Acceso completo: contratos, pagos, rendiciones, equipo, plan y facturación. Aprueba lo cargado por otros.',
+    'Acceso completo: contratos, pagos, rendiciones, depósitos, equipo, plan y facturación. Aprueba lo que cargan los demás.',
+  CAJA:
+    'El mostrador: confirma o rechaza los pagos que informan los inquilinos, carga cobros en efectivo y mueve la caja. No carga contratos ni rinde a propietarios.',
   OPERADOR:
-    'Día a día del panel: contratos, pagos, conciliación, reclamos, caja, screening. No toca equipo ni plan.',
+    'Día a día del panel: contratos, propiedades, reclamos, comunicaciones, gastos de caja. NO autoriza pagos.',
+  // Decía "Lo que carga queda pendiente de aprobación", y de las tres cosas que carga eso
+  // vale para UNA. Propiedades y propietarios se guardan directo: no hay circuito de
+  // aprobación para ellos, sólo para contratos. Se dice cuál es cuál porque esta frase se
+  // lee en el momento exacto de elegirle el rol a una persona (`equipo-card.tsx`), y de ahí
+  // sale cuánta confianza se le da.
   CARGA:
-    'Solo carga inicial: contratos, propietarios, propiedades. Lo cargado queda pendiente de aprobación.',
-  LECTURA: 'Solo lectura — contadores y propietarios que quieren ver sin tocar.',
+    'Solo carga inicial: contratos, propietarios, propiedades. Los contratos que carga quedan pendientes de tu aprobación; las propiedades y los propietarios se guardan directo.',
+  LECTURA:
+    'Ve todo sin modificar nada — contadores, auditoría y propietarios que quieren mirar.',
 };
 
 export type Capacidad =
@@ -56,6 +77,7 @@ export type Capacidad =
   | 'propietarios.ver'
   | 'profesionales.ver'
   | 'auditoria.ver'
+  | 'configuracion.ver'
   | 'metricas.ver'
   /* Carga de datos (no aprobada) */
   | 'contratos.crear'
@@ -85,7 +107,21 @@ export interface DefinicionCapacidad {
   label: string;
   /** Roles que tienen la capacidad directamente (sin necesidad de PIN). */
   roles: Rol[];
-  /** Si requiere PIN extra para confirmarse. */
+  /**
+   * Si requiere PIN extra para confirmarse.
+   *
+   * ⚠️ HOY NINGUNA CAPACIDAD LO DECLARA, y no es un descuido: **el PIN se eliminó de la
+   * plataforma por decisión de producto** — `apps/api/src/auth/pin.ts` siempre aprueba.
+   *
+   * Siete capacidades de plata lo tenían en `true` (confirmar pago, revertir conciliación,
+   * rendir al propietario, devolver depósito…) y la matriz de permisos del panel le pintaba
+   * un candado al admin diciendo *"piden el PIN del usuario"*. Era falso, y en la peor
+   * pantalla para serlo: es donde alguien va a entender qué protege su sistema.
+   *
+   * El campo se deja para que volver a habilitarlo sea una línea. Si lo hacés, **hay que
+   * cablear el server también**: hay un test que no te va a dejar declararlo mientras
+   * `pin.ts` siga siendo el stub que aprueba todo (`test/pin-coherencia.test.ts`).
+   */
   requierePin?: boolean;
   /** Roles cuya acción queda pendiente de aprobación por un ADMIN. */
   rolesAprobacion?: Rol[];
@@ -95,25 +131,43 @@ export interface DefinicionCapacidad {
 
 export const CAPACIDADES: DefinicionCapacidad[] = [
   /* Lectura */
-  { key: 'home.ver', label: 'Ver home y bandeja del día', roles: ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'], grupo: 'lectura' },
+  { key: 'home.ver', label: 'Ver home y bandeja del día', roles: ['ADMIN', 'CAJA', 'OPERADOR', 'CARGA', 'LECTURA'], grupo: 'lectura' },
   { key: 'propiedades.ver', label: 'Ver propiedades', roles: ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'], grupo: 'lectura' },
-  { key: 'contratos.ver', label: 'Ver contratos', roles: ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'], grupo: 'lectura' },
-  { key: 'pagos.ver', label: 'Ver pagos y rendiciones', roles: ['ADMIN', 'OPERADOR', 'LECTURA'], grupo: 'lectura' },
+  // CAJA necesita abrir el contrato para validar un pago (de quién es, cuánto debía).
+  { key: 'contratos.ver', label: 'Ver contratos', roles: ['ADMIN', 'CAJA', 'OPERADOR', 'CARGA', 'LECTURA'], grupo: 'lectura' },
+  { key: 'pagos.ver', label: 'Ver pagos y rendiciones', roles: ['ADMIN', 'CAJA', 'OPERADOR', 'LECTURA'], grupo: 'lectura' },
   { key: 'reclamos.ver', label: 'Ver reclamos', roles: ['ADMIN', 'OPERADOR', 'LECTURA'], grupo: 'lectura' },
   { key: 'screening.ver', label: 'Ver screening', roles: ['ADMIN', 'OPERADOR'], grupo: 'lectura' },
-  { key: 'caja.ver', label: 'Ver caja diaria', roles: ['ADMIN', 'OPERADOR', 'LECTURA'], grupo: 'lectura' },
-  { key: 'cuentas.ver', label: 'Ver cuentas de caja', roles: ['ADMIN', 'OPERADOR', 'LECTURA'], grupo: 'lectura' },
+  { key: 'caja.ver', label: 'Ver caja diaria', roles: ['ADMIN', 'CAJA', 'OPERADOR', 'LECTURA'], grupo: 'lectura' },
+  { key: 'cuentas.ver', label: 'Ver cuentas de caja', roles: ['ADMIN', 'CAJA', 'OPERADOR', 'LECTURA'], grupo: 'lectura' },
   { key: 'propietarios.ver', label: 'Ver propietarios', roles: ['ADMIN', 'OPERADOR', 'CARGA', 'LECTURA'], grupo: 'lectura' },
   { key: 'profesionales.ver', label: 'Ver profesionales', roles: ['ADMIN', 'OPERADOR'], grupo: 'lectura' },
   { key: 'auditoria.ver', label: 'Ver auditoría', roles: ['ADMIN', 'LECTURA'], grupo: 'lectura' },
+  // Configuración en prod es ADMIN y nada más (ver ConfiguracionProd: los demás roles
+  // comen una card 'Solo Admin'). Era el ÚNICO ítem del sidebar sin capacidad, así que
+  // los 4 roles lo veían y 3 chocaban con esa pared.
+  { key: 'configuracion.ver', label: 'Ver configuración', roles: ['ADMIN'], grupo: 'lectura' },
   { key: 'metricas.ver', label: 'Ver estadisticas', roles: ['ADMIN'], grupo: 'lectura' },
 
   /* Carga */
   { key: 'contratos.crear', label: 'Cargar contrato', roles: ['ADMIN', 'OPERADOR', 'CARGA'], rolesAprobacion: ['CARGA'], grupo: 'carga' },
   { key: 'propiedades.crear', label: 'Cargar propiedad', roles: ['ADMIN', 'OPERADOR', 'CARGA'], grupo: 'carga' },
   { key: 'propietarios.crear', label: 'Cargar propietario', roles: ['ADMIN', 'OPERADOR', 'CARGA'], grupo: 'carga' },
-  { key: 'pago.manual.cargar', label: 'Cargar pago manual', roles: ['ADMIN', 'OPERADOR'], rolesAprobacion: ['OPERADOR'], grupo: 'carga' },
-  { key: 'gasto.caja.cargar', label: 'Cargar gasto de caja', roles: ['ADMIN', 'OPERADOR'], grupo: 'carga' },
+  // T-37 — El cobro en efectivo en el mostrador es tarea de CAJA (es la que lo recibe).
+  //
+  // Acá decía además ['ADMIN','CAJA','OPERADOR'] con rolesAprobacion:['OPERADOR'], describiendo
+  // un circuito —el OPERADOR carga y queda pendiente de aprobación— que NUNCA se construyó:
+  // `requiereAprobacion` no se llama en ningún lado de apps/api (para contratos sí existe el
+  // equivalente, `contratoQuedaPendiente`; para pagos no). Mientras tanto POST /pagos/manual
+  // exige `pago.conciliar`, así que un OPERADOR que lo intentaba se comía un 403 — pero la
+  // pantalla Configuración → Equipo le mostraba a la administradora que sí podía, y ella
+  // asignaba ese rol al que cobra en el mostrador.
+  //
+  // Se alinea la matriz con lo que el sistema hace de verdad. NO le quita nada a nadie: hoy
+  // OPERADOR ya no puede. Quien cobra en mostrador va con rol CAJA, que existe exactamente
+  // para eso. Construir el circuito de aprobación de pagos es otra cosa y está en T-37-N1.
+  { key: 'pago.manual.cargar', label: 'Cargar pago manual (efectivo)', roles: ['ADMIN', 'CAJA'], grupo: 'carga' },
+  { key: 'gasto.caja.cargar', label: 'Cargar gasto de caja', roles: ['ADMIN', 'CAJA', 'OPERADOR'], grupo: 'carga' },
   { key: 'cuentas.gestionar', label: 'Definir cuentas de caja', roles: ['ADMIN'], grupo: 'sensible' },
 
   /* Operativa */
@@ -122,13 +176,16 @@ export const CAPACIDADES: DefinicionCapacidad[] = [
   { key: 'comunicaciones.enviar', label: 'Enviar comunicaciones (WhatsApp, mail)', roles: ['ADMIN', 'OPERADOR'], grupo: 'operativa' },
 
   /* Sensibles — requieren ADMIN + PIN */
-  { key: 'pago.conciliar', label: 'Conciliar pago', roles: ['ADMIN', 'OPERADOR'], requierePin: true, grupo: 'sensible' },
-  { key: 'pago.rechazar', label: 'Rechazar pago', roles: ['ADMIN', 'OPERADOR'], requierePin: true, grupo: 'sensible' },
-  { key: 'pago.revertir', label: 'Revertir conciliación', roles: ['ADMIN'], requierePin: true, grupo: 'sensible' },
-  { key: 'contrato.aprobar', label: 'Aprobar contrato cargado', roles: ['ADMIN'], requierePin: true, grupo: 'sensible' },
-  { key: 'rendicion.confirmar', label: 'Rendir a propietario', roles: ['ADMIN'], requierePin: true, grupo: 'sensible' },
-  { key: 'deposito.devolver', label: 'Devolver depósito', roles: ['ADMIN'], requierePin: true, grupo: 'sensible' },
-  { key: 'caja.eliminar', label: 'Eliminar gasto de caja', roles: ['ADMIN'], requierePin: true, grupo: 'sensible' },
+  // SOLO ADMIN + CAJA. Antes también OPERADOR, y era lo que la administradora marcó
+  // como mal: "operador y carga limitada me está dando que puede pagar" → "nadie
+  // puede autorizar un pago" salvo la caja y ella.
+  { key: 'pago.conciliar', label: 'Confirmar pago', roles: ['ADMIN', 'CAJA'], grupo: 'sensible' },
+  { key: 'pago.rechazar', label: 'Rechazar pago', roles: ['ADMIN', 'CAJA'], grupo: 'sensible' },
+  { key: 'pago.revertir', label: 'Revertir conciliación', roles: ['ADMIN'], grupo: 'sensible' },
+  { key: 'contrato.aprobar', label: 'Aprobar contrato cargado', roles: ['ADMIN'], grupo: 'sensible' },
+  { key: 'rendicion.confirmar', label: 'Rendir a propietario', roles: ['ADMIN'], grupo: 'sensible' },
+  { key: 'deposito.devolver', label: 'Devolver depósito', roles: ['ADMIN'], grupo: 'sensible' },
+  { key: 'caja.eliminar', label: 'Eliminar gasto de caja', roles: ['ADMIN'], grupo: 'sensible' },
   { key: 'plan.upgrade', label: 'Cambiar plan / facturación', roles: ['ADMIN'], grupo: 'sensible' },
   { key: 'equipo.gestionar', label: 'Gestionar equipo y permisos', roles: ['ADMIN'], grupo: 'sensible' },
   { key: 'sociedades.gestionar', label: 'Gestionar sociedades', roles: ['ADMIN'], grupo: 'sensible' },
@@ -181,7 +238,22 @@ export function contratoQuedaPendiente(rol: Rol, contratosRequierenAprobacion: b
 
 export const GRUPO_LABEL: Record<DefinicionCapacidad['grupo'], string> = {
   lectura: 'Lectura · qué módulos ve',
-  carga: 'Carga · qué puede cargar (queda pendiente si no es Admin)',
+  // Decía "(queda pendiente si no es Admin)" y era falso para 4 de las 5 filas del grupo.
+  // Circuito de aprobación hay UNO solo, el de contratos (`contratoQuedaPendiente`, que sí
+  // llama el alta en `core.ts`). Propiedades, propietarios, pago manual y gasto de caja se
+  // guardan y listo: no queda nada pendiente de nada.
+  //
+  // Es la misma clase de mentira que T-37 sacó de `pago.manual.cargar` una fila más abajo, y
+  // pega en el mismo lugar: esta matriz es la pantalla donde la administradora reparte roles.
+  // Leer "queda pendiente si no es Admin" arriba de "Cargar pago manual (efectivo)" es
+  // exactamente lo que la lleva a darle ese permiso a alguien creyendo que hay una red atrás.
+  //
+  // No hace falta decir acá cuál queda pendiente: la fila ya lo dice sola, con el badge
+  // "pendiente" que pinta `rolesAprobacion` en la columna del rol que corresponde.
+  carga: 'Carga · qué puede cargar',
   operativa: 'Operativa · día a día sin firmar plata',
-  sensible: 'Sensibles · requieren PIN del usuario',
+  // Decía "requieren PIN del usuario" y era falso desde el 05/07: el PIN se eliminó de
+  // toda la plataforma (05-DECISIONES §7) y `verificarPinUsuario` aprueba siempre. Lo
+  // que protege estas acciones es el ROL, no un PIN.
+  sensible: 'Sensibles · mueven plata o tocan la configuración',
 };

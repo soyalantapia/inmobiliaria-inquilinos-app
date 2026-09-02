@@ -23,6 +23,23 @@ export type ContratoParaLiquidar = {
    * cobrar. Requerido, el compilador no deja que un caller nuevo se lo saltee.
    */
   devengarDesde: Date | null;
+  /**
+   * Qué se le factura a este contrato. `SOLO_EXPENSAS` = no devenga alquiler nunca.
+   *
+   * OBLIGATORIO por la misma razón que `devengarDesde`: hasta ahora el devengo no lo
+   * recibía, y un contrato de solo expensas daba alquiler 0 **por casualidad**, sólo porque
+   * `contrato.monto` había quedado en 0. No había ninguna defensa: cualquier camino que
+   * escribiera un canon positivo (ajustar, renovar, un alta con monto) hacía que el cron le
+   * facturara alquiler a alguien que no paga alquiler. Requerido, así el compilador no deja
+   * que un caller nuevo se lo saltee.
+   *
+   * El síntoma observable, que es lo que lo hacía difícil de ver: `PATCH /contratos/:id/monto`
+   * exige un monto POSITIVO, lo guarda en `contrato.monto` y recién después llama a
+   * `recomputarLiquidacionesFuturas`, que sí respetaba el tipo y dejaba las cuotas futuras en
+   * 0. Pero `contrato.monto` quedaba positivo, así que la SIGUIENTE corrida del cron volvía a
+   * generar cuotas con alquiler > 0. O sea: **el ajuste se "deshacía solo" seis horas después.**
+   */
+  tipoContrato: 'ALQUILER' | 'SOLO_EXPENSAS' | 'ALQUILER_Y_EXPENSAS';
 };
 
 /**
@@ -46,11 +63,88 @@ export type VigenciaCanon = { desde: string; montoAnterior: number };
  */
 export function canonDelPeriodo(periodo: string, montoActual: number, vigencias?: VigenciaCanon[]): number {
   if (!vigencias || vigencias.length === 0) return montoActual;
-  let proxima: VigenciaCanon | undefined;
-  for (const v of vigencias) {
-    if (v.desde > periodo && (!proxima || v.desde < proxima.desde)) proxima = v;
-  }
+  const proxima = primeraVigenciaDespuesDe(vigencias, periodo);
   return proxima ? proxima.montoAnterior : montoActual;
+}
+
+/**
+ * La PRIMERA vigencia que empieza estrictamente después de `desde`. Puro.
+ *
+ * Existe separado porque lo usan las DOS puntas del mismo invariante, y tienen que elegir la
+ * misma fila o el arreglo de T-61 no sirve:
+ *
+ *  - la LECTURA (`canonDelPeriodo`): "¿qué canon regía en este período?" → el `montoAnterior`
+ *    de la primera vigencia posterior.
+ *  - la ESCRITURA (`repararVigenciaSiguiente`): "acabo de cambiar el canon en X, ¿a quién le
+ *    quedó viejo su `montoAnterior`?" → exactamente a esa misma primera vigencia posterior.
+ *
+ * `>` y no `>=` a propósito: una vigencia que empieza EN `desde` tiene como `montoAnterior` el
+ * canon de ANTES de `desde`, y un cambio que arranca en `desde` no lo toca.
+ */
+export function primeraVigenciaDespuesDe<T extends { desde: string }>(
+  vigencias: T[],
+  desde: string,
+): T | undefined {
+  let proxima: T | undefined;
+  for (const v of vigencias) {
+    if (v.desde > desde && (!proxima || v.desde < proxima.desde)) proxima = v;
+  }
+  return proxima;
+}
+
+/**
+ * T-61 · Mantiene sano el snapshot `montoAnterior` cuando cambia el canon.
+ *
+ * EL BUG QUE ARREGLA. `montoAnterior` significa *"el canon que regía justo antes de esta
+ * vigencia"*, y se congela cuando la vigencia se crea. El diseño asumía que después nadie
+ * tocaba el canon de los períodos anteriores — y sí se toca, con el flujo más normal que hay:
+ *
+ *   1. 10/08 · se renueva por adelantado a $500.000 desde 2026-12.
+ *      Queda `RenovacionContrato{ montoDesde: '2026-12', montoAnterior: 300.000 }`.
+ *   2. 05/09 · llega el ajuste anual: $380.000 desde 2026-09.
+ *   3. El cron devenga 2026-11: `canonDelPeriodo` busca la primera vigencia posterior —la
+ *      renovación de diciembre— y devuelve su `montoAnterior`: **$300.000**.
+ *
+ * O sea: **el ajuste de septiembre queda anulado para noviembre.** Y el signo importa — acá se
+ * cobra de MENOS, así que no hay un inquilino reclamado de más, pero es plata que la
+ * inmobiliaria no factura, con la comisión (que sale del alquiler) corta en la misma
+ * proporción.
+ *
+ * POR QUÉ SE REPARA AL ESCRIBIR Y NO SE CALCULA AL LEER. El camino de lectura es el del cron,
+ * corre sobre todos los contratos de todos los tenants y hoy no lee nada hacia atrás. Arreglarlo
+ * ahí obligaba a traer el historial completo de canon en cada devengo. Acá el trabajo se hace
+ * una vez, cuando el dato se ensucia, y `canonDelPeriodo` queda intacto.
+ *
+ * SÓLO SE REPARA UNA. Las vigencias posteriores a esa tienen su propio predecesor —el
+ * `montoNuevo` de la que reparamos— y siguen siendo correctas.
+ */
+export async function repararVigenciaSiguiente(
+  tx: TxOrClient,
+  args: { contratoId: string; inmobiliariaId: string; desde: string; canonNuevo: number },
+): Promise<{ tabla: 'ajuste' | 'renovacion'; id: string } | null> {
+  const { contratoId, inmobiliariaId, desde, canonNuevo } = args;
+  const [ajustes, renovaciones] = await Promise.all([
+    tx.ajusteAlquiler.findMany({
+      where: { contratoId, inmobiliariaId, periodoDesde: { gt: desde } },
+      select: { id: true, periodoDesde: true },
+    }),
+    tx.renovacionContrato.findMany({
+      where: { contratoId, inmobiliariaId, montoDesde: { gt: desde } },
+      select: { id: true, montoDesde: true },
+    }),
+  ]);
+  const candidatas = [
+    ...ajustes.map((a) => ({ id: a.id, desde: a.periodoDesde, tabla: 'ajuste' as const })),
+    ...renovaciones.map((r) => ({ id: r.id, desde: r.montoDesde, tabla: 'renovacion' as const })),
+  ];
+  const elegida = primeraVigenciaDespuesDe(candidatas, desde);
+  if (!elegida) return null;
+  if (elegida.tabla === 'ajuste') {
+    await tx.ajusteAlquiler.update({ where: { id: elegida.id }, data: { montoAnterior: canonNuevo } });
+  } else {
+    await tx.renovacionContrato.update({ where: { id: elegida.id }, data: { montoAnterior: canonNuevo } });
+  }
+  return { tabla: elegida.tabla, id: elegida.id };
 }
 
 /**
@@ -86,7 +180,15 @@ export function computarLiquidacionesContrato(
   return enumerarPeriodosContrato(contrato, now).map((p) => {
     // Canon POR PERÍODO: un ajuste/renovación con vigencia futura no puede cobrarle el
     // canon nuevo a los meses intermedios, que todavía son del viejo.
-    const alquiler = canonDelPeriodo(p.periodo, montoActual, vigencias);
+    // `montoAlquilerSegunTipo` va DESPUÉS de resolver el canon del período, no antes: un
+    // SOLO_EXPENSAS tiene que dar 0 aunque el contrato haya quedado con un canon positivo
+    // (por un ajuste viejo, una renovación, o un alta mal cargada). Es la única defensa del
+    // devengo: antes dependía de que `contrato.monto` valiera 0. Es la misma regla que ya
+    // aplicaba `recomputarLiquidacionesFuturas`; acá faltaba, y por eso las dos divergían.
+    const alquiler = montoAlquilerSegunTipo(
+      contrato.tipoContrato,
+      canonDelPeriodo(p.periodo, montoActual, vigencias),
+    );
     return {
       inmobiliariaId: contrato.inmobiliariaId,
       contratoId: contrato.id,
@@ -239,6 +341,9 @@ export async function devengarTodosLosTenants(
       // Sin esto el cron devengaba desde fechaInicio e ignoraba la decisión de la
       // importación de cartera → resucitaba los meses históricos como deuda falsa.
       devengarDesde: true,
+      // Sin esto el barrido no sabe que un SOLO_EXPENSAS no factura alquiler y le devenga
+      // el canon que haya quedado en el contrato. Ver ContratoParaLiquidar.
+      tipoContrato: true,
       fechaFin: true,
       diaPago: true,
     },
@@ -340,9 +445,17 @@ export type LiquidacionParaReajustar = {
  *    cerrado; el inquilino ya vio/pagó ese valor).
  *  - estado PENDIENTE o VENCIDO: NO tocamos PAGADO ni PARCIAL (ya hay plata en
  *    juego contra el monto viejo).
- *  - SIN ningún pago (cantidadPagos === 0): defensa extra — aunque una liq siga
+ *  - SIN ningún pago VIVO (cantidadPagos === 0): defensa extra — aunque una liq siga
  *    PENDIENTE/VENCIDO, si tiene un pago INFORMADO en revisión no la reajustamos
  *    (el inquilino informó contra el total que vio).
+ *
+ *    "VIVO" = INFORMADO o CONCILIADO. **Un RECHAZADO no cuenta**, y esto costó caro: el
+ *    conteo venía sin filtrar, así que un comprobante mal mandado y rechazado —operación
+ *    diaria de la bandeja— dejaba esa cuota fuera del reajuste PARA SIEMPRE. Llegaban las
+ *    expensas nuevas del consorcio y esa cuota conservaba las viejas: se le cobraba de menos
+ *    al inquilino y la inmobiliaria le pagaba igual al consorcio. Ningún endpoint borra un
+ *    pago rechazado, así que no había forma de recuperarlo (T-59). El filtro va en la query
+ *    que arma `cantidadPagos` (core.ts).
  *
  * El montoAlquiler nuevo respeta el tipo de contrato (SOLO_EXPENSAS => 0) y el
  * total = alquiler + expensas de LA liquidación (no del contrato: una liq pudo
@@ -366,6 +479,58 @@ export function recomputarLiquidacionesFuturas(
     if (l.cantidadPagos > 0) continue;
     const expensas = l.montoExpensas != null ? Number(l.montoExpensas) : 0;
     out.push({ id: l.id, montoAlquiler: alquilerNuevo, montoTotal: alquilerNuevo + expensas });
+  }
+  return out;
+}
+
+/** Igual que `LiquidacionParaReajustar`, pero del lado de las EXPENSAS: acá el
+ *  alquiler es lo que se conserva y las expensas lo que cambia. */
+export type LiquidacionParaReexpensar = {
+  id: string;
+  periodo: string;
+  estado: 'PENDIENTE' | 'PAGADO' | 'PARCIAL' | 'VENCIDO';
+  montoAlquiler: Prisma.Decimal | number;
+  montoExpensas: Prisma.Decimal | number | null;
+  /** Cantidad de pagos (de cualquier estado) asociados a la liquidación. */
+  cantidadPagos: number;
+};
+
+/**
+ * Espejo de `recomputarLiquidacionesFuturas` para un cambio de EXPENSAS.
+ *
+ * Las expensas suben todos los meses, así que esto se usa seguido — y por eso
+ * comparte el criterio conservador del ajuste de canon, línea por línea:
+ *
+ *  - período >= mes actual: no se tocan meses pasados (el inquilino ya vio ese
+ *    valor y probablemente lo pagó);
+ *  - estado PENDIENTE o VENCIDO: no se tocan PAGADO ni PARCIAL;
+ *  - sin ningún pago asociado: aunque siga PENDIENTE, si hay un pago INFORMADO
+ *    en revisión el inquilino ya informó contra el total que vio.
+ *
+ * La diferencia con el ajuste de canon es cuál de los dos montos se conserva:
+ * acá el `montoAlquiler` de CADA liquidación queda como está (puede diferir del
+ * canon del contrato si hubo un ajuste con vigencia futura) y sólo se pisa la
+ * parte de expensas. Devuelve sólo las que cambian.
+ */
+export function recomputarExpensasFuturas(
+  liquidaciones: LiquidacionParaReexpensar[],
+  params: { expensasNuevas: number; periodoActual: string },
+): Array<{ id: string; montoExpensas: number; montoTotal: number }> {
+  const out: Array<{ id: string; montoExpensas: number; montoTotal: number }> = [];
+  for (const l of liquidaciones) {
+    // Comparación lexicográfica de 'YYYY-MM': correcta porque ambos tienen el
+    // mismo formato ancho-fijo.
+    if (l.periodo < params.periodoActual) continue;
+    if (l.estado !== 'PENDIENTE' && l.estado !== 'VENCIDO') continue;
+    if (l.cantidadPagos > 0) continue;
+    const expensasViejas = l.montoExpensas != null ? Number(l.montoExpensas) : 0;
+    if (expensasViejas === params.expensasNuevas) continue;
+    const alquiler = Number(l.montoAlquiler);
+    out.push({
+      id: l.id,
+      montoExpensas: params.expensasNuevas,
+      montoTotal: alquiler + params.expensasNuevas,
+    });
   }
   return out;
 }

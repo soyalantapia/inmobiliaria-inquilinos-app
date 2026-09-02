@@ -188,7 +188,7 @@ function CuentaReal() {
               <LinkRow
                 icon={<ArrowLeftRight className="h-4 w-4" />}
                 label="Mis propiedades"
-                descripcion="Ver tus alquileres y cambiar de propiedad"
+                descripcion="Ver tus unidades y cambiar de propiedad"
                 href="/mis-alquileres"
               />
             )}

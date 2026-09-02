@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireInquilino } from '../auth/guards.js';
 import { urlEsDelTenant, borrarArchivoSiHuerfano } from './uploads.js';
+import { puedeAdjuntar } from '../lib/acceso-archivos.js';
 
 /**
  * Catálogo fijo de documentos que la inmobiliaria espera del inquilino (DNI,
@@ -46,6 +47,11 @@ export async function miPerfilRoutes(app: FastifyInstance): Promise<void> {
     const nueva = body.data.imageUrl || null;
     if (nueva && !urlEsDelTenant(nueva, inq.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Avatar inválido' });
+    }
+    if (!(await puedeAdjuntar(nueva, inq))) {
+      // Suyo, no sólo del tenant: sin esto la vía 2 del guard de lectura se auto-anula
+      // —alguien con la URL ajena la engancha a una fila propia y se auto-autoriza—.
+      return reply.code(403).send({ message: 'Ese archivo no es tuyo' });
     }
     const actual = await prisma.inquilino.findUnique({ where: { id: inq.inquilinoId }, select: { imageUrl: true } });
     if (!actual) return reply.code(404).send({ message: 'Inquilino inexistente' });
@@ -106,6 +112,11 @@ export async function miPerfilRoutes(app: FastifyInstance): Promise<void> {
     const b = parsed.data;
     if (!urlEsDelTenant(b.archivoUrl, inq.inmobiliariaId)) {
       return reply.code(400).send({ message: 'archivoUrl inválido' });
+    }
+    if (!(await puedeAdjuntar(b.archivoUrl, inq))) {
+      // Suyo, no sólo del tenant: sin esto la vía 2 del guard de lectura se auto-anula
+      // —alguien con la URL ajena la engancha a una fila propia y se auto-autoriza—.
+      return reply.code(403).send({ message: 'Ese archivo no es tuyo' });
     }
     let categoria: 'IDENTIDAD' | 'INGRESOS' | 'GARANTE' | 'OTRO' = 'OTRO';
     let slotId: string | null = null;

@@ -17,6 +17,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
+import { useEffect, useState } from 'react';
+import { obtenerRendicion, periodoActual } from '@/lib/rendiciones-storage';
 
 // Body exacto que espera POST /rendiciones (handler en apps/api/src/routes/plata.ts).
 export interface RendirInput {
@@ -46,7 +48,30 @@ export interface RendicionApi {
   montoNeto: string | number;
   metodo: RendirInput['metodo'];
   notas: string | null;
-  createdAt?: string;
+  /**
+   * Cuándo se rindió de verdad. Acá decía `createdAt?: string`, un campo que el modelo
+   * `Rendicion` NO tiene: el API devuelve la fila cruda de Prisma, que trae `rendidoAt`. Como
+   * `createdAt` llegaba siempre `undefined`, las dos pantallas que lo consumen caían al
+   * fallback `${periodo}-01` y mostraban el día 1 del período como fecha de pago. Una
+   * rendición de julio hecha el 12 de agosto se veía como 1 de julio — que es el dato con el
+   * que alguien contesta "¿cuándo le pagaste a Silvana?".
+   */
+  rendidoAt: string;
+  /** Si está anulada. Sólo llega con `incluirAnuladas`. */
+  anuladaAt?: string | null;
+  motivoAnulacion?: string | null;
+  /**
+   * La moneda EN QUE SE RINDIÓ. Se persiste desde la migración `20260819220000`.
+   *
+   * Este tipo no la declaraba, así que todo el panel caía al default pesos de `formatMonto`:
+   * la misma rendición se leía "US$ 1.104" en el portal del dueño y "$ 1.104" en la pantalla
+   * de Camila, que es la que le dicta el número por teléfono. Es el mismo bug que se cerró del
+   * lado del portal, todavía abierto del lado de adentro.
+   *
+   * Opcional para no romper una respuesta vieja cacheada; los lectores caen a 'ARS', que es lo
+   * que la columna tiene por default.
+   */
+  moneda?: 'ARS' | 'USD';
 }
 
 export interface UseRendiciones {
@@ -93,15 +118,69 @@ export function useRendiciones(): UseRendiciones {
  * dueño volvía a aparecer "Por rendir" y el historial mostraba $0. Con esto el
  * estado sale del server y persiste.
  */
-export function useRendicionesList(): { rendiciones: RendicionApi[]; cargando: boolean } {
+/**
+ * Las rendiciones del tenant.
+ *
+ * Por default el server manda SÓLO LAS VIGENTES, y eso es lo que quieren casi todos los que
+ * llaman acá: el badge "Rendido", el KPI de "por rendir", el neto histórico, el comprobante
+ * de WhatsApp. Todos preguntan "¿ya se le rindió?", y una anulada no cuenta.
+ *
+ * `incluirAnuladas` es para la ÚNICA pantalla que pregunta otra cosa: el historial del
+ * propietario, que es donde el operador va a buscar por qué al dueño le falta un depósito.
+ * Ahí ocultarlas convierte la pregunta en un misterio.
+ */
+export function useRendicionesList(
+  opts?: { incluirAnuladas?: boolean },
+): { rendiciones: RendicionApi[]; cargando: boolean; error: boolean } {
+  const incluirAnuladas = opts?.incluirAnuladas ?? false;
   const q = useQuery({
-    queryKey: ['rendiciones'],
+    // La key lleva la variante: si compartiera cache con la lista sin anuladas, la primera
+    // pantalla que cargue decide lo que ve la otra.
+    queryKey: ['rendiciones', { incluirAnuladas }],
     queryFn: async () => {
       await ensureApiSession();
-      return apiFetch<RendicionApi[]>('/rendiciones');
+      return apiFetch<RendicionApi[]>(`/rendiciones${incluirAnuladas ? '?incluirAnuladas=1' : ''}`);
     },
     enabled: apiEnabled,
     staleTime: 30_000,
   });
-  return { rendiciones: q.data ?? [], cargando: q.isPending };
+  // `error` explícito: "0 rendiciones" y "no pudimos preguntar" son cosas distintas, y la
+  // pantalla que las confunde le dice al operador que ya se le rindió a todo el mundo.
+  return { rendiciones: q.data ?? [], cargando: q.isPending, error: q.isError };
+}
+
+
+/**
+ * A qué propietarios YA se les rindió el período en curso.
+ *
+ * Existe porque el tablero y `/propietarios` respondían distinto a la misma pregunta: el
+ * tablero no consultaba rendiciones en absoluto, así que su contador "propietarios por rendir"
+ * nunca bajaba dentro del mes, y la card linkeaba a una lista que sí las descontaba. El
+ * operador hacía click en "3 por rendir" y caía en una lista vacía.
+ *
+ * En prod el dato sale del server; en la build DEMO, de `localStorage`. Y esa lectura va en un
+ * EFECTO, no en el cuerpo: `localStorage` no existe en el render del servidor, así que leerlo
+ * derecho daría un número en el HTML prerenderizado y otro después de hidratar.
+ */
+export function useRendidosDelPeriodo(propietarioIds: readonly string[]): {
+  yaRendidos: Set<string>;
+  cargando: boolean;
+} {
+  const { rendiciones, cargando } = useRendicionesList();
+  const periodo = periodoActual();
+  const [deDemo, setDeDemo] = useState<Set<string>>(new Set());
+
+  // La key estable evita el loop: `propietarioIds` es un array nuevo en cada render.
+  const idsKey = propietarioIds.join(',');
+  useEffect(() => {
+    if (apiEnabled) return;
+    setDeDemo(new Set(propietarioIds.filter((id) => obtenerRendicion(id, periodo))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey, periodo]);
+
+  if (!apiEnabled) return { yaRendidos: deDemo, cargando: false };
+  return {
+    yaRendidos: new Set(rendiciones.filter((r) => r.periodo === periodo).map((r) => r.propietarioId)),
+    cargando,
+  };
 }

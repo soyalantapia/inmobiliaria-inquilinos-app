@@ -41,6 +41,23 @@ export interface Rendicion {
   /** Ingresos extra de caja rendidos al dueño (SUMAN al neto). */
   totalIngresos?: number;
   montoNeto: number;
+  /**
+   * La moneda en que se rindió (default ARS, igual que la columna).
+   *
+   * Opcional para no tocar las filas viejas del storage del modo demo, pero los lectores
+   * TIENEN que pasarla a `formatMonto`: sin ella cae al default pesos y una rendición en
+   * dólares se lee mil veces más chica de lo que es.
+   */
+  moneda?: 'ARS' | 'USD';
+  /**
+   * Si la inmobiliaria la anuló. `null` o ausente = vigente.
+   *
+   * Desde la baja lógica la rendición anulada no se borra: se conserva marcada, el dueño la
+   * ve tachada en su portal y el historial del panel la muestra con su motivo. NO cuenta en
+   * ningún total.
+   */
+  anuladaAt?: string | null;
+  motivoAnulacion?: string | null;
   rendidoAt: string;
   /** Método (transferencia, mercadopago, efectivo). */
   metodo: 'TRANSFERENCIA' | 'MERCADOPAGO' | 'EFECTIVO';

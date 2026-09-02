@@ -3,12 +3,21 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { origenDeReapertura } from '../lib/reapertura-reclamo.js';
+import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { registrarEvento } from '../lib/auditoria.js';
 import { imputarCostoReclamo, conceptoReclamo, ReclamoYaRendido, ReclamoNoReimputable } from '../lib/imputar-reclamo.js';
 import { fichaReputacion, resumenReputacionMasivo, normalizarTelefono } from '../lib/reputacion-red.js';
 import { urlEsDelTenant } from './uploads.js';
+import { avisarReclamoNuevoAInmo, avisarAlInquilinoDelReclamo } from '../lib/avisos-reclamo.js';
+import { TIPOS_AVISO_INMO } from '../lib/destinatario-aviso.js';
+import { normalizarEmail } from '../lib/normalizar-email.js';
+import { dinero, dineroConSigno } from '../lib/monto.js';
+import { puedeAdjuntar } from '../lib/acceso-archivos.js';
+import { rolTienePermiso } from '@llave/shared';
+import { CAMPOS_VISITA_PANEL } from '../lib/visita-campos.js';
 
 /** Token opaco del link mágico de visita (/p/:token) — 24 bytes base64url, no adivinable. */
 function generarTokenVisita(): string {
@@ -199,7 +208,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         ...(q.urgencia ? { urgencia: q.urgencia } : {}),
       },
       include: {
-        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        propiedad: { select: { id: true, direccion: true, ciudad: true, complejo: true, consorcio: { select: { nombre: true } } } },
         contrato: {
           select: {
             id: true,
@@ -218,11 +227,12 @@ export async function operacionRoutes(app: FastifyInstance) {
   app.get('/reclamos/:id', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'reclamos.ver');
     if (!u) return;
+    const puedeVerElLink = rolTienePermiso(u.rol, 'profesional.asignar');
     const { id } = request.params as { id: string };
     const reclamo = await prisma.reclamo.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
       include: {
-        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        propiedad: { select: { id: true, direccion: true, ciudad: true, complejo: true, consorcio: { select: { nombre: true } } } },
         contrato: {
           select: {
             id: true,
@@ -235,7 +245,24 @@ export async function operacionRoutes(app: FastifyInstance) {
         },
         profesional: true,
         eventos: { orderBy: { fecha: 'asc' } },
-        visita: true,
+        // EL TOKEN DE LA VISITA NO VIAJA PARA CUALQUIERA.
+        //
+        // `visita: true` traía la fila entera, y ahí adentro va `token`: el link mágico en
+        // crudo. Ese token se canjea SIN bearer en `GET /visitas-publicas/:token` por un JWT
+        // `kind: 'profesional'` de tres días, que cierra el reclamo, escribe `costoTrabajo` y
+        // dispara `imputarCostoReclamo` — o sea, puede crear un CargoContrato contra el
+        // inquilino o descontar el depósito.
+        //
+        // Y este endpoint está gateado con `reclamos.ver`, que incluye a **LECTURA**. El rol
+        // de consulta no puede asignar un profesional (eso es `profesional.asignar`, ADMIN y
+        // OPERADOR) y sin embargo se llevaba la llave que emite sesiones de profesional.
+        //
+        // El token sale sólo para quien PUEDE crear y regenerar ese link, que es el mismo que
+        // lo necesita para copiarlo. Mismo patrón que `veDatosDelDuenio` en core.ts.
+        //
+        // Que era sensible ya se sabía: el propio `GET /visitas-publicas/:token` arma su
+        // respuesta campo por campo y OMITE el token.
+        visita: { select: { ...CAMPOS_VISITA_PANEL, ...(puedeVerElLink ? { token: true } : {}) } },
         confirmacion: true,
         rating: true,
         cargos: true,
@@ -320,6 +347,19 @@ export async function operacionRoutes(app: FastifyInstance) {
       });
       return r;
     });
+    // El reclamo también es parte de la vida del CONTRATO, no sólo del ticket: el
+    // expediente tiene que dejar ver que en tal mes hubo un problema en esa unidad.
+    //
+    // POST-COMMIT (T-29-N1): adentro de la transacción, un fallo escribiendo el historial
+    // se llevaba puesto el reclamo recién abierto — y el inquilino veía un 200.
+    await registrarEventoContrato(prisma, {
+      inmobiliariaId: u.inmobiliariaId,
+      contratoId: contrato.id,
+      tipo: 'RECLAMO_CREADO',
+      titulo: `Reclamo: ${body.data.titulo}`,
+      detalle: `${body.data.categoria} · urgencia ${body.data.urgencia}`,
+      autor: u.userId,
+    });
     return reply.code(201).send(conSla(reclamo));
   });
 
@@ -384,7 +424,76 @@ export async function operacionRoutes(app: FastifyInstance) {
         });
         return { reclamo: await tx.reclamo.findUniqueOrThrow({ where: { id } }), visita: visitaUpsert };
       });
+
+      // El inquilino ya lo ve en su feed ("Te asignaron a X"), pero eso sólo llega si
+      // abre la app. El mail cierra el otro lado. Best-effort, fuera de la tx.
+      void avisarAlInquilinoDelReclamo({
+        inmobiliariaId: u.inmobiliariaId,
+        reclamoId: id,
+        evento: { tipo: 'ASIGNADO', profesional: prof.nombre, oficio: prof.categoria ?? null },
+      }).catch((e) => app.log.warn({ err: e, reclamoId: id }, '[reclamos] no se pudo avisar la asignación'));
+
       return { ...conSla(actualizado), visitaToken: visita.token };
+    } catch (e) {
+      if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      throw e;
+    }
+  });
+
+  /**
+   * Tomar un reclamo: ABIERTO → EN_CURSO.
+   *
+   * POR QUÉ EXISTE: `EN_CURSO` era **inalcanzable desde la inmobiliaria**. El enum lo tiene, el
+   * panel lo filtra, el SLA lo contempla y hasta existe el evento `EN_CURSO` — pero el único
+   * lugar que lo escribía era el flujo en que el INQUILINO marca "PERSISTE" y reabre un reclamo
+   * ya resuelto (`:902`). O sea que la única forma de que un reclamo estuviera "en curso" era
+   * que antes se hubiera cerrado mal.
+   *
+   * Camila, después de que T-17 le puso el aviso por mail: *"me entero más rápido de algo que
+   * después no puedo mover. Me sirve igual, pero es media solución."* Se enteraba antes de un
+   * reclamo que seguía figurando ABIERTO aunque alguien ya lo estuviera atendiendo — y con 220
+   * propiedades, la bandeja de abiertos es lo que usa para saber qué falta.
+   *
+   * Es deliberadamente lo más chico que cierra eso: un cambio de estado con su evento. NO asigna
+   * profesional (eso ya es `/asignar`, y son cosas distintas: se puede estar atendiendo un
+   * reclamo sin mandar a nadie todavía).
+   */
+  app.post('/reclamos/:id/tomar', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+
+    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    if ((ESTADOS_CERRADOS as readonly string[]).includes(reclamo.estado)) {
+      return reply.code(409).send({ message: 'El reclamo ya está cerrado — no se puede tomar' });
+    }
+    // Idempotente: tomar algo que ya está en curso no es un error, es lo que pasa cuando dos
+    // personas de la oficina abren el mismo reclamo. Devolvemos 200 sin duplicar el evento,
+    // que si no el historial se llena de "tomó el reclamo" del mismo día.
+    if (reclamo.estado === 'EN_CURSO') return reclamo;
+
+    const autor = await nombreUsuario(u.userId);
+    try {
+      return await prisma.$transaction(async (tx) => {
+        // Lock atómico, igual que asignar/resolver/rechazar: si entre el pre-check y esto
+        // alguien resolvió o rechazó el reclamo, `count === 0` → 409 en vez de pisar el cierre.
+        const res = await tx.reclamo.updateMany({
+          where: { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
+          data: { estado: 'EN_CURSO' },
+        });
+        if (res.count === 0) throw new ConflictoEstadoReclamo('El reclamo ya está cerrado — no se puede tomar');
+        await tx.reclamoEvento.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            reclamoId: id,
+            tipo: 'EN_CURSO',
+            autor,
+            contenido: null,
+          },
+        });
+        return tx.reclamo.findUniqueOrThrow({ where: { id } });
+      });
     } catch (e) {
       if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
       throw e;
@@ -420,8 +529,36 @@ export async function operacionRoutes(app: FastifyInstance) {
     const body = z.object({ pagador: z.enum(['PROPIETARIO', 'INQUILINO', 'DEPOSITO']) }).safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Indicá quién paga: propietario, inquilino o depósito' });
 
-    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    const reclamo = await prisma.reclamo.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      include: { contrato: { select: { moneda: true } } },
+    });
     if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+
+    // RESCATE del reclamo que cerró el profesional por link mágico SIN pagador.
+    //
+    // `/visitas-publicas/listo` escribe `costoTrabajo` y pone el reclamo en RESUELTO, pero el
+    // `pagador` sólo lo escriben este endpoint y `/resolver` — y los dos rebotan con 409 una vez
+    // cerrado. Con `pagador: null` el helper hace early-return y NO le cobra a nadie: el costo
+    // del arreglo se evapora, y queda irrecuperable por diseño.
+    //
+    // No es un caso raro: el diálogo de asignar profesional del panel pega directo a
+    // `/reclamos/:id/asignar` y abre el WhatsApp con el link mágico sin pasar nunca por la
+    // clasificación, así que `pagador: null` es el DEFAULT del camino más rápido.
+    //
+    // Por qué acá y no relajando `/resolver`: ese endpoint incrementa `cantTrabajos` (que /listo
+    // ya incrementó → +2 trabajos por uno), pisa `resueltoAt` —ancla del SLA y filtro de período
+    // de la rendición— y dispara un segundo mail al inquilino. `/clasificar` no toca nada de eso.
+    //
+    // La condición es angosta a propósito: sólo un RESUELTO con costo y SIN pagador. Ahí el
+    // motivo del guard de estado no aplica —no hay ningún CargoContrato previo que quede
+    // colgado, porque con `pagador: null` el helper nunca creó uno—. Los dos casos peligrosos
+    // (ya rendido al dueño, ya cobrado al inquilino) los corta el propio helper.
+    const rescatandoCierreSinPagador =
+      reclamo.estado === 'RESUELTO' &&
+      reclamo.pagador == null &&
+      reclamo.costoTrabajo != null &&
+      Number(reclamo.costoTrabajo) > 0;
 
     const autor = await nombreUsuario(u.userId);
     try {
@@ -433,13 +570,33 @@ export async function operacionRoutes(app: FastifyInstance) {
         // Reclasificar un reclamo REABIERTO (PERSISTE lo devuelve a EN_CURSO) sigue
         // permitido: ése es el flujo legítimo para corregir a quién se le imputa.
         const res = await tx.reclamo.updateMany({
-          where: { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
+          // En el rescate el candado es `pagador: null`, no el estado: si alguien clasificó
+          // entremedio, count===0 y sale por el 409 de abajo en vez de pisarle la decisión.
+          where: rescatandoCierreSinPagador
+            ? { id, estado: 'RESUELTO', pagador: null }
+            : { id, estado: { notIn: [...ESTADOS_CERRADOS] } },
           data: { pagador: body.data.pagador },
         });
         if (res.count === 0) {
           throw new ConflictoEstadoReclamo(
-            'El reclamo ya está cerrado. Reabrilo antes de cambiar quién paga.',
+            rescatandoCierreSinPagador
+              ? 'Otra persona ya definió quién paga este reclamo. Recargá para ver cómo quedó.'
+              : 'El reclamo ya está cerrado. Reabrilo antes de cambiar quién paga.',
           );
+        }
+        // Sólo en el rescate: el reclamo YA está cerrado, así que nadie va a volver a pasar por
+        // `/resolver` a imputar. Es este llamado, o la plata se pierde.
+        if (rescatandoCierreSinPagador) {
+          await imputarCostoReclamo(tx, {
+            inmobiliariaId: u.inmobiliariaId,
+            reclamoId: id,
+            contratoId: reclamo.contratoId,
+            pagador: body.data.pagador,
+            costo: Number(reclamo.costoTrabajo),
+            moneda: reclamo.contrato.moneda,
+            concepto: conceptoReclamo(reclamo.categoria, reclamo.descripcion),
+            creadoPorId: u.userId,
+          });
         }
         await tx.reclamoEvento.create({
           data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'CLASIFICADO', autor, contenido: `Paga: ${labelPagador(body.data.pagador)}` },
@@ -449,6 +606,9 @@ export async function operacionRoutes(app: FastifyInstance) {
       return conSla(actualizado);
     } catch (e) {
       if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      // El rescate llama al helper, que corta si el trabajo ya se le rindió al dueño, si el
+      // inquilino ya pagó ese cargo, o si el depósito no está vivo.
+      if (e instanceof ReclamoNoReimputable) return reply.code(409).send({ message: e.message });
       throw e;
     }
   });
@@ -460,7 +620,7 @@ export async function operacionRoutes(app: FastifyInstance) {
     const body = z
       .object({
         resolucion: z.string().min(5),
-        costoTrabajo: z.number().nonnegative().optional(),
+        costoTrabajo: dinero().optional(),
         costoTrabajoNotas: z.string().trim().max(300).optional(),
         pagador: z.enum(['PROPIETARIO', 'INQUILINO', 'DEPOSITO']).optional(),
       })
@@ -578,6 +738,15 @@ export async function operacionRoutes(app: FastifyInstance) {
 
         return tx.reclamo.findUniqueOrThrow({ where: { id } });
       });
+      // El feed del inquilino ya le pide calificar, pero eso sólo aparece si entra.
+      // El mail además le recuerda que puede REABRIRLO si el problema sigue, que es
+      // la mitad del circuito CONFORME/PERSISTE que hoy casi nadie usa.
+      void avisarAlInquilinoDelReclamo({
+        inmobiliariaId: u.inmobiliariaId,
+        reclamoId: id,
+        evento: { tipo: 'RESUELTO', notas: body.data.costoTrabajoNotas?.trim() || null },
+      }).catch((e) => app.log.warn({ err: e, reclamoId: id }, '[reclamos] no se pudo avisar la resolución'));
+
       return conSla(actualizado);
     } catch (e) {
       if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
@@ -609,6 +778,75 @@ export async function operacionRoutes(app: FastifyInstance) {
         if (res.count === 0) throw new ConflictoEstadoReclamo('El reclamo ya fue decidido');
         await tx.reclamoEvento.create({
           data: { inmobiliariaId: u.inmobiliariaId, reclamoId: id, tipo: 'RECHAZADO', autor, contenido: body.data.motivo },
+        });
+        return tx.reclamo.findUniqueOrThrow({ where: { id } });
+      });
+      return conSla(actualizado);
+    } catch (e) {
+      if (e instanceof ConflictoEstadoReclamo) return reply.code(409).send({ message: e.message });
+      throw e;
+    }
+  });
+
+  /**
+   * Reabrir un reclamo cerrado, para poder corregirlo.
+   *
+   * POR QUÉ EXISTE. El profesional cierra el reclamo por link mágico declarando `montoCobrado`
+   * (`POST /visitas-publicas/listo`), y eso se imputa como plata real: cargo al inquilino,
+   * gasto al propietario o descuento del depósito. Si tipeó mal el monto, **no había forma de
+   * arreglarlo**: con el reclamo ya cerrado, `/clasificar` y `/resolver` responden 409, y el
+   * único camino de reapertura era que el INQUILINO marcara "PERSISTE" — que es otro flujo (el
+   * problema sigue), no una corrección. Un typo quedaba como asiento permanente.
+   *
+   * Es la mitad de T-63 que no depende de la decisión pendiente sobre quién puede declarar
+   * cuánto: decida lo que se decida, un error tiene que poder corregirse.
+   *
+   * NO MUEVE PLATA. Sólo devuelve el reclamo a EN_CURSO para que `/clasificar` y `/resolver`
+   * vuelvan a estar habilitados. La reimputación la sigue haciendo `/resolver` con el helper
+   * de siempre, que es el único lugar donde se decide a dónde va esa plata — y que ya frena
+   * solo si el costo ya se le rindió al propietario (`ReclamoYaRendido`) o si el inquilino ya
+   * pagó el cargo (`ReclamoYaCobradoAlInquilino`). Reabrir no saltea ninguno de esos cortes.
+   *
+   * ⚠️ NO se toca `resueltoAt`, y no es un olvido. `evaluarSla` detecta un reclamo reabierto
+   * justamente por `estado` activo + `resueltoAt` no nulo, y reinicia el reloj del SLA desde
+   * ahí. Limpiándolo, un reclamo viejo reaparecería como VENCIDO apenas se reabre.
+   */
+  app.post('/reclamos/:id/reabrir', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'reclamos.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    // Se pide motivo por lo mismo que en `/rechazar`: esto deshace un cierre y toca plata
+    // imputada. Que quede escrito quién lo reabrió y por qué.
+    const body = z.object({ motivo: z.string().trim().min(5).max(300) }).safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({ message: 'Contá por qué se reabre el reclamo (mínimo 5 caracteres)' });
+    }
+    const reclamo = await prisma.reclamo.findFirst({ where: { id, inmobiliariaId: u.inmobiliariaId } });
+    if (!reclamo) return reply.code(404).send({ message: 'Reclamo inexistente' });
+    const autor = await nombreUsuario(u.userId);
+    try {
+      const actualizado = await prisma.$transaction(async (tx) => {
+        // El guard va al revés que en el resto: acá sólo se puede si ESTÁ cerrado. `updateMany`
+        // con la condición adentro y no un pre-check, por lo mismo que los otros handlers: si
+        // alguien lo reabre entre la lectura y la escritura, `count === 0` y sale 409.
+        const res = await tx.reclamo.updateMany({
+          where: { id, estado: { in: [...ESTADOS_CERRADOS] } },
+          data: { estado: 'EN_CURSO' },
+        });
+        if (res.count === 0) {
+          throw new ConflictoEstadoReclamo('Este reclamo no está cerrado: no hay nada que reabrir.');
+        }
+        // `EN_CURSO` y no un `REABIERTO` propio: el enum no lo tiene y agregarlo pedía una
+        // migración por una etiqueta. El estado al que vuelve ES en curso, y el motivo queda
+        // en el contenido del evento.
+        await tx.reclamoEvento.create({
+          data: {
+            inmobiliariaId: u.inmobiliariaId,
+            reclamoId: id,
+            tipo: 'EN_CURSO',
+            autor,
+            contenido: `Reabierto para corregir: ${body.data.motivo}`,
+          },
         });
         return tx.reclamo.findUniqueOrThrow({ where: { id } });
       });
@@ -678,6 +916,11 @@ export async function operacionRoutes(app: FastifyInstance) {
     if (body.data.adjuntoUrl && !urlEsDelTenant(body.data.adjuntoUrl, inq.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Adjunto inválido' });
     }
+    if (!(await puedeAdjuntar(body.data.adjuntoUrl, inq))) {
+      // Suyo, no sólo del tenant: sin esto la vía 2 del guard de lectura se auto-anula
+      // —alguien con la URL ajena la engancha a una fila propia y se auto-autoriza—.
+      return reply.code(403).send({ message: 'Ese archivo no es tuyo' });
+    }
     // El reclamo tiene que ser del inquilino (su contrato + inmobiliaria).
     const reclamo = await prisma.reclamo.findFirst({
       where: { id, contratoId: inq.contratoId, inmobiliariaId: inq.inmobiliariaId },
@@ -712,7 +955,10 @@ export async function operacionRoutes(app: FastifyInstance) {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return reclamos.map(conSla);
+    // `reabiertoPor` viaja resuelto desde acá: la pantalla del inquilino lo estaba infiriendo
+    // con una regla que dejó de ser cierta cuando se agregó `/reclamos/:id/reabrir`, y terminaba
+    // diciéndole «Reportaste que sigue» a alguien que no había reportado nada.
+    return reclamos.map((r) => ({ ...conSla(r), reabiertoPor: origenDeReapertura(r) }));
   });
 
   app.post('/mis-reclamos', async (request, reply) => {
@@ -734,6 +980,11 @@ export async function operacionRoutes(app: FastifyInstance) {
     // La foto, si viene, tiene que ser un /uploads de ESTA inmobiliaria (no externa).
     if (body.data.fotoUrl && !urlEsDelTenant(body.data.fotoUrl, inq.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Foto inválida' });
+    }
+    if (!(await puedeAdjuntar(body.data.fotoUrl, inq))) {
+      // Suyo, no sólo del tenant: sin esto la vía 2 del guard de lectura se auto-anula
+      // —alguien con la URL ajena la engancha a una fila propia y se auto-autoriza—.
+      return reply.code(403).send({ message: 'Ese archivo no es tuyo' });
     }
 
     const contrato = await prisma.contrato.findFirst({
@@ -768,6 +1019,39 @@ export async function operacionRoutes(app: FastifyInstance) {
       });
       return r;
     });
+
+    // Mismo criterio que el alta desde el panel: al expediente del contrato le importa
+    // que hubo un reclamo, lo haya abierto la inmobiliaria o el inquilino.
+    //
+    // POST-COMMIT (T-29-N1), igual que el aviso de acá abajo y por el mismo motivo: el
+    // reclamo YA está creado y nada informativo puede tirarlo abajo.
+    await registrarEventoContrato(prisma, {
+      inmobiliariaId: inq.inmobiliariaId,
+      contratoId: contrato.id,
+      tipo: 'RECLAMO_CREADO',
+      titulo: `Reclamo del inquilino: ${body.data.titulo}`,
+      detalle: `${body.data.categoria} · urgencia ${body.data.urgencia}`,
+      autor,
+    });
+
+    // Avisarle a la inmobiliaria que entró un reclamo. Sin esto se entera sólo si
+    // abre el panel, y un EMERGENCIA de un viernes a la noche espera al lunes
+    // ("por si no no está enterada", reunión del 03/08).
+    //
+    // FUERA de la transacción y sin await bloqueante: el reclamo YA está creado y
+    // un SMTP caído no puede tirarlo abajo. El destinatario sale del tenant que ya
+    // resolvió el guard, nunca de un id del request.
+    void avisarReclamoNuevoAInmo({
+      inmobiliariaId: inq.inmobiliariaId,
+      reclamoId: reclamo.id,
+      autor,
+      categoria: body.data.categoria,
+      urgencia: body.data.urgencia,
+      descripcion: body.data.descripcion,
+    }).catch((e) =>
+      app.log.warn({ err: e, reclamoId: reclamo.id }, '[reclamos] no se pudo avisar del reclamo nuevo'),
+    );
+
     return reply.code(201).send(conSla(reclamo));
   });
 
@@ -1145,6 +1429,15 @@ export async function operacionRoutes(app: FastifyInstance) {
       zona: red.zona,
       asegurado: estaAsegurado(red),
       aseguradora: red.aseguradora ?? null,
+      // EL NÚMERO DE PÓLIZA SE ACEPTABA, SE GUARDABA, Y NINGÚN GET LO DEVOLVÍA. La ficha exponía
+      // `asegurado`, `aseguradora` y `polizaVence`, y nada más — el número quedaba en la base sin
+      // ninguna pantalla que lo sacara. El delator estaba en el propio formulario: `aseguradora`
+      // y `polizaVence` se precargan de la ficha y `nroPoliza` arrancaba en `''`.
+      //
+      // El escenario: en marzo se carga "POL-2026-48721". En agosto el plomero inunda un
+      // departamento, la inmobiliaria abre la ficha para hacer el reclamo al seguro y lee
+      // "Asegurado por La Caja · vence 12/03/2027". Abre "Editar" y el campo está vacío.
+      nroPoliza: red.nroPoliza ?? null,
       polizaVence: red.polizaVence ? red.polizaVence.toISOString().slice(0, 10) : null,
       ...ficha,
       // El teléfono/email de contacto sólo si ya lo contraté (es mío); si no, null
@@ -1238,9 +1531,9 @@ export async function operacionRoutes(app: FastifyInstance) {
       .string()
       .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'periodoActual debe ser YYYY-MM (mes 01-12)')
       .optional(),
-    expensasPeriodoActual: z.number().nonnegative().optional(),
+    expensasPeriodoActual: dinero().optional(),
     encargado: z
-      .object({ nombre: z.string().trim().min(2).max(120), sueldo: z.number().nonnegative() })
+      .object({ nombre: z.string().trim().min(2).max(120), sueldo: dinero() })
       .nullable()
       .optional(),
     // min(1): un '' es falsy y esquivaría el check de tenant de sociedadDelTenant
@@ -1322,11 +1615,11 @@ export async function operacionRoutes(app: FastifyInstance) {
     titular: z.string().trim().min(2).max(200),
     coeficiente: z.number().positive().max(100),
     telefono: z.string().trim().max(40).optional(),
-    cargoFijo: z.number().nonnegative().nullable().optional(),
+    cargoFijo: dinero().nullable().optional(),
     estado: z.enum(['AL_DIA', 'PENDIENTE', 'VENCIDO', 'CON_PLAN_PAGO']).optional(),
     // Manual hasta Fase 2 (expensas emitidas lo derivan). Permite cargar la deuda
     // histórica al migrar un edificio existente.
-    saldoDeudor: z.number().nonnegative().optional(),
+    saldoDeudor: dinero().optional(),
   });
 
   app.post('/consorcios/:id/unidades', async (request, reply) => {
@@ -1534,7 +1827,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         // Chequeamos el valor REDONDEADO a 2 decimales (el campo es Decimal(14,2)):
         // antes un sub-centavo como 0.004 pasaba `!== 0` pero se persistía como 0.00,
         // dejando un asiento de valor nulo. Ahora 0.004 → redondea a 0 → rechazado.
-        monto: z.number().refine((n) => Math.round(n * 100) / 100 !== 0, 'El monto no puede ser 0'),
+        monto: dineroConSigno().refine((n) => Math.round(n * 100) / 100 !== 0, 'El monto no puede ser 0'),
         categoria: z.enum(['COBRANZA', 'SUELDO', 'MANTENIMIENTO', 'SERVICIO', 'IMPUESTO', 'OTRO']),
       })
       // Signo acoplado a la categoría: COBRANZA = ingreso (+), el resto = egreso (−).
@@ -1681,7 +1974,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         proveedor: z.string().trim().min(1),
         nis: z.string().trim().min(1),
         numeroMedidor: z.string().trim().optional().nullable(),
-        costoPromedioMensual: z.number().nonnegative().optional().nullable(),
+        costoPromedioMensual: dinero().optional().nullable(),
         observaciones: z.string().trim().optional().nullable(),
       })
       .safeParse(request.body ?? {});
@@ -1734,7 +2027,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         unidad: z.string().trim().min(1),
         cantidadActual: z.number().int().min(0),
         minimoStock: z.number().int().min(0),
-        costoUnitario: z.number().nonnegative().optional().nullable(),
+        costoUnitario: dinero().optional().nullable(),
         notas: z.string().trim().optional().nullable(),
       })
       .safeParse(request.body ?? {});
@@ -1840,7 +2133,7 @@ export async function operacionRoutes(app: FastifyInstance) {
         monto: true,
         moneda: true,
         tipoContrato: true,
-        propiedad: { select: { id: true, direccion: true, ciudad: true } },
+        propiedad: { select: { id: true, direccion: true, ciudad: true, complejo: true, consorcio: { select: { nombre: true } } } },
         inquilinoTitular: { select: { id: true, nombre: true, apellido: true, email: true, telefono: true } },
         intencionRenovacion: true,
       },
@@ -1944,7 +2237,20 @@ export async function operacionRoutes(app: FastifyInstance) {
   });
 
   // Rescisión anticipada por defecto: preaviso (meses) + penalidad (cánones de alquiler).
-  // La heredan los contratos sin valor propio (core.ts la lee al finalizar).
+  //
+  // OJO, LOS DOS CAMPOS NO SON IGUALES, y este comentario decía que sí ("la heredan los
+  // contratos sin valor propio (core.ts la lee al finalizar)"), en plural y para los dos:
+  //
+  //   · `penalidadRescisionMesesDefault` SÍ: `core.ts` la lee al finalizar como penalidad
+  //     sugerida, y eso termina emitido como `CargoContrato`. `Contrato` tiene su columna
+  //     propia para pisarla.
+  //   · `preavisoRescisionMesesDefault` NO. No lo lee nadie: se escribe acá y sólo se relee en
+  //     `GET /mi-inmobiliaria/reglas` para repintar el mismo input. Y no se puede pisar por
+  //     contrato, porque `Contrato` no tiene columna de preaviso.
+  //
+  // Nada que ver con el preaviso de EGRESO (`Renovacion.fechaEgreso`), que sí funciona.
+  // Qué hacer con este campo es una decisión de producto: ver
+  // `work-agent/DOS-PROMESAS-QUE-NO-SE-CUMPLEN.md`.
   app.put('/mi-inmobiliaria/rescision', async (request, reply) => {
     const u = await requireUsuario(request, reply);
     if (!u) return;
@@ -1984,5 +2290,70 @@ export async function operacionRoutes(app: FastifyInstance) {
       data: { contratosRequierenAprobacion: body.data.contratosRequierenAprobacion },
     });
     return { contratosRequierenAprobacion: body.data.contratosRequierenAprobacion };
+  });
+
+  /**
+   * A qué casilla va cada tipo de aviso automático (T-17-N1).
+   *
+   * Devuelve SIEMPRE la lista completa de tipos, con `email: null` en los que no tienen casilla
+   * propia y el `fallback` aparte, para que el panel pueda mostrar "hoy va a X" sin tener que
+   * saber la regla. Si el front tuviera que resolver el fallback, esa regla viviría en dos
+   * lugares y se despegarían.
+   */
+  app.get('/mi-inmobiliaria/avisos', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'configuracion.ver');
+    if (!u) return;
+    const [configs, inmo] = await Promise.all([
+      prisma.destinatarioAviso.findMany({
+        where: { inmobiliariaId: u.inmobiliariaId },
+        select: { tipo: true, email: true },
+      }),
+      prisma.inmobiliaria.findUnique({ where: { id: u.inmobiliariaId }, select: { email: true } }),
+    ]);
+    const porTipo = new Map(configs.map((c) => [c.tipo, c.email]));
+    return {
+      fallback: inmo?.email ?? null,
+      avisos: TIPOS_AVISO_INMO.map((t) => ({
+        tipo: t.tipo,
+        label: t.label,
+        descripcion: t.descripcion,
+        email: porTipo.get(t.tipo) ?? null,
+      })),
+    };
+  });
+
+  app.put('/mi-inmobiliaria/avisos', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    // Mismo criterio que las otras dos secciones de configuración: sólo ADMIN edita.
+    if (u.rol !== 'ADMIN') return reply.code(403).send({ message: 'Necesitás permiso de Admin para editar esta sección' });
+    const body = z
+      .object({
+        tipo: z.enum(['RECLAMO_NUEVO']),
+        // Vacío = "volvé al default". No es lo mismo que un email inválido, así que se acepta
+        // explícitamente en vez de hacerlo pasar por el `.email()`.
+        email: z.string().trim().email().or(z.literal('')),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.code(400).send({ message: 'Poné un email válido, o dejalo vacío para usar el de la inmobiliaria' });
+    }
+    const { tipo } = body.data;
+    // Normalizado a minúsculas, igual que el resto de los emails del sistema: acá no es una
+    // credencial, pero mantener un solo criterio evita que la misma casilla figure de dos formas.
+    const email = normalizarEmail(body.data.email);
+
+    if (!email) {
+      // Borrar la fila y no guardar '' : la AUSENCIA es lo que significa "usá el default".
+      // Guardar un vacío dejaría una fila que no configura nada y confundiría al próximo.
+      await prisma.destinatarioAviso.deleteMany({ where: { inmobiliariaId: u.inmobiliariaId, tipo } });
+      return { tipo, email: null };
+    }
+    await prisma.destinatarioAviso.upsert({
+      where: { inmobiliariaId_tipo: { inmobiliariaId: u.inmobiliariaId, tipo } },
+      create: { inmobiliariaId: u.inmobiliariaId, tipo, email },
+      update: { email },
+    });
+    return { tipo, email };
   });
 }

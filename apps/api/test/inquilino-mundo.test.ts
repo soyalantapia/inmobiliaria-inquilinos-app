@@ -4,9 +4,11 @@ import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
 import { seedInquilinoMundo } from '../prisma/seeds/inquilinoMundo.js';
+import { loginTest, loginDemoTest } from './_login.js';
 
 let app: FastifyInstance;
 let tokenAdmin: string;
+let tid: string;
 let tokenCarga: string;
 let tokenMariela: string;
 
@@ -19,6 +21,23 @@ async function resetInquilinoMundo(prisma: PrismaClient, tid: string) {
   await prisma.reportePiloto.deleteMany({ where: { inmobiliariaId: tid } });
   await prisma.screening.deleteMany({ where: { inmobiliariaId: tid, id: { not: 'scr_001' } } });
   await prisma.certificadoInquilino.deleteMany({ where: { inmobiliariaId: tid } });
+  // El certificado de Mariela cuenta las CUOTAS de cnt_001, y el test afirma que son 1.
+  // Eso sólo vale si el contrato tiene únicamente la del seed — y en la base compartida no:
+  // el devengo corre solo, en proceso, cada 6 horas (`CRON_DEVENGO`), así que cualquier API
+  // apuntada acá le va agregando períodos. Llegó a tener 12, y el test moría con
+  // "expected 12 to be 1", que se lee como "se rompió el cálculo del certificado".
+  // Se borran las que NO son del seed (ids `liq_*`), con sus pagos, antes de nada.
+  const devengadas = await prisma.liquidacion.findMany({
+    where: { contratoId: 'cnt_001', NOT: { id: { startsWith: 'liq_' } } },
+    select: { id: true },
+  });
+  if (devengadas.length) {
+    const ids = devengadas.map((l) => l.id);
+    await prisma.pago.deleteMany({ where: { liquidacionId: { in: ids } } });
+    await prisma.alquilerRendido.deleteMany({ where: { liquidacionId: { in: ids } } });
+    await prisma.liquidacion.deleteMany({ where: { id: { in: ids } } });
+  }
+
   // El certificado de Mariela se calcula de liq_001: devolverla a VENCIDA
   // por si otra corrida la pagó, y limpiar rechazos espurios.
   await prisma.liquidacion.update({
@@ -36,6 +55,7 @@ beforeAll(async () => {
   await seedBase(prisma);
   const inmo = await prisma.inmobiliaria.findFirst({ where: { nombre: 'Inmobiliaria del Sol' } });
   if (!inmo) throw new Error('seedBase no creó el tenant');
+  tid = inmo.id;
   await seedInquilinoMundo(prisma, inmo.id);
   await resetInquilinoMundo(prisma, inmo.id);
   await prisma.$disconnect();
@@ -43,12 +63,9 @@ beforeAll(async () => {
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   // app.ts lo cablea el orquestador — acá registramos las rutas a mano.
 
-  const admin = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'roberto@delsol.com', password: 'delsol123' } });
-  tokenAdmin = admin.json().token;
-  const carga = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'camila@delsol.com', password: 'delsol123' } });
-  tokenCarga = carga.json().token;
-  const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
-  tokenMariela = demo.json().token;
+  tokenAdmin = await loginTest(app, 'roberto@delsol.com', 'delsol123');
+  tokenCarga = await loginTest(app, 'camila@delsol.com', 'delsol123');
+  tokenMariela = await loginDemoTest(app);
 });
 
 afterAll(async () => {
@@ -87,55 +104,43 @@ describe('Certificado del inquilino — calculado de liquidaciones reales', () =
   });
 });
 
-describe('Screening — informe simulado coherente con la identidad solicitada', () => {
-  it('el informe lleva EXACTAMENTE el cuit y nombre pedidos (sin mezclar personas)', async () => {
+describe('Screening — APAGADO hasta que haya una fuente real', () => {
+  /**
+   * Este bloque medía que el informe fabricado fuera "coherente": mismo CUIT → mismo score,
+   * la familia con el apellido pedido, el DNI sacado del medio del CUIT. Todo eso salía de un
+   * PRNG sembrado con el CUIT y se persistía como COMPLETO sobre una persona real.
+   *
+   * El endpoint se apagó a propósito (T-21-N3-N2) y devuelve 501. Los tests viejos quedaron
+   * midiendo un comportamiento que se eliminó, así que la suite estaba en rojo — y nadie lo
+   * había visto porque hasta ahora los tests de integración no se podían correr.
+   *
+   * Ahora fijan lo contrario: que NO se emita ningún informe. Si alguien reactiva el generador
+   * sin conectar una fuente real, esto se pone rojo.
+   */
+  it('POST /screening no emite ningún informe: 501 con el motivo', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/screening',
       headers: auth(tokenAdmin),
       payload: { cuit: '27-28456789-3', nombre: 'Valeria Núñez' },
     });
-    expect(res.statusCode).toBe(201);
-    const s = res.json();
-    expect(s.cuit).toBe('27-28456789-3');
-    expect(s.nombre).toBe('Valeria');
-    expect(s.apellido).toBe('Núñez');
-    expect(s.dni).toBe('28.456.789'); // los 8 del medio del CUIT
-    expect(s.sexo).toBe('F'); // prefijo 27
-    expect(s.email).toContain('valeria');
-    expect(s.estado).toBe('COMPLETO');
-    expect(s.scoreNosis).toBeGreaterThanOrEqual(0);
-    expect(s.scoreNosis).toBeLessThanOrEqual(1000);
-    expect(['APTO', 'APTO_CON_GARANTIA', 'NO_APTO']).toContain(s.recomendacion);
-    expect(s.recomendacionRazon).toContain(String(s.scoreNosis));
-    // El grupo familiar es coherente con el apellido solicitado
-    const familia = s.familia as Array<{ vinculo: string; nombreCompleto: string }>;
-    expect(familia.some((f) => f.nombreCompleto.endsWith('Núñez'))).toBe(true);
+    expect(res.statusCode).toBe(501);
+    expect(res.json().codigo).toBe('SCREENING_SIN_FUENTE');
   });
 
-  it('mismo CUIT → mismo perfil (determinístico)', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/screening',
-      headers: auth(tokenAdmin),
-      payload: { cuit: '27284567893', nombre: 'Valeria Núñez' }, // sin guiones, se normaliza
-    });
-    expect(res.statusCode).toBe(201);
-    expect(res.json().cuit).toBe('27-28456789-3');
-    expect(res.json().scoreNosis).toBeDefined();
-  });
-
-  it('CUIT inválido → 400', async () => {
+  it('tampoco con un CUIT inválido: no hay forma de sacarle un informe', async () => {
+    // Antes esto daba 400 porque el zod corría primero. Da igual el input: 501 siempre.
     const res = await app.inject({
       method: 'POST',
       url: '/screening',
       headers: auth(tokenAdmin),
       payload: { cuit: '123', nombre: 'Valeria Núñez' },
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(501);
   });
 
-  it('rol CARGA no ve screening → 403', async () => {
+  it('el permiso sigue mandando: rol CARGA → 403, antes que el 501', async () => {
+    // El 501 no puede tapar el control de acceso: si mañana se reactiva, el guard ya está.
     const res = await app.inject({
       method: 'POST',
       url: '/screening',
@@ -145,12 +150,29 @@ describe('Screening — informe simulado coherente con la identidad solicitada',
     expect(res.statusCode).toBe(403);
   });
 
-  it('GET /screenings lista los del tenant (incluye scr_001 del seed)', async () => {
+  it('GET /screenings sigue listando lo YA guardado, scopeado al tenant', async () => {
+    // La lectura no se apagó: las filas fabricadas que puedan existir hay que poder verlas
+    // para decidir qué se hace con ellas. Lo que no se puede es crear más.
+    //
+    // Este test decía `expect(Array.isArray(res.json())).toBe(true)` y nada más, o sea que
+    // pasaba con `[]` —el endpoint apagado del todo— y también con la lista de OTRA
+    // inmobiliaria. Afirmaba en el título un scoping que no verificaba.
     const res = await app.inject({ method: 'GET', url: '/screenings', headers: auth(tokenAdmin) });
     expect(res.statusCode).toBe(200);
-    const lista = res.json();
-    expect(lista.find((s: { id: string }) => s.id === 'scr_001').apellido).toBe('Méndez');
-    expect(lista.length).toBeGreaterThanOrEqual(3);
+    const lista = res.json() as { id: string; inmobiliariaId: string }[];
+
+    // 1. Lista de verdad: `scr_001` es del seed y tiene que estar.
+    expect(lista.map((s) => s.id)).toContain('scr_001');
+
+    // 2. Y sólo lo de este tenant. Las dos afirmaciones juntas: ninguna fila ajena, y
+    //    exactamente todas las propias (si devolviera de otra inmobiliaria, el count no da).
+    expect(lista.every((s) => s.inmobiliariaId === tid)).toBe(true);
+    const prisma = new PrismaClient();
+    try {
+      expect(lista.length).toBe(await prisma.screening.count({ where: { inmobiliariaId: tid } }));
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 });
 

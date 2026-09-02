@@ -55,6 +55,12 @@ import {
   urgenciaVariant,
 } from '@/lib/reclamos-config';
 import type { EventoReclamo, Reclamo } from '@/lib/types';
+import {
+  mostrarConfirmadoPorVos,
+  tituloDeReapertura,
+  textoDeReapertura,
+  type ReabiertoPor,
+} from '@/lib/cards-reclamo';
 
 // Tel de la inmo de muestra para el atajo "Llamar" (Emergencia activa) en modo
 // demo. En prod usamos el teléfono real de useMiContrato.
@@ -412,6 +418,19 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
     (reclamo.estado === 'CERRADO' || resuelto || reclamo.estado === 'RECHAZADO') &&
     decisionActual !== 'PERSISTE';
 
+  /**
+   * Quién reabrió el reclamo. En prod lo dice el server (`lib/reapertura-reclamo.ts`); en demo,
+   * la decisión guardada en localStorage. Esto era una inferencia de la pantalla —"EN_CURSO +
+   * resolución previa sólo puede ser el PERSISTE del inquilino"—, cierta hasta que se agregó
+   * `POST /reclamos/:id/reabrir`: desde entonces, cuando la inmobiliaria reabría un reclamo, al
+   * inquilino le decíamos "Reportaste que sigue" por algo que no había hecho.
+   */
+  const reabiertoPor: ReabiertoPor = deApi
+    ? (reclamo.reabiertoPor ?? null)
+    : decisionActual === 'PERSISTE'
+      ? 'INQUILINO'
+      : null;
+
   // El inquilino ya puede comentar en prod: POST /mis-reclamos/:id/mensaje suma
   // su mensaje (con adjunto opcional) al timeline. Antes era demo-only (sin
   // endpoint) y en prod se mostraba un form muerto derivado a WhatsApp.
@@ -525,8 +544,8 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
                   Estamos viendo tu reclamo
                 </p>
                 <p className="text-xs text-amber-800/80 dark:text-amber-200/80">
-                  Te respondemos en menos de 24 hs hábiles. Te avisamos por
-                  WhatsApp cuando asignemos un profesional.
+                  Te respondemos en menos de 24 hs hábiles. Te avisamos acá en la app
+                  cuando asignemos un profesional.
                 </p>
               </div>
             </Card>
@@ -707,7 +726,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
           </Card>
         )}
 
-        {decisionActual === 'CONFORME' && reclamo.resolucion && (
+        {mostrarConfirmadoPorVos({ decisionActual, estado: reclamo.estado, resolucion: reclamo.resolucion }) && (
           <>
             <Card className="space-y-2 border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900/40 dark:bg-emerald-900/10">
               <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
@@ -740,24 +759,21 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
           </>
         )}
 
-        {/* "Reportaste que sigue".
+        {/* El reclamo se reabrió: se había resuelto y volvió a estar en curso.
             - Demo: estado queda RESUELTO + decisionActual='PERSISTE' (localStorage).
-            - Prod: PERSISTE reabre el reclamo a EN_CURSO conservando la resolución,
-              así que lo detectamos por estado EN_CURSO + resolución previa (no hay
-              ConfirmacionReclamo PERSISTE: es one-shot por el @unique). */}
+            - Prod: EN_CURSO + resolución previa. QUIÉN lo reabrió lo dice el server: acá se
+              adivinaba, y desde que existe `/reclamos/:id/reabrir` la adivinanza le atribuía al
+              inquilino las reaperturas de la inmobiliaria. Si no se sabe, se dice en neutro. */}
         {((resuelto && decisionActual === 'PERSISTE') ||
           (deApi && reclamo.estado === 'EN_CURSO' && !!reclamo.resolucion)) && (
           <Card className="space-y-2 border-amber-300 bg-amber-50 p-5 dark:border-amber-900/40 dark:bg-amber-900/10">
             <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
               <AlertTriangle className="h-4 w-4" />
               <p className="text-xs font-semibold uppercase tracking-wide">
-                Reportaste que sigue
+                {tituloDeReapertura(reabiertoPor)}
               </p>
             </div>
-            <p className="text-sm">
-              Le avisamos a la inmobiliaria para que vuelva a intervenir. Mirá
-              el historial para seguir la conversación.
-            </p>
+            <p className="text-sm">{textoDeReapertura(reabiertoPor)}</p>
           </Card>
         )}
 
@@ -874,7 +890,7 @@ export default function DetalleReclamoPage({ id }: { id: string }) {
             </form>
             <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
               <Sparkles className="h-3 w-3 text-primary" />
-              Te avisamos por WhatsApp cuando te respondan.
+              Te avisamos acá en la app cuando te respondan.
             </p>
           </Card>
         ) : !cerrado ? (

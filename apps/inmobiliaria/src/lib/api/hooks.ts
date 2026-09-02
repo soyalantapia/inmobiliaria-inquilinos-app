@@ -29,6 +29,11 @@ import type {
 import { enriquecerPropiedad, type PropiedadEnriquecida } from '@/lib/propiedades-helpers';
 import type { DashboardStats } from '@/lib/dashboard-helpers';
 import { parseLocal } from '@/lib/format';
+import { porcionAlquilerCobrada } from '@/lib/alquiler-cobrado';
+import { faltaRendirle } from '@/lib/falta-rendirle';
+import { cobradoRendible, plataDelContrato } from '@/lib/plata-del-contrato';
+import { reclamosAbiertosDe } from '@/lib/reclamos-abiertos';
+import { useRendidosDelPeriodo } from './use-rendiciones';
 import {
   cargarMovimiento as cargarMovimientoLocal,
   eliminarMovimiento as eliminarMovimientoLocal,
@@ -53,7 +58,13 @@ interface ContratoApi {
   cargadoRol: string | null;
   cargadoAt: string | null;
   aprobadoPor: string | null;
-  propiedad: { id: string; direccion: string; ciudad: string; consorcio?: { nombre: string } | null };
+  propiedad: {
+    id: string;
+    direccion: string;
+    ciudad: string;
+    complejo?: string | null;
+    consorcio?: { nombre: string } | null;
+  };
   inquilinoTitular: { id: string; nombre: string; apellido: string | null; telefono?: string | null } | null;
   /** Derivados por el server desde liquidaciones reales (Fase 3). */
   estadoPagoActual: ContratoListado['estadoPagoActual'];
@@ -86,6 +97,13 @@ function mapContrato(c: ContratoApi): ContratoListado {
     // Defensa: una respuesta sin la relación `propiedad` (p.ej. un POST que
     // devuelve la fila pelada) no debe crashear con "reading 'direccion'".
     direccion: c.propiedad?.direccion ?? '—',
+    // Nombre por el que la inmobiliaria identifica la unidad. Se descartaba al mapear,
+    // así que el listado y el detalle de contratos mostraban la calle aunque la
+    // propiedad colgara de un consorcio ("nosotros cuando decimos Lourdes no le decimos
+    // nunca Artigas la dirección", 03/08). Ver lib/rotulo-propiedad.ts.
+    // Misma prioridad que en `mapPropiedad` más abajo: el consorcio real gana sobre el
+    // texto libre. Si difieren, el consorcio es el dato administrado.
+    complejo: c.propiedad?.consorcio?.nombre ?? c.propiedad?.complejo ?? null,
     propiedadId: c.propiedad?.id,
     monto: Number(c.monto),
     moneda: c.moneda,
@@ -239,13 +257,17 @@ function mapAprobacion(a: AprobacionApi): Aprobacion {
   } as Aprobacion;
 }
 
-export function useAprobaciones(): {
+/** `enabled` (default true): ver el docblock de useReclamos — evita 403 por navegación. */
+export function useAprobaciones(opts?: { enabled?: boolean }): {
   aprobaciones: Aprobacion[];
   cargando: boolean;
+  /** `true` cuando la consulta falló: la lista vacía NO significa "no hay pendientes". */
+  error?: boolean;
   aprobarApi: (id: string, pin: string, comentario?: string) => Promise<Aprobacion>;
   rechazarApi: (id: string, pin: string, motivo: string) => Promise<Aprobacion>;
 } {
   const qc = useQueryClient();
+  const habilitado = opts?.enabled ?? true;
   const q = useQuery({
     queryKey: ['aprobaciones'],
     queryFn: async () => {
@@ -253,7 +275,7 @@ export function useAprobaciones(): {
       const data = await apiFetch<AprobacionApi[]>('/aprobaciones');
       return data.map(mapAprobacion);
     },
-    enabled: apiEnabled,
+    enabled: apiEnabled && habilitado,
     staleTime: 10_000,
   });
   const invalidar = () => void qc.invalidateQueries({ queryKey: ['aprobaciones'] });
@@ -275,10 +297,16 @@ export function useAprobaciones(): {
     };
   }
   // Prod con API caída: vacío, nunca seeds (montos/autores fabricados).
+  //
+  // Pero devolver la lista vacía SIN decir que fue por un error hacía que la bandeja afirmara
+  // "Sin pendientes. Buen trabajo." — una afirmación inventada, que es justo lo que este bloque
+  // quería evitar al no sembrar datos. El admin cerraba el panel convencido de estar al día
+  // mientras un gasto esperaba el visto.
   if (q.isError) {
     return {
       aprobaciones: [],
       cargando: false,
+      error: true,
       aprobarApi: async () => { throw new Error('Sin conexión con el servidor'); },
       rechazarApi: async () => { throw new Error('Sin conexión con el servidor'); },
     };
@@ -287,6 +315,7 @@ export function useAprobaciones(): {
   return {
     aprobaciones: q.data ?? [],
     cargando: q.isPending,
+    error: false,
     aprobarApi: async (id, pin, comentario) => {
       const r = await apiFetch<AprobacionApi>(`/aprobaciones/${id}/aprobar`, {
         method: 'POST',
@@ -355,7 +384,8 @@ function mapMovimiento(m: MovimientoCajaApi): MovimientoCaja {
 }
 
 export interface NuevoGasto {
-  propiedadId: string;
+  /** null = movimiento propio de la inmobiliaria, no imputable a una propiedad. */
+  propiedadId: string | null;
   /** GASTO = salida, INGRESO_EXTRA = entrada. Default GASTO. */
   tipo?: MovimientoCaja['tipo'];
   categoria: MovimientoCaja['categoria'];
@@ -604,6 +634,13 @@ export interface CobranzaCuenta {
 export interface MoraDefault {
   tipoDefault: TipoMora;
   valorDefault: number | null;
+  /**
+   * Moneda EN LA QUE ESTÁ EXPRESADO el default, no la del contrato. Sólo importa para
+   * `MONTO_FIJO`, que es un importe absoluto: los porcentajes se aplican sobre una base que
+   * ya está en la moneda del contrato y se heredan siempre. El server aplica esta misma regla
+   * en `resolverEsquemaMora` (T-58) y sin este campo el panel no podía aplicarla.
+   */
+  monedaDefault: Moneda;
 }
 
 export function useCobranza(): {
@@ -726,7 +763,7 @@ export function useActualizarAvatar(): {
   };
 }
 
-export function useMe(): { me: Me | null; cargando: boolean } {
+export function useMe(): { me: Me | null; cargando: boolean; isError: boolean } {
   const q = useQuery({
     queryKey: ['me'],
     queryFn: async () => {
@@ -759,10 +796,16 @@ export function useMe(): { me: Me | null; cargando: boolean } {
         trial: null,
       },
       cargando: false,
+      isError: false,
     };
   }
   const d = q.data;
-  if (!d) return { me: null, cargando: q.isPending };
+  // isError viaja porque el CALLER no puede distinguir "todavía no cargó" de "falló":
+  // en los dos casos `me` es null. El sidebar filtra el menú por `me.rol` y, sin esta
+  // señal, un /auth/me caído lo dejaba pisado en LECTURA para siempre y en silencio —
+  // el usuario veía un panel recortado sin ninguna explicación. Mismo criterio que
+  // useAResolverCount, donde un 0 sin isError es un 0 FALSO.
+  if (!d) return { me: null, cargando: q.isPending, isError: q.isError };
   const firstName = d.nombre.trim().split(/\s+/)[0] ?? d.nombre;
   return {
     me: {
@@ -786,6 +829,7 @@ export function useMe(): { me: Me | null; cargando: boolean } {
         : null,
     },
     cargando: false,
+    isError: false,
   };
 }
 
@@ -841,6 +885,8 @@ interface PropiedadApi {
 
 interface ReclamoLiteApi {
   contratoId: string | null;
+  /** El reclamo cuelga de la PROPIEDAD; el contrato es circunstancial. Ver abajo. */
+  propiedadId: string | null;
   estado: string;
 }
 
@@ -956,9 +1002,9 @@ export function usePropiedades(): {
     const propietarios = (p.participaciones ?? [])
       .filter((pp) => pp.propietario != null)
       .map((pp) => propietarioLite(pp.propietario, p.id));
-    const reclamosAbiertos = reclamos.filter(
-      (r) => r.contratoId === p.contratoActualId && (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO'),
-    ).length;
+    // La regla vive en `lib/reclamos-abiertos.ts`, con sus tests: acá era un filtro inline y
+    // ahí se le escapó que `contratoActualId` cambia cuando el inquilino se va.
+    const reclamosAbiertos = reclamosAbiertosDe(reclamos, { id: p.id, contratoActualId: p.contratoActualId });
     return {
       propiedad: mapPropiedad(p),
       contrato,
@@ -987,6 +1033,8 @@ interface LiquidacionApi {
   // Suma de pagos CONCILIADO y saldo = max(0, montoTotal − montoPagado), del
   // decorador conSaldo del server. Opcionales por compat con backends viejos.
   montoPagado?: string | number | null;
+  /** Lo cobrado que la rendición PUEDE pagar: sin condonaciones ni plata migrada. */
+  montoCobradoRendible?: string | number | null;
   saldo?: string | number | null;
   fechaVencimiento: string;
   fechaPago: string | null;
@@ -994,6 +1042,9 @@ interface LiquidacionApi {
   moneda: string;
   contrato: {
     id: string;
+    /** La propiedad de ESTE contrato. Opcionales por compat con backends viejos. */
+    propiedadId?: string | null;
+    modoCobranza?: string | null;
     propiedad: { direccion: string } | null;
     inquilinoTitular: { nombre: string; apellido: string | null } | null;
   } | null;
@@ -1008,8 +1059,18 @@ export interface LiquidacionItem {
   montoTotal: number;
   /** Mora al día incluida en montoTotal/saldo (0 si no hay). */
   montoPunitorio: number;
-  /** Lo ya cobrado (pagos conciliados) de esta liquidación. */
+  /** Lo ya cobrado (pagos conciliados) de esta liquidación — la deuda que dejó de deber. */
   montoPagado: number;
+  /**
+   * Lo cobrado que se le puede RENDIR al dueño. NO es lo mismo que `montoPagado`.
+   *
+   * `montoPagado` incluye la deuda condonada y la plata registrada al migrar la cartera,
+   * porque mide lo que el inquilino dejó de deber. La rendición filtra las dos. Usar
+   * `montoPagado` para estimar lo que se le va a depositar al propietario hacía que la ficha
+   * dijera "a recibir $450.000", el operador se lo dictara por teléfono, y Rendir contestara
+   * 409 "todavía no hay cobros nuevos".
+   */
+  montoCobradoRendible: number;
   /** Lo que falta cobrar: max(0, montoTotal − montoPagado). */
   saldo: number;
   estado: string;
@@ -1020,6 +1081,16 @@ export interface LiquidacionItem {
   fechaPago: string | null;
   direccion: string;
   inquilino: string;
+  /**
+   * La propiedad y el modo de cobranza DE ESTE CONTRATO, no del que la propiedad tenga como
+   * actual. Es lo que ata la liquidación a su dueño cuando el contrato ya terminó o fue
+   * reemplazado por uno nuevo — el momento exacto en que el join viejo se cortaba y la plata
+   * cobrada desaparecía del panel.
+   *
+   * `null` cuando el backend todavía no los manda.
+   */
+  propiedadId: string | null;
+  modoCobranza: string | null;
 }
 
 function mapLiquidacion(l: LiquidacionApi): LiquidacionItem {
@@ -1027,12 +1098,18 @@ function mapLiquidacion(l: LiquidacionApi): LiquidacionItem {
   return {
     id: l.id,
     contratoId: l.contratoId,
+    propiedadId: l.contrato?.propiedadId ?? null,
+    modoCobranza: l.contrato?.modoCobranza ?? null,
     periodo: l.periodo,
     montoAlquiler: Number(l.montoAlquiler),
     montoExpensas: l.montoExpensas != null ? Number(l.montoExpensas) : null,
     montoTotal: Number(l.montoTotal),
     montoPunitorio: Number(l.montoPunitorio ?? 0),
     montoPagado,
+    // Sin el campo (backend viejo) cae a `montoPagado`, que es el comportamiento de antes:
+    // peor estimación, pero no un cero que borraría el KPI de golpe.
+    montoCobradoRendible:
+      l.montoCobradoRendible != null ? Number(l.montoCobradoRendible) : montoPagado,
     // Fallback local si el server no mandó saldo (backend viejo): total − pagado.
     saldo: l.saldo != null ? Number(l.saldo) : Math.max(0, Number(l.montoTotal) - montoPagado),
     estado: l.estado,
@@ -1050,6 +1127,8 @@ export function useLiquidaciones(): {
   liquidaciones: LiquidacionItem[];
   cargando: boolean;
   deApi: boolean;
+  /** La consulta falló. Sin esto, "0 liquidaciones" es indistinguible de "no pudimos preguntar". */
+  error: boolean;
 } {
   const q = useQuery({
     queryKey: ['liquidaciones'],
@@ -1061,9 +1140,9 @@ export function useLiquidaciones(): {
     enabled: apiEnabled,
     staleTime: 15_000,
   });
-  if (!apiEnabled) return { liquidaciones: [], cargando: false, deApi: false };
-  if (q.isError) return { liquidaciones: [], cargando: false, deApi: true };
-  return { liquidaciones: q.data ?? [], cargando: q.isPending, deApi: true };
+  if (!apiEnabled) return { liquidaciones: [], cargando: false, deApi: false, error: false };
+  if (q.isError) return { liquidaciones: [], cargando: false, deApi: true, error: true };
+  return { liquidaciones: q.data ?? [], cargando: q.isPending, deApi: true, error: false };
 }
 
 // Período "YYYY-MM" del mes actual (hora local del cliente).
@@ -1084,6 +1163,8 @@ interface PropietarioApi {
   cbuAlias: string | null;
   comisionPct: number | null;
   notas: string | null;
+  /** Última vez que entró al portal. `null` = nunca entró (o el backend es viejo). */
+  ultimoAccesoAt?: string | null;
   createdAt: string;
   participaciones: Array<{ propiedadId: string; porcentaje: number }>;
 }
@@ -1092,6 +1173,16 @@ export function usePropietarios(): {
   propietarios: Propietario[];
   cargando: boolean;
   deApi: boolean;
+  /**
+   * Algo falló: la lista de propietarios, o la de liquidaciones de la que salen TODOS los
+   * números de plata de esta pantalla.
+   *
+   * Sin esto, un 403 o un 500 se veían igual que una cartera al día: la pantalla decía "Todos
+   * rendidos este mes 🎉" y "Todos tienen CBU cargado" sobre una lista vacía. Y no hace falta
+   * que se caiga nada: el rol CARGA tiene `propietarios.ver` pero NO `pagos.ver`, así que para
+   * él `/liquidaciones` devuelve 403 SIEMPRE y ese cartel verde es su estado permanente.
+   */
+  error: boolean;
 } {
   const ownersQ = useQuery({
     queryKey: ['propietarios'],
@@ -1111,10 +1202,10 @@ export function usePropietarios(): {
     enabled: apiEnabled,
     staleTime: 15_000,
   });
-  const { liquidaciones } = useLiquidaciones();
+  const { liquidaciones, error: errorLiqs } = useLiquidaciones();
 
-  if (!apiEnabled) return { propietarios: propietariosMock, cargando: false, deApi: false };
-  if (ownersQ.isError) return { propietarios: [], cargando: false, deApi: true };
+  if (!apiEnabled) return { propietarios: propietariosMock, cargando: false, deApi: false, error: false };
+  if (ownersQ.isError) return { propietarios: [], cargando: false, deApi: true, error: true };
 
   // Atribuimos lo COBRADO este mes (liquidaciones PAGADAS del período) a cada
   // propietario según su participación en la propiedad del contrato. Lo "a
@@ -1136,23 +1227,57 @@ export function usePropietarios(): {
     // PAGADO, así que un mes cobrado a medias mostraba $0 a rendir y el operador no le
     // transfería NADA al propietario: plata cobrada que nunca llegaba.
     if (l.periodo !== period || (l.estado !== 'PAGADO' && l.estado !== 'PARCIAL')) continue;
-    const prop = props.find((p) => p.contratoActualId === l.contratoId);
+    // POR LA PROPIEDAD DEL CONTRATO, NO POR EL "CONTRATO ACTUAL" DE LA PROPIEDAD.
+    //
+    // Acá había un `props.find(p => p.contratoActualId === l.contratoId)`, y ese join se corta
+    // solo: al finalizar un contrato la propiedad queda con `contratoActualId: null`, y al
+    // firmar uno nuevo apunta al nuevo. Desde ese instante la liquidación del contrato viejo
+    // no encontraba propietario y se salteaba con un `continue`.
+    //
+    // La plata estaba cobrada de verdad, en la cuenta de la inmobiliaria. Pero el dueño
+    // desaparecía del listado "Por rendir", su ficha mostraba "—" en Cobrado y A recibir, y el
+    // diálogo de Rendir le mostraba Bruto $0 — mientras el server SÍ se la habría rendido, y
+    // su portal se la seguía mostrando como pendiente. Justo el mes de la baja o la renovación,
+    // que es cuando más se mira.
+    //
+    // El fallback al join viejo es para backends que todavía no mandan `propiedadId`.
+    const propIdDeLaLiq = l.propiedadId;
+    const prop = propIdDeLaLiq
+      ? props.find((p) => p.id === propIdDeLaLiq)
+      : props.find((p) => p.contratoActualId === l.contratoId);
     if (!prop) continue;
     // El KPI "cobrado / a rendir" refleja lo que la inmobiliaria va a RENDIR al
     // propietario. POST /rendiciones (server) sólo cuenta contratos
     // modoCobranza=INMOBILIARIA; en PROPIETARIO_DIRECTO el dueño cobra él mismo y no
     // se rinde → contarlo acá inflaba el bruto y no coincidía con la rendición real.
-    if (prop.contratoActual?.modoCobranza === 'PROPIETARIO_DIRECTO') continue;
+    //
+    // Se mira el modo del contrato DE LA LIQUIDACIÓN, no el del contrato actual de la
+    // propiedad: son distintos apenas el contrato dejó de ser el actual, y en ese caso el del
+    // actual puede no existir (unidad vacía) o ser el de un inquilino nuevo con otro modo.
+    const modoDeLaLiq = l.modoCobranza ?? prop.contratoActual?.modoCobranza;
+    if (modoDeLaLiq === 'PROPIETARIO_DIRECTO') continue;
     for (const part of prop.participaciones) {
       // Sobre el ALQUILER (no montoTotal): igual que la rendición real del server,
       // las expensas no le corresponden al propietario. Antes inflaba el KPI y el
       // preview del diálogo de rendición.
-      // Porción de ALQUILER de lo REALMENTE cobrado, con el mismo prorrateo que el server
-      // (alquilerCobrado = cobrado capeado × montoAlquiler / montoTotal). En una PAGADA da
-      // el alquiler entero; en una PARCIAL, la parte proporcional. El cap deja afuera la
-      // mora — que no se rinde al propietario.
-      const cobradoLiq = Math.min(l.montoPagado, l.montoTotal);
-      const alquilerCobradoLiq = l.montoTotal > 0 ? cobradoLiq * (l.montoAlquiler / l.montoTotal) : 0;
+      // Porción de ALQUILER de lo REALMENTE cobrado, con el mismo prorrateo que el server.
+      // La base va SIN mora: `l.montoTotal` viene decorado por `conSaldo` con el punitorio
+      // al día (lo dice el comentario de `montoPunitorio` en el tipo de arriba), así que
+      // usarlo crudo prorrateaba contra un denominador más grande y mostraba menos alquiler
+      // cobrado del que la rendición efectivamente paga. Coincidían mientras no hubiera mora.
+      // `montoCobradoRendible` y NO `montoPagado`: este número estima LO QUE SE LE VA A
+      // DEPOSITAR AL DUEÑO, y la rendición filtra la deuda condonada y la plata de la
+      // migración de cartera. Con `montoPagado` —que las incluye, porque mide lo que el
+      // inquilino dejó de deber— la ficha decía "Cobrado $500.000 · A recibir $450.000", el
+      // operador se lo dictaba al dueño por teléfono, apretaba Rendir y el server contestaba
+      // 409 "todavía no hay cobros nuevos". El dashboard ya usaba el criterio correcto
+      // (`metricas.ts`), así que dos pantallas del mismo panel se contradecían sobre el mismo
+      // propietario.
+      const alquilerCobradoLiq = porcionAlquilerCobrada({
+        alquiler: l.montoAlquiler,
+        base: l.montoTotal - l.montoPunitorio,
+        cobrado: l.montoCobradoRendible,
+      });
       cobradoByOwner[part.propietarioId] =
         (cobradoByOwner[part.propietarioId] ?? 0) + alquilerCobradoLiq * (part.porcentaje / 100);
       (monedasByOwner[part.propietarioId] ??= new Set()).add(l.moneda);
@@ -1174,6 +1299,7 @@ export function usePropietarios(): {
       email: o.email ?? '',
       telefono: o.telefono ?? '',
       cbuAlias: o.cbuAlias,
+      ultimoAccesoAt: o.ultimoAccesoAt ?? null,
       comisionPct: o.comisionPct ?? 0,
       notas: o.notas,
       createdAt: (o.createdAt ?? '').slice(0, 10),
@@ -1185,7 +1311,9 @@ export function usePropietarios(): {
     };
   });
 
-  return { propietarios, cargando: ownersQ.isPending, deApi: true };
+  // `errorLiqs` viaja aunque la lista de dueños haya venido bien: los nombres se ven, pero
+  // todos los números de plata quedan en 0 y eso NO es "al día".
+  return { propietarios, cargando: ownersQ.isPending, deApi: true, error: errorLiqs };
 }
 
 // ===== Alta de propietario (POST /propietarios) =====
@@ -1294,10 +1422,20 @@ export function useEliminarPropiedad(): { eliminar: (id: string) => Promise<void
   };
 }
 
-/** Anular/deshacer una rendición (requiere PIN). Lanza ApiError si el server rechaza. */
-export async function anularRendicion(rendicionId: string, pin: string): Promise<void> {
+/**
+ * Anular/deshacer una rendición. Requiere PIN y MOTIVO.
+ *
+ * El motivo es obligatorio en el server (mínimo 5) y no es burocracia: anular le saca de la
+ * pantalla un depósito a alguien que ya lo vio. Desde este cambio la rendición no se borra
+ * —queda marcada como anulada— y el propietario la ve tachada CON este texto al lado, que es
+ * la respuesta a la llamada que va a hacer. Mismo criterio que anular un pago.
+ */
+export async function anularRendicion(rendicionId: string, motivo: string, pin: string): Promise<void> {
   await ensureApiSession();
-  await apiFetch(`/rendiciones/${rendicionId}/anular`, { method: 'POST', body: JSON.stringify({ pin }) });
+  await apiFetch(`/rendiciones/${rendicionId}/anular`, {
+    method: 'POST',
+    body: JSON.stringify({ pin, motivo }),
+  });
 }
 
 /** Colaterales de una baja de contrato, para avisar en el diálogo ANTES de confirmar. */
@@ -1446,6 +1584,17 @@ export function useDashboard(): DashboardData {
   const { propietarios, cargando: cargOwn } = usePropietarios();
   const { liquidaciones, cargando: cargLiq } = useLiquidaciones();
   const { movimientos: movsCaja, cargando: cargCaja } = useCaja();
+  // El tablero NO consultaba rendiciones, así que "propietarios por rendir" no medía eso:
+  // medía "cuántos dueños tienen alquiler cobrado este mes", y NUNCA bajaba dentro del
+  // período por más rendiciones que se hicieran. La card linkea a
+  // `/propietarios?filtro=sin-rendir`, y esa pantalla SÍ descuenta lo rendido: el operador
+  // hacía click en "3 por rendir" y caía en una lista vacía. Dos pantallas del mismo panel
+  // contradiciéndose sobre plata.
+  //
+  // Efecto colateral que también se arregla: el empty state "Todo al día — no tenés acciones
+  // urgentes" exige `porRendir === 0`, así que en cualquier cuenta que hubiera cobrado algo
+  // ese cartel era inalcanzable PARA SIEMPRE.
+  const { yaRendidos, cargando: cargRend } = useRendidosDelPeriodo(propietarios.map((p) => p.id));
 
   // Excluye PROPIETARIO_DIRECTO igual que dashboard-helpers (demo) y /pagos: esa
   // plata va directo del inquilino al dueño, no la cobra/rinde la inmo. (El path
@@ -1460,29 +1609,22 @@ export function useDashboard(): DashboardData {
   // migración, sin Pagos), y "En mora" muestra la DEUDA TOTAL del contrato
   // (todas las cuotas vencidas + mora, `deudaTotal`), no solo la cuota del mes
   // — un moroso de 10 meses figuraba por 1 sola cuota.
+  // La regla de cuánto aporta CADA contrato vive en `lib/plata-del-contrato.ts`, con sus tests:
+  // acá era un switch inline y ahí se le escapó el caso que más importa (VENCIDO con pago
+  // parcial, que aportaba 0 a "Cobrado" y hacía bajar el número solo).
   let cobrado = 0;
   let porCobrar = 0;
+  let mora = 0;
   for (const c of activos) {
-    switch (c.estadoPagoActual) {
-      case 'PAGADO':
-        cobrado += c.montoPagado || c.monto;
-        break;
-      case 'PARCIAL':
-        cobrado += c.montoPagado ?? 0;
-        porCobrar += c.saldo ?? Math.max(0, c.monto - (c.montoPagado ?? 0));
-        break;
-      case 'PENDIENTE':
-        porCobrar += c.saldo ?? c.monto;
-        break;
-      default:
-        break; // VENCIDO va a "En mora"
-    }
+    const p = plataDelContrato(c);
+    cobrado += p.cobrado;
+    porCobrar += p.porCobrar;
+    mora += p.mora;
   }
+  // Una sola fuente para el conteo y para la lista de abajo: tener dos formas de contar "los
+  // morosos" es exactamente el defecto que este PR arregla en otro renglón.
   const moraContratos = activos.filter((c) => c.estadoPagoActual === 'VENCIDO');
-  const enMora = {
-    monto: moraContratos.reduce((a, c) => a + (c.deudaTotal ?? c.saldo ?? c.monto), 0),
-    cantidad: moraContratos.length,
-  };
+  const enMora = { monto: mora, cantidad: moraContratos.length };
   const totalActivos = cobrado + porCobrar + enMora.monto;
 
   // Comisión real (sólo en prod): cada propietario trae su comisionPct y lo que se
@@ -1499,12 +1641,20 @@ export function useDashboard(): DashboardData {
   // porque el cap la corta, y las expensas por la proporción.
   const alquilerCobrado = apiEnabled
     ? activos.reduce((acc, c) => {
-        const pagado = c.estadoPagoActual === 'PAGADO' ? (c.montoPagado || c.monto) : c.estadoPagoActual === 'PARCIAL' ? (c.montoPagado ?? 0) : 0;
+        // VENCIDO incluido, por el mismo motivo que arriba: lo cobrado antes de atrasarse sigue
+        // cobrado, y su porción de alquiler sigue siendo rendible.
+        const pagado = cobradoRendible(c);
         if (pagado <= 0) return acc;
-        const expensas = c.montoExpensas ?? 0;
-        const total = c.monto + expensas;
-        if (total <= 0) return acc;
-        return acc + Math.min(pagado, total) * (c.monto / total);
+        // La base se arma sumando componentes, así que ya viene sin mora. Mismo helper que
+        // el KPI de arriba, que es donde esto estaba mal.
+        return (
+          acc +
+          porcionAlquilerCobrada({
+            alquiler: c.monto,
+            base: c.monto + (c.montoExpensas ?? 0),
+            cobrado: pagado,
+          })
+        );
       }, 0)
     : cobrado;
   const comisionMes = Math.round(alquilerCobrado * tasaComision);
@@ -1517,7 +1667,22 @@ export function useDashboard(): DashboardData {
         .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion)
         .reduce((a, m) => a + m.monto, 0)
     : 0;
-  const aRendirMes = Math.max(0, Math.round(cobrado - comisionMes - gastosPendientes));
+  // LA BASE ES EL ALQUILER COBRADO, NO TODO LO QUE ENTRÓ.
+  //
+  // Salía de `cobrado`, que incluye expensas y mora. Las expensas van al consorcio y la mora es
+  // ingreso de la inmobiliaria —lo dice `packages/shared/src/prorrateo.ts`—, así que ninguna de
+  // las dos se le rinde al dueño. El propio bloque de arriba ya había arreglado esto para la
+  // COMISIÓN, con el comentario escrito, y dejó la base del "A rendir" sin tocar.
+  //
+  // El tamaño del error, en el caso feliz: alquiler 500.000 + expensas 100.000, comisión 8%, el
+  // inquilino paga todo en fecha. El tablero decía 600.000 − 48.000 = 552.000. `/propietarios`
+  // decía 500.000 × 0,92 = 460.000. Noventa y dos mil pesos de diferencia el mismo día, y el
+  // número del tablero es el que se mira primero.
+  //
+  // QUEDA UNA DIFERENCIA MENOR Y DELIBERADA: acá se restan los gastos de caja pendientes y
+  // `/propietarios` no los conoce. Es paridad con el demo (`calcularDashboardStats`) y sacarlo
+  // es otra decisión; la divergencia grande era la base.
+  const aRendirMes = Math.max(0, Math.round(alquilerCobrado - comisionMes - gastosPendientes));
 
   const totalProps = propiedades.length;
   const alquiladas = propiedades.filter((p) => p.propiedad.estado === 'ALQUILADA').length;
@@ -1549,7 +1714,9 @@ export function useDashboard(): DashboardData {
   }));
 
   const propietariosSinCbu = propietarios.filter((p) => !p.cbuAlias).length;
-  const porRendir = propietarios.filter((p) => p.totalRecibirMes > 0).length;
+  // Mismo criterio que `/propietarios`, importado del mismo lugar: `totalRecibirMes` vale 0
+  // cuando el dueño cobró en dos monedas, así que ese cero no significa "nada que rendir".
+  const porRendir = propietarios.filter((p) => faltaRendirle(p, yaRendidos.has(p.id))).length;
 
   // Próximos vencimientos: liquidaciones no pagadas que vencen dentro de 14 días.
   const hoy = new Date();
@@ -1577,7 +1744,8 @@ export function useDashboard(): DashboardData {
     proximosVencimientos,
     // Incluye propietarios y liquidaciones: el dashboard deriva comisión/a-rendir y
     // próximos vencimientos de esos datos → sin esto se mostraba antes de tenerlos.
-    cargando: cargC || cargP || cargOwn || cargLiq || cargCaja,
+    // `cargRend` va acá o el contador parpadea ALTO —sin descontar nada— antes de asentarse.
+    cargando: cargC || cargP || cargOwn || cargLiq || cargCaja || cargRend,
     error: errContratos || errProps,
     propiedadesTotal: propiedades.length,
   };

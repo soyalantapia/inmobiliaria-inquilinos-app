@@ -16,7 +16,8 @@ export type EstadoVisita = 'ASIGNADO' | 'CONFIRMADA' | 'EN_CAMINO' | 'LISTO';
 interface VisitaApi {
   id: string;
   estado: EstadoVisita;
-  token: string;
+  /** Sólo llega para quien puede asignar profesionales: es la llave que emite sesiones. */
+  token?: string;
   fechaVisita: string | null;
   confirmadaAt: string | null;
   enCaminoAt: string | null;
@@ -30,7 +31,8 @@ interface VisitaApi {
 export interface VisitaReclamoView {
   id: string;
   estado: EstadoVisita;
-  token: string;
+  /** Sólo llega para quien puede asignar profesionales: es la llave que emite sesiones. */
+  token?: string;
   fechaVisita: string | null;
   confirmadaAt: string | null;
   enCaminoAt: string | null;

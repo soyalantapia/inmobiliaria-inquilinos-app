@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 // CAZABUG P1 (rescatado de la rama varada fix/camila-hunt) — al retener el depósito
 // (NETEAR/EJECUTAR) el sistema marcaba el estado, cobraba la penalidad… y NO tocaba una sola
@@ -24,6 +25,33 @@ async function limpiar() {
   const ids = [LIQ_VIEJA, LIQ_NUEVA, LIQ_FUTURA];
   await prisma.pago.deleteMany({ where: { liquidacionId: { in: ids } } });
   await prisma.liquidacion.deleteMany({ where: { id: { in: ids } } });
+
+  // Y las liquidaciones que el DEVENGO le fue agregando a cnt_004, que este test no creó.
+  //
+  // El test afirma una cuenta exacta: "la deuda exigible es 40.000 + 30.000 = 70.000". Eso
+  // sólo es cierto si el contrato no tiene nada más exigible, y en la base compartida sí
+  // tiene: el devengo corre solo, en proceso, cada 6 horas (`CRON_DEVENGO`), así que
+  // cualquier API apuntada a esta base le va agregando períodos a los contratos del seed.
+  // Con dos de más, `depositoAplicadoADeuda` dio 100.000 (el depósito entero) en vez de
+  // 70.000, y el rojo se lee como "se rompió el cálculo del depósito".
+  //
+  // ⚠️ SE EXCLUYE EL SEED (`liq_*`) A PROPÓSITO. Una versión anterior de esta limpieza
+  // borraba TODA otra liquidación de cnt_004, y ahí adentro estaban `liq_004` y su pago
+  // `pag_liq004`, que son del seed y que usan otros cinco archivos de test
+  // (deposito-cap-disponible, operacion, pago-tipo-parcial, plata, rescindir-contrato).
+  // `seedBase` los reponía por upsert en la corrida siguiente, así que el daño era
+  // intermitente — que es la peor forma de romper algo. Y no hacía falta: `liq_004` está
+  // PAGADO, o sea que no suma deuda exigible y nunca fue el problema.
+  const otras = await prisma.liquidacion.findMany({
+    where: { contratoId: CID, id: { notIn: ids }, NOT: { id: { startsWith: 'liq_' } } },
+    select: { id: true },
+  });
+  if (otras.length) {
+    const otrosIds = otras.map((l) => l.id);
+    await prisma.pago.deleteMany({ where: { liquidacionId: { in: otrosIds } } });
+    await prisma.alquilerRendido.deleteMany({ where: { liquidacionId: { in: otrosIds } } });
+    await prisma.liquidacion.deleteMany({ where: { id: { in: otrosIds } } });
+  }
 }
 
 const crearLiq = (id: string, periodo: string, venc: string, estado: 'VENCIDO' | 'PENDIENTE', monto: number) =>
@@ -59,8 +87,7 @@ beforeAll(async () => {
   await crearLiq(LIQ_FUTURA, '2099-06', '2099-06-05', 'PENDIENTE', 50000);
 
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'roberto@delsol.com', password: 'delsol123' } });
-  tADMIN = login.json().token;
+  tADMIN = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {
@@ -93,8 +120,8 @@ describe('CAZABUG — retener el depósito CANCELA deuda de verdad', () => {
       expect(l.estado, `${id} debía quedar PAGADO`).toBe('PAGADO');
       const pagos = await prisma.pago.findMany({ where: { liquidacionId: id, estado: 'CONCILIADO' } });
       expect(pagos.length).toBe(1);
-      expect(pagos[0].condonado).toBe(false); // es plata real del inquilino, no una condonación
-      expect(pagos[0].observacion ?? '').toMatch(/depósito/i);
+      expect(pagos[0]!.condonado).toBe(false); // es plata real del inquilino, no una condonación
+      expect(pagos[0]!.observacion ?? '').toMatch(/depósito/i);
     }
   });
 

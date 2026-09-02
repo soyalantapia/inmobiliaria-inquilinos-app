@@ -28,6 +28,44 @@ const nextConfig = {
         },
       }
     : {
+        /**
+         * El portal del propietario, servido como `/propietario` de este mismo host.
+         *
+         * POR QUÉ ACÁ Y NO EN UN SERVICIO PROPIO: el portal es una app de SÓLO LECTURA y
+         * totalmente estática (ya se exporta así para la demo). Un servicio de Railway
+         * aparte serían dólares por mes y un dominio más para mantener, cuando lo único
+         * que hace falta es que alguien sirva unos HTML. El build del panel deja el export
+         * en `public/propietario/` y Next lo sirve desde ahí.
+         *
+         * POR QUÉ HACEN FALTA ESTOS REWRITES: Next sirve `public/` archivo por archivo y NO
+         * resuelve índices de directorio. Sin esto, `/propietario/` redirige a
+         * `/propietario` (trailingSlash false) y eso es un 404, aunque el
+         * `public/propietario/index.html` esté ahí.
+         *
+         * VAN EN `afterFiles` A PROPÓSITO: esa etapa corre DESPUÉS del filesystem, así que
+         * los assets reales (`/propietario/_next/...js`, el `index.html`) se sirven tal cual
+         * y nunca llegan al rewrite. En `beforeFiles` la regla comodín les pegaría a todos y
+         * les pediría un `/index.html` que no existe.
+         *
+         * POR QUÉ EL PANEL Y NO LA PWA DEL INQUILINO: la PWA registra un service worker con
+         * scope `/`, que tomaría el control de `/propietario/*`. El panel no tiene ninguno.
+         */
+        rewrites: async () => ({
+          beforeFiles: [],
+          afterFiles: [
+            { source: '/propietario', destination: '/propietario/index.html' },
+            { source: '/propietario/:ruta*', destination: '/propietario/:ruta*/index.html' },
+          ],
+          // Cualquier ruta del portal que no exista cae en SU 404, no en el del panel: sin
+          // esto un dueño que se equivoca de link termina en la pantalla de error del back
+          // office, con sus links a Contratos y Caja. El portal exporta su propio `404.html`.
+          //
+          // VA EN `fallback` Y NO EN `afterFiles`, que es donde la puse primero y no servía:
+          // Next se queda con el PRIMER rewrite que matchea, así que la regla comodín de
+          // arriba se la llevaba siempre y esta quedaba muerta. `fallback` corre al final de
+          // todo —después del filesystem y de las rutas dinámicas— y justo antes del 404.
+          fallback: [{ source: '/propietario/:ruta*', destination: '/propietario/404.html' }],
+        }),
         headers: async () => [
           {
             source: '/(.*)',

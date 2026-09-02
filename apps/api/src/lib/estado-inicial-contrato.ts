@@ -150,6 +150,9 @@ function pagoSintetico(
     // El pago histórico se asume en fecha (si debía mora, va como moraManual).
     fechaTransferencia: liq.fechaVencimiento,
     estado: 'CONCILIADO',
+    // La marca que dice que esta plata NO pasó por la inmobiliaria. La observación queda
+    // para que un humano lo lea; el que filtra es este booleano, que nadie edita sin querer.
+    migradoDeCartera: true,
     observacion: NOTA_MIGRACION,
     decididoPorId,
     // informadoAt/decididoAt HISTÓRICOS (= vencimiento, igual que

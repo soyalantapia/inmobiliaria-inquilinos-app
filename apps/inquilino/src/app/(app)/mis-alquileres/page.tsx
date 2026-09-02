@@ -105,7 +105,7 @@ export default function MisAlquileresPage() {
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div>
-          <h1 className="text-2xl font-semibold md:text-3xl">Mis alquileres</h1>
+          <h1 className="text-2xl font-semibold md:text-3xl">Mis propiedades</h1>
           <p className="text-sm text-muted-foreground">Cambiá de alquiler sin volver a entrar</p>
         </div>
       </header>

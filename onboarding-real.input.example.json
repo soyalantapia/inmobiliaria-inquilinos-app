@@ -21,10 +21,10 @@
     "nombre": "Nombre",
     "apellido": "Apellido",
     "email": "vos@tudominio.com",
-    "password": "CAMBIAR-contraseña-inicial",
-    "pin": "1234"
+    "password": "CAMBIAR-contraseña-inicial"
   },
 
+  "_usuariosExtra": "Cada uno con SU contraseña (mínimo 8 caracteres). Sin password, la cuenta entra por OTP al email. NUNCA hereda la del admin. El PIN no va acá: lo crea cada persona desde su sesión.",
   "usuariosExtra": [],
 
   "sociedad": {

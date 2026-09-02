@@ -30,7 +30,7 @@ import {
   propiedadesMock,
   propietariosMock,
 } from '@/lib/mock-data';
-import type { ContratoListado, MoraEfectiva, Propietario, TipoMora } from '@/lib/types';
+import type { ContratoListado, Moneda, MoraEfectiva, Propietario, TipoMora } from '@/lib/types';
 
 // ---- Shape de la respuesta del API (GET /contratos/:id) ----
 
@@ -100,6 +100,11 @@ interface ContratoApi {
     apellido: string | null;
     email: string | null;
     telefono: string | null;
+    // Identidad reutilizable del inquilino dentro del tenant (ver el modelo Persona).
+    // El API ya lo devolvía —`include: { inquilinoTitular: true }` trae todos los
+    // escalares— pero el tipo no lo declaraba, así que el panel no tenía por dónde
+    // linkear a la ficha de la persona.
+    personaId?: string | null;
   } | null;
   garantes: {
     id: string;
@@ -114,6 +119,8 @@ interface ContratoApi {
     id: string;
     contratoId: string;
     periodo: string;
+    /** La cuota trae su propia moneda (`Liquidacion.moneda`); el server ya la devolvía. */
+    moneda?: Moneda | null;
     montoAlquiler: string | number;
     montoExpensas: string | number | null;
     montoTotal: string | number;
@@ -137,6 +144,8 @@ export interface ContratoDetalle {
   liquidaciones: LiquidacionAdmin[];
   eventos: EventoContrato[];
   comunicaciones: Comunicacion[];
+  /** Ficha reutilizable del inquilino (modelo Persona). null en demo o si no tiene. */
+  personaId?: string | null;
 }
 
 // ---- Mapeo API → tipos de la pantalla ----
@@ -154,6 +163,17 @@ function mapContrato(r: ContratoApi): ContratoListado {
       ? nombreCompleto(r.inquilinoTitular.nombre, r.inquilinoTitular.apellido)
       : '—',
     direccion: r.propiedad?.direccion ?? '—',
+    // El id de la propiedad SÍ viene en la respuesta (`propiedad.id`) y no se mapeaba.
+    // Sin él, en producción `c.propiedadId` quedaba undefined y dos cosas del detalle
+    // del contrato no se renderizaban NUNCA: el link del header a la ficha de la
+    // propiedad y la card "Servicios de la propiedad" —las dos gateadas por
+    // `apiEnabled && c.propiedadId`, que en prod es siempre false—.
+    //
+    // El arreglo existía a medias: el mapper de DEMO lo inyecta desde el mock
+    // (`{ ...c, propiedadId: prpMock.id }`) con un comentario que dice justamente que
+    // "el contrato salía sin propiedadId y no aparecía el link". Se arregló el lado
+    // que se veía probando en demo y quedó abierto el que corre en producción.
+    propiedadId: r.propiedad?.id ?? undefined,
     // El API ya devolvía diaPago/comisionInmobiliaria/ciudad, pero no se mapeaban: el
     // generador del contrato de locación los inventaba (5, 4.17%, CABA) en un documento
     // que se FIRMA.
@@ -264,13 +284,19 @@ function mapPropietarioDirecto(r: ContratoApi): Propietario | null {
   return p ? mapPropietario(p) : null;
 }
 
-function mapLiquidacionAdmin(l: NonNullable<ContratoApi['liquidaciones']>[number]): LiquidacionAdmin {
+function mapLiquidacionAdmin(
+  l: NonNullable<ContratoApi['liquidaciones']>[number],
+  // Fallback a la moneda del CONTRATO, no a 'ARS': una cuota de un contrato en dólares es
+  // en dólares. Caer a pesos acá sería reponer el mismo bug un nivel más adentro.
+  monedaContrato: Moneda,
+): LiquidacionAdmin {
   const montoTotal = Number(l.montoTotal);
   const montoPagado = l.montoPagado != null ? Number(l.montoPagado) : 0;
   return {
     id: l.id,
     contratoId: l.contratoId,
     periodo: l.periodo,
+    moneda: l.moneda ?? monedaContrato,
     montoAlquiler: Number(l.montoAlquiler),
     montoExpensas: l.montoExpensas != null ? Number(l.montoExpensas) : 0,
     montoTotal,
@@ -295,10 +321,14 @@ function mapDetalle(r: ContratoApi): ContratoDetalle {
     // `[]` (el endpoint no las traía) → el tab "Pagos" del contrato quedaba SIEMPRE
     // vacío, aun con pagos informados o conciliados (bug 4). NO fabricamos cuotas
     // falsas: si el contrato no tiene liquidaciones, el empty state es real.
-    liquidaciones: (r.liquidaciones ?? []).map(mapLiquidacionAdmin),
-    // El detalle no expone estos logs todavía → empty state real en prod.
+    liquidaciones: (r.liquidaciones ?? []).map((l) => mapLiquidacionAdmin(l, r.moneda)),
+    // El timeline va por su propio endpoint (useEventosContrato); este campo queda para
+    // el modo demo, que arma el detalle desde los mocks.
     eventos: [],
+    // Comunicaciones sigue vacío: no hay registro real todavía (ver T-17/T-18).
     comunicaciones: [],
+    // Para linkear a la ficha de la persona del inquilino desde el expediente.
+    personaId: r.inquilinoTitular?.personaId ?? null,
   };
 }
 
@@ -317,14 +347,61 @@ function detalleMock(id: string): ContratoDetalle | null {
     ? propietariosMock.filter((o) => prpMock.propietariosIds.includes(o.id))
     : [];
   return {
-    contrato: c,
+    // El mock guarda la relación al revés (`Propiedad.contratoActualId`), así que el
+    // contrato salía sin `propiedadId` y en demo no aparecía el link del header a la ficha
+    // de la propiedad. Se deriva del cruce que ya se hizo arriba en vez de hardcodearlo en
+    // `contratosMock`: un solo lugar donde vive la relación, sin dos copias que se
+    // desincronicen.
+    contrato: prpMock ? { ...c, propiedadId: prpMock.id } : c,
     contacto,
     propietarios,
     propietarioDirecto,
-    liquidaciones: generarLiquidaciones(c.id, c.monto, c.montoExpensas ?? 0),
+    liquidaciones: generarLiquidaciones(c.id, c.monto, c.montoExpensas ?? 0, c.moneda),
     eventos: eventosContratoMock.filter((e) => e.contratoId === id),
     comunicaciones: comunicacionesMock.filter((cm) => cm.contratoId === id),
   };
+}
+
+/**
+ * Timeline del contrato (pestaña "Historial").
+ *
+ * Va en su PROPIA query y no dentro de `GET /contratos/:id` a propósito: esa respuesta ya
+ * arrastra todas las liquidaciones del contrato y no hace falta engordarla con algo que sólo
+ * se mira al abrir una pestaña.
+ *
+ * En demo sigue saliendo del mock. En prod salía `[]` hardcodeado porque el endpoint no
+ * existía —`EventoContrato` era write-only— y la pestaña decía "Sin eventos registrados"
+ * aunque la base tuviera el rastro del ajuste o la renovación.
+ */
+export function useEventosContrato(id: string): {
+  eventos: EventoContrato[];
+  cargando: boolean;
+  isError: boolean;
+} {
+  const q = useQuery({
+    // T-41 — Cuelga del contrato a propósito. Con la key vieja (`['contrato-eventos', id]`)
+    // el timeline era una isla: NINGUNA mutación lo invalidaba, así que el operador ajustaba
+    // el monto o renovaba, el backend escribía el evento, y el Historial seguía mostrando lo
+    // de antes hasta recargar la página a mano.
+    // Parchear los 8 lugares que hoy invalidan `['contrato']` habría arreglado la instancia y
+    // dejado la trampa armada para el próximo hook. Colgándolo del prefijo, cualquier
+    // invalidación de `['contrato']` o `['contrato', id]` lo alcanza — que es como React Query
+    // matchea las keys.
+    queryKey: ['contrato', id, 'eventos'],
+    queryFn: async () => {
+      await ensureApiSession();
+      return apiFetch<EventoContrato[]>(`/contratos/${id}/eventos`);
+    },
+    enabled: apiEnabled && id.length > 0,
+    staleTime: 15_000,
+  });
+
+  if (!apiEnabled) {
+    return { eventos: eventosContratoMock.filter((e) => e.contratoId === id), cargando: false, isError: false };
+  }
+  // isError viaja para que la pestaña pueda distinguir "no hay eventos" de "no pudimos
+  // traerlos": mostrar el empty state ante un error sería afirmar que no quedó registro.
+  return { eventos: q.data ?? [], cargando: q.isPending, isError: q.isError };
 }
 
 export function useContrato(id: string): {

@@ -84,7 +84,7 @@ Acepta la invitación y emite la sesión de co-inquilino.
 Sesión de inquilino demo (Mariela) con un click.
 - **Auth:** público, pero gated por `app.env.DEMO_MODE`.
 - **Body:** ninguno.
-- **Respuesta:** `{ token, nombre }` (token JWT `kind:'inquilino'` del inquilino `mariela.sosa@gmail.com`).
+- **Respuesta:** `{ token, nombre }` (token JWT `kind:'inquilino'` del inquilino `mariela.sosa@example.com`).
 - **Errores:** `404` "No disponible" si `DEMO_MODE` off; `500` "Seed demo faltante" si no existe el inquilino demo.
 
 ### GET /auth/me
@@ -323,22 +323,47 @@ Todas las rutas montadas bajo el prefijo del plugin `plataRoutes`. Multi-tenant:
 
 **GET /rendiciones**
 - Guard: `requireUsuario('pagos.ver')`.
-- Query: `propietarioId` (string, opc.).
+- Query: `propietarioId` (string, opc.), `incluirAnuladas` (`'1'`, opc.).
 - Respuesta: array de `Rendicion` con `gastos` y `propietario` (`nombre`, `apellido`), orden `periodo` desc.
+- **Por default NO devuelve las anuladas.** Cinco pantallas del panel preguntan acá "¿ya se le
+  rindió?" —el badge Rendido, el KPI de "por rendir", el neto histórico, las últimas
+  rendiciones, el comprobante de WhatsApp— y ninguna sabe de la baja lógica. Excluirlas les
+  devuelve la semántica que ya tenían con el borrado duro, sin tocar ninguna.
 
 **POST /rendiciones**
 - Guard: `requireUsuario('rendicion.confirmar')`.
 - Body: `propietarioId` (string, **req.**), `periodo` (string `YYYY-MM`, **req.**), `metodo` (enum `TRANSFERENCIA|MERCADOPAGO|EFECTIVO`, default `TRANSFERENCIA`), `pin` (opc.), `notas` (opc.).
-- Reglas: bruto = liquidaciones `PAGADO` del período de contratos `modoCobranza='INMOBILIARIA'` de las propiedades del dueño × participación, **solo sobre alquiler** (no expensas/punitorios). Descuenta gastos pendientes solo del período y solo de propiedades que aportaron ingreso, por parte de participación. Neto = bruto − comisión − gastos. Tx atómica: crea rendición + `gastoRendido` snapshots + marca `MovimientoCaja` descontado solo cuando las partes de todos los dueños cubren el total (`updateMany WHERE descontadoEnRendicion=false`). Unicidad `(propietarioId, periodo)` = lock anti-doble-rendición.
+- Reglas: bruto = liquidaciones `PAGADO` **o `PARCIAL`** del período de contratos `modoCobranza='INMOBILIARIA'` de las propiedades del dueño × participación, **solo sobre alquiler** (no expensas/punitorios), y **sin** lo condonado ni lo migrado de cartera. Descuenta gastos pendientes del período **y los que arrastraron de meses anteriores sin rendir**, solo de propiedades que aportaron ingreso, por parte de participación. **Neto = bruto − comisión − gastos + ingresos extra.** Tx atómica: crea rendición + `alquilerRendido`/`gastoRendido`/`ingresoRendido` + marca `MovimientoCaja` descontado solo cuando las partes de todos los dueños cubren el total (`updateMany WHERE descontadoEnRendicion=false`).
+- **El anti-doble NO es una unicidad de base.** El `@@unique(propietarioId, periodo)` existió hasta el 01/07/2026 y se dropeó a propósito: un período se rinde en **varias tandas** a medida que entran los parciales, y va **una rendición por moneda**. Lo reemplazan tres mecanismos: (1) `pg_advisory_xact_lock` por (inmobiliaria, dueño|período) que serializa dos rendiciones del mismo dueño; (2) la aritmética contra `AlquilerRendido`, que sólo rinde lo que todavía no se rindió; (3) el guard **pre-ledger**, que corta con 409 si el período tiene una rendición anterior al ledger (sin líneas y no anulada), porque de ésas no queda desglose con el que hacer la resta.
 - Respuesta: `201` con la `Rendicion` creada.
-- Errores: 400 (datos incompletos), 404 (propietario inexistente), 409 (sin CBU/alias; período ya rendido — pre-check o P2002; sin cobros del período; neto negativo por gastos+comisión > cobrado).
+- Errores: 400 (datos incompletos), 404 (propietario inexistente), 409 (`metodo=TRANSFERENCIA` sin CBU/alias — en efectivo no hace falta; `RENDICION_PRE_LEDGER`; cobros en varias monedas sin elegir cuál; sin cobros nuevos del período; neto negativo por gastos+comisión > cobrado; `PARTICIPACION_AUSENTE`).
 
 **POST /rendiciones/:id/anular**
 - Guard: `requireUsuario('rendicion.confirmar')`.
-- Params: `id`. Body: `pin` (opc.).
-- Reglas: tx atómica — devuelve gastos a `descontadoEnRendicion=false`, borra `gastoRendido`, borra la rendición con `deleteMany` condicionado (lock anti-doble-anulación). Reversible (no movió plata real). Scoping `inmobiliariaId` (H-3).
+- Params: `id`. Body: `motivo` (**obligatorio**, mín. 5), `pin` (opc.).
+- Reglas: tx atómica — devuelve gastos a `descontadoEnRendicion=false`, borra las líneas de
+  los tres ledgers (`alquilerRendido`, `gastoRendido`, `ingresoRendido`) y **marca la
+  cabecera como anulada** (`anuladaAt`, `anuladaPorId`, `motivoAnulacion`). El lock
+  anti-doble-anulación es el `updateMany` condicionado a `anuladaAt: null`. Reversible (no
+  movió plata real). Scoping `inmobiliariaId` (H-3). Registra `PROPIETARIO_RENDICION_ANULADA`.
 - Respuesta: `{ ok: true }`.
-- Errores: 404 (inexistente), 409 (ya anulada — carrera, `count=0`).
+- Errores: 400 (sin motivo), 404 (inexistente), 409 (ya anulada — pre-check o carrera).
+
+> **La cabecera SOBREVIVE; las líneas no.** Es deliberado: ~20 lugares leen esos ledgers para
+> saber qué se rindió, y filtrar "y que no esté anulada" en los 20 es garantizar que un día se
+> olvide uno. Borrando las líneas, ninguno cambia.
+>
+> **Pero todo lector de la CABECERA sí tuvo que aprender.** Si agregás uno, decidí
+> explícitamente de qué lado está:
+> - `GET /rendiciones` las **excluye por default** (`?incluirAnuladas=1` para verlas). Sin eso
+>   el panel volvía a decir "Rendido" apenas se recargaba la página.
+> - La regla pre-ledger de `lib/rendicion-pendiente.ts` las excluye. Sin eso, anular hacía
+>   DESAPARECER la plata del "cobrado y todavía sin rendirte".
+> - El portal las manda con `anulada: { fecha, motivo }` y las muestra tachadas, fuera de los
+>   totales y sin ofrecer el imprimible.
+>
+> **El motivo lo lee el propietario**, tachado al lado de la rendición en su portal. No es un
+> campo interno.
 
 ### Aprobaciones (no monetarias)
 

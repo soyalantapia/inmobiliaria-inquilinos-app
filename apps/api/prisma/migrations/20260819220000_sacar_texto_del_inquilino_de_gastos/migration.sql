@@ -1,0 +1,53 @@
+-- Saca de la rendición del propietario el texto libre que escribió el INQUILINO.
+--
+-- QUÉ PASABA
+-- Al armar los gastos de una rendición, el rótulo del arreglo se construía así
+-- (apps/api/src/routes/plata.ts, antes de este cambio):
+--
+--     rec.costoTrabajoNotas || 'Reparación (' || categoria || '): ' || left(rec.descripcion, 60)
+--
+-- `rec.descripcion` es lo que el inquilino escribió al reportar el problema. Como
+-- `costoTrabajoNotas` es opcional y casi nunca se carga, el caso por defecto era guardar en
+-- `gastos_rendidos.descripcion` los primeros 60 caracteres del relato del inquilino sobre su
+-- propia casa. De ahí salía al portal del propietario y al PDF imprimible.
+--
+-- El código ya había razonado esta misma fuga para la otra puerta: el bloque que arma
+-- /portal/reclamos recorta a contratos vigentes justamente para que "quien compra un
+-- departamento en marzo" no lea "los reclamos de 2024 de un inquilino con el que no tuvo
+-- ninguna relación, con la descripcion en texto libre que esa persona escribió". Se cerró una
+-- de las dos puertas. El código ya está arreglado; esto limpia lo que quedó escrito antes.
+--
+-- POR QUÉ HACE FALTA UNA MIGRACIÓN
+-- `gastos_rendidos` es historial: arreglar el origen no toca las filas viejas. Mientras esas
+-- filas existan, el portal sigue mostrando el texto cada vez que el dueño abre una rendición
+-- pasada.
+--
+-- POR QUÉ ES SEGURO
+-- Sólo toca las filas que generó ese template, que se reconocen por el prefijo exacto
+-- 'Reparación (' ... '): '. Las notas que escribió un operador no lo tienen y NO se tocan —
+-- ese es el punto: el operador escribe sabiendo que el dueño lo lee, el inquilino no.
+--
+-- Se conserva la parte que al dueño le corresponde (qué se arregló y de qué categoría) y se
+-- corta lo que sigue después de los dos puntos. 'Reparación (plomeria): el baño pierde hace…'
+-- queda como 'Reparación (plomeria)'.
+--
+-- IRREVERSIBLE, a propósito: el texto que se borra es justamente el que no debería estar. El
+-- original sigue en `reclamos.descripcion`, que es donde corresponde y donde el propietario no
+-- llega. No se pierde información, se deja de duplicar donde no va.
+--
+-- IDEMPOTENTE: una fila ya limpia no tiene ': ' después del paréntesis, así que el WHERE no la
+-- vuelve a agarrar. Correrla dos veces no hace nada.
+--
+-- ÚNICO FALSO POSITIVO POSIBLE, dicho para que no sorprenda: si un operador escribió a mano una
+-- nota que arranca literalmente con 'Reparación (algo): ', se le recorta igual. Es improbable
+-- y el costo es perder una nota interna que el dueño ya estaba viendo; el costo de no correrla
+-- es seguir mostrando el texto del inquilino. Para contar cuántas filas se van a tocar antes
+-- de aplicarla:
+--
+--   SELECT count(*) FROM "gastos_rendidos"
+--    WHERE "tipo" = 'TRABAJO' AND "descripcion" ~ '^Reparación \([^)]*\): .';
+
+UPDATE "gastos_rendidos"
+SET "descripcion" = substring("descripcion" from '^Reparación \([^)]*\)')
+WHERE "tipo" = 'TRABAJO'
+  AND "descripcion" ~ '^Reparación \([^)]*\): .';

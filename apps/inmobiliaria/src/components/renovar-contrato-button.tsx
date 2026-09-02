@@ -10,7 +10,7 @@ import { ApiError, apiFetch, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import { MoneyInput } from '@/components/money-input';
 import { formatMonto } from '@/lib/format';
-import type { Moneda } from '@/lib/types';
+import type { ContratoListado, Moneda } from '@/lib/types';
 
 // Período (YYYY-MM) del mes siguiente a una fecha ISO. Default para montoDesde: el nuevo
 // canon suele arrancar cuando termina el plazo anterior.
@@ -31,11 +31,14 @@ export function RenovarContratoButton({
   montoActual,
   fechaFinActual,
   moneda,
+  tipoContrato,
 }: {
   contratoId: string;
   montoActual: number;
   fechaFinActual: string;
   moneda: Moneda;
+  /** Un contrato de solo expensas no tiene canon: se renueva sólo el PLAZO. */
+  tipoContrato?: ContratoListado['tipoContrato'];
 }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -57,7 +60,11 @@ export function RenovarContratoButton({
   const nuevoNum = montoNuevo === '' ? 0 : Math.max(0, Number(montoNuevo) || 0);
   const finOk = !!fechaFinNueva && (!fechaFinActual || fechaFinNueva > finActualCorta);
   const desdeOk = /^\d{4}-\d{2}$/.test(montoDesde);
-  const valido = finOk && nuevoNum > 0 && desdeOk;
+  // Un contrato de solo expensas se renueva por el PLAZO: su canon es 0 y tiene que seguir
+  // siéndolo (el server lo fuerza igual). Exigirle "monto > 0" dejaba el botón deshabilitado
+  // para siempre, y la única salida era inventarle un alquiler que no existe.
+  const soloExpensas = tipoContrato === 'SOLO_EXPENSAS';
+  const valido = finOk && (soloExpensas || nuevoNum > 0) && desdeOk;
 
   // Antes el botón "Renovar" quedaba deshabilitado SIN decir por qué (Camila:
   // "pongo fecha y precio pero no me da el botón azul"). Ahora le decimos justo
@@ -66,7 +73,7 @@ export function RenovarContratoButton({
     ? 'Elegí la nueva fecha de fin.'
     : !finOk
       ? `La nueva fecha de fin tiene que ser posterior a la actual${finActualCorta ? ` (hoy vence el ${finActualCorta})` : ''}.`
-      : nuevoNum <= 0
+      : !soloExpensas && nuevoNum <= 0
         ? 'Poné el monto del nuevo alquiler.'
         : !desdeOk
           ? 'Elegí desde qué mes arranca el nuevo alquiler.'
@@ -89,7 +96,9 @@ export function RenovarContratoButton({
       toast({
         variant: 'success',
         title: 'Contrato renovado',
-        description: `Nuevo plazo hasta ${fechaFinNueva}, canon ${formatMonto(nuevoNum, moneda)} desde ${montoDesde}.`,
+        description: soloExpensas
+          ? `Nuevo plazo hasta ${fechaFinNueva}. El contrato es de solo expensas: el alquiler sigue en cero.`
+          : `Nuevo plazo hasta ${fechaFinNueva}, canon ${formatMonto(nuevoNum, moneda)} desde ${montoDesde}.`,
       });
       setOpen(false);
     },
@@ -101,8 +110,15 @@ export function RenovarContratoButton({
   const descripcion = (
     <span className="block space-y-3 text-xs">
       <span className="block text-muted-foreground">
-        Extiende el plazo del mismo contrato (se conservan inquilino, depósito e historial) y fija el nuevo
-        canon desde el período que elijas. Alquiler actual: <strong className="text-foreground">{formatMonto(montoActual, moneda)}</strong>.
+        Extiende el plazo del mismo contrato (se conservan inquilino, depósito e historial)
+        {soloExpensas ? (
+          '. Este contrato es de solo expensas, así que no hay alquiler que fijar: se renueva únicamente el plazo.'
+        ) : (
+          <>
+            {' '}y fija el nuevo canon desde el período que elijas. Alquiler actual:{' '}
+            <strong className="text-foreground">{formatMonto(montoActual, moneda)}</strong>.
+          </>
+        )}
       </span>
       <span className="flex items-center justify-between gap-2">
         <span className="font-medium text-foreground">
@@ -119,12 +135,18 @@ export function RenovarContratoButton({
           className="w-40 rounded border border-border bg-background px-2 py-1"
         />
       </span>
+      {/* En un solo expensas no hay alquiler que pedir: el campo confundía y, peor, con el
+          canon en 0 el botón de confirmar quedaba deshabilitado para siempre. */}
+      {!soloExpensas && (
+        <span className="flex items-center justify-between gap-2">
+          <span className="font-medium text-foreground">Nuevo alquiler</span>
+          <MoneyInput value={montoNuevo} onChange={setMontoNuevo} moneda={moneda} className="inline-block w-40" />
+        </span>
+      )}
       <span className="flex items-center justify-between gap-2">
-        <span className="font-medium text-foreground">Nuevo alquiler</span>
-        <MoneyInput value={montoNuevo} onChange={setMontoNuevo} moneda={moneda} className="inline-block w-40" />
-      </span>
-      <span className="flex items-center justify-between gap-2">
-        <span className="font-medium text-foreground">El nuevo canon aplica desde</span>
+        <span className="font-medium text-foreground">
+          {soloExpensas ? 'El nuevo plazo aplica desde' : 'El nuevo canon aplica desde'}
+        </span>
         <input type="month" value={montoDesde} onChange={(e) => setMontoDesde(e.target.value)} className="w-40 rounded border border-border bg-background px-2 py-1" />
       </span>
       <input type="text" value={motivo} onChange={(e) => setMotivo(e.target.value)} className="w-full rounded border border-border bg-background px-2 py-1" placeholder="Motivo (opcional)" maxLength={200} />

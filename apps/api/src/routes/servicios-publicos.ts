@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
+import { dinero } from '../lib/monto.js';
 
 /**
  * Servicios públicos (LUZ/GAS/AGUA/...) por PROPIEDAD, lado inmobiliaria.
@@ -26,7 +27,7 @@ const upsertSchema = z.object({
   numeroMedidor: z.string().trim().max(120).optional(),
   titular: z.string().trim().max(200).optional(),
   observaciones: z.string().trim().max(500).optional(),
-  consumoPromedioMensual: z.number().nonnegative().optional(),
+  consumoPromedioMensual: dinero().optional(),
   // Quién paga el servicio (default INQUILINO). Si NO lo paga el inquilino, su app lo
   // muestra informativo (sin pedirle subir boleta).
   pagador: z.enum(['INQUILINO', 'INMOBILIARIA', 'PROPIETARIO', 'EXPENSAS']).optional(),
@@ -121,6 +122,15 @@ export async function serviciosPublicosRoutes(app: FastifyInstance): Promise<voi
   app.delete('/propiedades/:propiedadId/servicios/:tipo', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propiedades.crear');
     if (!u) return;
+    // Mismo corte que el DELETE de la propiedad entera (`core.ts`), que además arrastra este
+    // mismo `servicioPublico.deleteMany`: si borrar la propiedad está gateado, borrarle un
+    // servicio también. Se va la distribuidora, el NIS, el medidor, el titular y el `pagador` —
+    // que es lo que el inquilino lee en su app para saber a qué cuenta paga la luz.
+    //
+    // El PUT/upsert de arriba NO se corta: cargar y corregir un NIS ES el trabajo de CARGA.
+    if (u.rol === 'CARGA') {
+      return reply.code(403).send({ message: 'Solo un Admin u Operador puede eliminar un servicio' });
+    }
     const { propiedadId, tipo: tipoRaw } = request.params as { propiedadId: string; tipo: string };
     const tipoParsed = TIPO.safeParse(tipoRaw);
     if (!tipoParsed.success) return reply.code(400).send({ message: 'Tipo de servicio inválido' });

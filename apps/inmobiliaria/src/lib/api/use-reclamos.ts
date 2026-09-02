@@ -9,6 +9,7 @@ import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
 import { listarReclamos } from '@/lib/reclamos-store';
 import type { Reclamo } from '@/lib/types';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 
 interface ReclamoApi {
   id: string;
@@ -24,7 +25,13 @@ interface ReclamoApi {
   fotoUrl: string | null;
   clasificacion: Reclamo['clasificacion'] | null;
   costoTrabajo: number | string | null;
-  propiedad: { id: string; direccion: string; ciudad: string } | null;
+  propiedad: {
+    id: string;
+    direccion: string;
+    ciudad: string;
+    complejo?: string | null;
+    consorcio?: { nombre: string } | null;
+  } | null;
   contrato: {
     id: string;
     fechaInicio: string | null;
@@ -40,7 +47,10 @@ function mapReclamo(r: ReclamoApi): Reclamo {
     inquilino: r.contrato?.inquilinoTitular
       ? `${r.contrato.inquilinoTitular.nombre} ${r.contrato.inquilinoTitular.apellido ?? ''}`.trim()
       : '—',
-    direccion: r.propiedad?.direccion ?? '—',
+    // rotuloEnLinea, NO rotuloPrincipal: el reclamo termina en una orden a un
+    // plomero/electricista que tiene que llegar a la puerta. El complejo ayuda a
+    // ubicarla, la calle es la que no se puede perder.
+    direccion: r.propiedad ? rotuloEnLinea(r.propiedad) : '—',
     categoria: r.categoria,
     descripcion: r.descripcion,
     urgencia: r.urgencia,
@@ -62,7 +72,18 @@ function mapReclamo(r: ReclamoApi): Reclamo {
   };
 }
 
-export function useReclamos(): { reclamos: Reclamo[] | null; cargando: boolean; deApi: boolean } {
+/**
+ * `enabled` (default true) permite que un caller NO dispare la query cuando ya sabe que el
+ * rol no tiene `reclamos.ver` — la campana del topbar la monta en TODAS las páginas y, sin
+ * esto, un rol CARGA generaba un 403 por navegación contra un endpoint que nunca va a poder
+ * leer.
+ */
+export function useReclamos(opts?: { enabled?: boolean }): {
+  reclamos: Reclamo[] | null;
+  cargando: boolean;
+  deApi: boolean;
+} {
+  const habilitado = opts?.enabled ?? true;
   const q = useQuery({
     queryKey: ['reclamos'],
     queryFn: async () => {
@@ -70,7 +91,7 @@ export function useReclamos(): { reclamos: Reclamo[] | null; cargando: boolean; 
       const data = await apiFetch<ReclamoApi[]>('/reclamos');
       return data.map(mapReclamo);
     },
-    enabled: apiEnabled,
+    enabled: apiEnabled && habilitado,
     staleTime: 15_000,
   });
   if (!apiEnabled) return { reclamos: listarReclamos(), cargando: false, deApi: false };

@@ -51,15 +51,30 @@ const STEPS: Step[] = [
       'Podés saltar este tour cuando quieras',
     ],
   },
+  // ⛔ ACÁ DECÍA "Pagás con transferencia, MP o QR", y el título, "en un toque".
+  //
+  // Ni MP ni QR existen como forma de pagar: el enum MetodoPago del schema es TRANSFERENCIA |
+  // MERCADOPAGO | EFECTIVO, y MERCADOPAGO es sólo la etiqueta con la que la inmo REGISTRA a
+  // mano un pago que ya recibió — no hay checkout de ninguna pasarela en el monorepo. QR no
+  // está ni en MetodoPago ni en MetodoPagoInformado; el único QR del schema es un valor de
+  // MetodoComprobante, que respalda Comprobante.metodo y que no escribe nadie. El checkout
+  // real de la app se llama, literalmente, "Pagar por
+  // transferencia": muestra el CBU y el alias para copiar, y recién después pide el comprobante.
+  //
+  // A diferencia del slide del asistente (más abajo), este se reescribe en vez de sacarse: el
+  // paso existe y es el más importante de la app, lo que no existía era el medio. El "en un
+  // toque" se va por lo mismo — sostenía la promesa de pago instantáneo con otras palabras, y
+  // encima le tapaba al inquilino el paso que más se olvida: volver a subir el comprobante. Sin
+  // eso transfirió plata real y para el sistema no pagó, porque no hay informe que validar.
   {
     icon: CreditCard,
     iconBg: 'from-primary to-primary/70',
-    titulo: 'Pagás tu alquiler en un toque',
+    titulo: 'Pagás tu alquiler sin vueltas',
     descripcion: 'En la pantalla principal ves el monto exacto del mes y si está al día.',
     bullets: [
       'Te mostramos vencimiento, monto y punitorios si los hay',
-      'Pagás con transferencia, MP o QR',
-      'Subís el comprobante y queda registrado',
+      'Copiás el CBU o el alias y transferís desde tu banco',
+      'Volvés, subís el comprobante y seguís acá la validación',
     ],
     cta: { label: 'Ver mis pagos', href: '/' },
   },
@@ -75,18 +90,19 @@ const STEPS: Step[] = [
     ],
     cta: { label: 'Abrir mi contrato', href: '/contrato' },
   },
-  {
-    icon: Sparkles,
-    iconBg: 'from-primary to-primary/70',
-    titulo: 'Chateá con el Asistente',
-    descripcion: 'Una IA que leyó tus cláusulas y te responde al instante.',
-    bullets: [
-      'Aumentos, depósito, mascotas, vencimiento',
-      'Te cita la cláusula exacta del contrato',
-      'Te deriva a la inmobiliaria si hace falta',
-    ],
-    cta: { label: 'Probar el Asistente', href: '/broker' },
-  },
+  // ⛔ ACÁ HABÍA UN SLIDE que decía "Chateá con el Asistente — Una IA que leyó tus cláusulas y
+  // te responde al instante" y "Te cita la cláusula exacta del contrato", con un CTA "Probar el
+  // Asistente" hacia /broker.
+  //
+  // No existe: no hay ningún LLM en el monorepo, el "chat" es keyword-matching que sólo vive en
+  // el build demo, y /broker en producción devuelve un cartel de "Próximamente". O sea que el
+  // onboarding le prometía una capacidad entera a CADA inquilino nuevo, y el primer botón que
+  // tocaba lo llevaba a una pantalla vacía.
+  //
+  // Se saca en vez de reescribirse: los otros slides ya cubren lo que la app hace de verdad
+  // (pagar, ver el contrato, reportar un problema), y agregar un cuarto para rellenar sería
+  // decorar. Cuando exista el asistente, el slide vuelve — con lo que haga, no con lo que
+  // querríamos que hiciera.
   {
     icon: Wrench,
     iconBg: 'from-primary to-primary/70',
@@ -119,7 +135,7 @@ const STEPS: Step[] = [
     bullets: [
       'Vista unificada de eventos',
       'No te olvides de nada importante',
-      'Te avisamos por WhatsApp antes',
+      'Con los vencimientos a la vista',
     ],
     cta: { label: 'Ver mi calendario', href: '/calendario' },
   },
@@ -139,7 +155,13 @@ const STEPS: Step[] = [
     icon: CheckCircle2,
     iconBg: 'from-primary to-primary/70',
     titulo: '¡Listo!',
-    descripcion: 'Ya conocés My Alquiler. Cualquier duda, el Asistente o la inmobiliaria están a un toque.',
+    // Decía "Cualquier duda, el Asistente o la inmobiliaria están a un toque". Quedó de cuando
+    // existía el slide del Asistente que se sacó más arriba: nombraba una capacidad que no
+    // existe, y encima ya ni botón tiene desde que se le sacó `/broker` al nav. Era lo ÚLTIMO
+    // que leía un inquilino nuevo antes de empezar a usar la app.
+    //
+    // La inmobiliaria sí está a un toque, y de verdad: /ayuda tiene el `wa.me` para escribirle.
+    descripcion: 'Ya conocés My Alquiler. Cualquier duda, tu inmobiliaria está a un toque desde Ayuda.',
     bullets: [
       'Podés volver a ver este tour desde Mi Cuenta',
       'WhatsApp directo con tu inmobiliaria',

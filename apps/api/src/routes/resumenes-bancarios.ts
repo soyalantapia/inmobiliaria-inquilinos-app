@@ -1,12 +1,16 @@
 import * as XLSX from 'xlsx';
+import { observacionDeReversion } from '../lib/reversion-interna.js';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
+import { pagadoAlVencimientoPorLiquidacion } from '../lib/saldos.js';
 import { parsearFilasResumen, sugerirMatch, type CandidatoLiquidacion, type CandidatoPago , claveCredito} from '../lib/matching-bancario.js';
 import { guardarBufferSubido } from './uploads.js';
+import { registrarEvento } from '../lib/auditoria.js';
+import { instanteEnDiaCivilAR } from '@llave/shared';
 
 /**
  * Validador de resumen bancario REAL (auditoría "archivos" — feature elegida
@@ -63,6 +67,7 @@ async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: Cand
         contrato: {
           select: {
             tasaPunitorioDiaria: true,
+            moneda: true,
             moraTipo: true,
             moraValor: true,
             inquilinoTitular: { select: { nombre: true, apellido: true } },
@@ -70,7 +75,7 @@ async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: Cand
         },
       },
     }),
-    prisma.inmobiliaria.findUnique({ where: { id: inmobiliariaId }, select: { moraTipoDefault: true, moraValorDefault: true } }),
+    prisma.inmobiliaria.findUnique({ where: { id: inmobiliariaId }, select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true } }),
   ]);
 
   const liqIds = liquidacionesAbiertas.map((l) => l.id);
@@ -88,12 +93,14 @@ async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: Cand
   }));
 
   const ahora = new Date();
+  // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+  const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(liquidacionesAbiertas);
   const liquidaciones: CandidatoLiquidacion[] = liquidacionesAbiertas.map((l) => {
     // Mora con el ESQUEMA EFECTIVO (cascada contrato → default inmobiliaria,
     // manual pisa) — antes usaba el wrapper legacy (% diario) e ignoraba los
     // esquemas nuevos: el saldo sugerido no coincidía con el que veía el inquilino.
     const punitorio = calcularMora(
-      Number(l.montoTotal),
+      { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
       resolverEsquemaMora(l.contrato, inmo),
       l.fechaVencimiento,
       ahora,
@@ -311,11 +318,12 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
         contrato: {
           select: {
             tasaPunitorioDiaria: true,
+            moneda: true,
             moraTipo: true,
             moraValor: true,
             estado: true,
             modoCobranza: true,
-            inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true } },
+            inmobiliaria: { select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true } },
           },
         },
       },
@@ -349,11 +357,15 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
       where: { liquidacionId: liq.id, estado: 'CONCILIADO' },
       _sum: { monto: true },
     });
+    const pagadoAlVencGuard = await pagadoAlVencimientoPorLiquidacion([liq]);
     const punitorioGuard = calcularMora(
-      Number(liq.montoTotal),
+      { total: Number(liq.montoTotal), pagadoAlVencimiento: pagadoAlVencGuard.get(liq.id) ?? 0 },
       resolverEsquemaMora(liq.contrato, liq.contrato.inmobiliaria),
       liq.fechaVencimiento,
-      credito.fecha,
+      // T-56 — `credito.fecha` es una fecha CIVIL a medianoche: sin normalizar, la mora sale
+      // con un día de menos y el crédito por el monto exacto que vio el inquilino se rechaza
+      // con 400 — y acá el monto NO se puede editar, así que la conciliación queda trabada.
+      instanteEnDiaCivilAR(credito.fecha),
       liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
     );
     const saldoPendiente = Number(liq.montoTotal) + punitorioGuard - Number(aggConc._sum.monto ?? 0);
@@ -364,8 +376,16 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
       });
     }
 
+    // Un solo lugar arma este texto: va a la `observacion` del pago auto-rechazado Y al
+    // `detalle` de su evento de auditoría. Escritos por separado se desincronizan al primer
+    // retoque, y entonces el rastro dice una cosa y lo que ve el inquilino dice otra.
+    const motivoAutoRechazo = observacionDeReversion(
+      `el extracto bancario confirmó este cobro (op. ${credito.nroOperacion}).`,
+    );
     try {
-      const pago = await prisma.$transaction(async (tx) => {
+      // La tx devuelve además los avisos que cerró: la auditoría se escribe DESPUÉS del
+      // commit y `updateMany` no informa qué filas tocó, así que hay que sacarlos de adentro.
+      const { pago, autoRechazados } = await prisma.$transaction(async (tx) => {
         // Lock: si otro admin ya concilió este crédito concurrentemente, count=0 → aborta.
         const marcado = await tx.creditoDetectado.updateMany({ where: { id: creditoId, conciliado: false }, data: { conciliado: true } });
         if (marcado.count === 0) throw new ConflictoCreditoConciliado();
@@ -396,7 +416,13 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
             montoLiqTotal: liq.montoTotal,
             metodo: 'TRANSFERENCIA',
             nroOperacion: credito.nroOperacion,
-            fechaTransferencia: credito.fecha,
+            // UN INSTANTE, no la fecha civil cruda — como guardan los otros cuatro caminos que
+            // escriben `fechaTransferencia`. El parser del extracto entrega `D T00:00Z`, que en
+            // Argentina son las 21:00 del día ANTERIOR; guardarlo así le regalaba un día a todo
+            // lo que después lee este campo por día civil. Este archivo YA normaliza con
+            // `instanteEnDiaCivilAR` en los dos lugares donde calcula la mora (líneas 368 y 439):
+            // lo único que faltaba era guardar lo mismo que ya usa para pensar.
+            fechaTransferencia: instanteEnDiaCivilAR(credito.fecha),
             notaInquilino: `Conciliado desde extracto bancario · ${credito.bancoOrigen || 'banco'} · op. ${credito.nroOperacion}`,
             estado: 'CONCILIADO',
             decididoPorId: u.userId,
@@ -409,11 +435,14 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
         // mora del ESQUEMA EFECTIVO a la fecha del crédito, manual pisa).
         const agg = await tx.pago.aggregate({ where: { liquidacionId: liq.id, estado: 'CONCILIADO' }, _sum: { monto: true } });
         const cobrado = Number(agg._sum.monto ?? 0);
+        // T-57: con el `tx` — el pago que esta transacción acaba de crear tiene la fecha del
+        // crédito, así que si entró en fecha ya cuenta para bajar el capital.
+        const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion([liq], tx);
         const punitorio = calcularMora(
-          Number(liq.montoTotal),
+          { total: Number(liq.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(liq.id) ?? 0 },
           resolverEsquemaMora(liq.contrato, liq.contrato.inmobiliaria),
           liq.fechaVencimiento,
-          credito.fecha,
+          instanteEnDiaCivilAR(credito.fecha),
           liq.montoPunitorioManual != null ? Number(liq.montoPunitorioManual) : null,
         );
         // Tolerancia de 1 centavo, igual que validar/manual (plata.ts): `montoTotal
@@ -432,6 +461,10 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
           data: { tipo: cubierta ? 'TOTAL' : 'PARCIAL' },
         });
 
+        // Se llena abajo si el crédito cierra avisos del inquilino. Vive FUERA del `if`
+        // porque lo consume la auditoría, que recién corre después del commit.
+        const avisosCerrados: { id: string; periodo: string; monto: number }[] = [];
+
         // El aviso del inquilino sobre ESTA liquidación ya no tiene nada que decidir:
         // el banco confirmó la plata. Sin esto quedaba en INFORMADO para siempre y
         // alguien tenía que rechazarlo A MANO desde "Pagos a validar" —una bandeja
@@ -445,18 +478,74 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
         // RECHAZADO y no CONCILIADO: CONCILIADO entra en el agregado de cobrado y
         // duplicaría la plata. La observación deja el rastro de por qué se cerró.
         if (cubierta) {
+          // Los ids se leen ANTES del updateMany: Prisma no devuelve las filas afectadas, y
+          // sin ellos el rastro no puede decir QUÉ aviso se cerró — que es justo el dato que
+          // se busca cuando el inquilino reclama que le "rechazaron" un pago que sí entró.
+          const informados = await tx.pago.findMany({
+            where: { liquidacionId: liq.id, estado: 'INFORMADO' },
+            select: { id: true, periodo: true, monto: true },
+          });
+          avisosCerrados.push(
+            ...informados.map((p) => ({ id: p.id, periodo: p.periodo, monto: Number(p.monto) })),
+          );
           await tx.pago.updateMany({
             where: { liquidacionId: liq.id, estado: 'INFORMADO' },
             data: {
               estado: 'RECHAZADO',
-              observacion: `Cerrado automáticamente: el extracto bancario confirmó este cobro (op. ${credito.nroOperacion}).`,
+              // CON EL PREFIJO DE REVERSIÓN INTERNA, y no es un detalle de redacción. El
+              // esquema usa un solo `RECHAZADO` para "el inquilino mandó algo que no servía" y
+              // para "la inmobiliaria dio de baja un cobro propio", y el prefijo es lo único
+              // que los distingue. Acá pasa lo segundo: el inquilino avisó que pagó, el BANCO
+              // lo confirmó, y su aviso se cierra por superado.
+              //
+              // Sin el prefijo, a esa persona se le mostraba "Tu pago fue rechazado", se le
+              // publicaba en el feed con severidad crítica, se le filtraba esta nota interna y
+              // —lo peor— se le bajaba el nivel de buen pagador del certificado. Justo lo que
+              // el comentario de `PAGO_RECHAZADO_REAL` dice que hay que evitar: penalizarlo por
+              // algo que no es culpa suya.
+              observacion: motivoAutoRechazo,
               decididoPorId: u.userId,
               decididoAt: new Date(),
             },
           });
         }
-        return nuevoPago;
+        return { pago: nuevoPago, autoRechazados: avisosCerrados };
       });
+      // AUDITORÍA POST-COMMIT Y BEST-EFFORT. Esta conciliación crea un Pago CONCILIADO —plata
+      // que después entra al cierre de caja con comisión y se le rinde al propietario— y hasta
+      // acá era el único camino que la movía sin dejar una línea de quién lo hizo: ante una
+      // disputa no había forma de saber si ese cobro lo puso el extracto o alguien a mano.
+      //
+      // Va DESPUÉS del commit y no adentro de la tx por lo mismo que plata.ts:522 — un fallo
+      // al escribir el rastro abortaba la conciliación entera y el endpoint devolvía 200 igual.
+      // `registrarEvento` además traga su propio error, así que nunca rompe la respuesta.
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'PAGO_CONCILIADO',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: pago.id,
+        entidadDescripcion: `Pago ${pago.periodo} · $${Number(pago.monto)}`,
+        // El origen va en `detalle` porque es lo único que distingue este cobro de uno
+        // validado a mano: los dos terminan en un Pago CONCILIADO idéntico.
+        detalle: `Conciliado desde extracto bancario · ${credito.bancoOrigen || 'banco'} · op. ${credito.nroOperacion}`,
+      });
+      // La reversión del aviso también se audita, y como REVERTIDO —no RECHAZADO—: al
+      // inquilino su aviso le queda en RECHAZADO porque el esquema no tiene otro estado,
+      // pero no le rebotó nada, lo cerró el banco. Es la misma distinción que hace
+      // `observacionDeReversion` sobre la observación (ver lib/reversion-interna.ts) y la
+      // que plata.ts usa al anular un cobro propio.
+      for (const p of autoRechazados) {
+        await registrarEvento({
+          inmobiliariaId: u.inmobiliariaId,
+          tipo: 'PAGO_REVERTIDO',
+          autorId: u.userId,
+          rolAutor: u.rol,
+          entidadId: p.id,
+          entidadDescripcion: `Pago ${p.periodo} · $${p.monto}`,
+          detalle: motivoAutoRechazo,
+        });
+      }
       return pago;
     } catch (e) {
       if (e instanceof ConflictoCreditoConciliado) return reply.code(409).send({ message: 'Este crédito ya fue conciliado' });

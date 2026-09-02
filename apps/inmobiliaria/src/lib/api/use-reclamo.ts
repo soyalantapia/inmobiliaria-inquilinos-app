@@ -15,6 +15,7 @@ import { ensureApiSession } from './session';
 import { obtenerReclamo } from '@/lib/reclamos-store';
 import { profesionalCategoriaLabelAdmin, type CategoriaProfesional } from '@/lib/mock-data';
 import type { CargoReclamo, EventoReclamo, Moneda, PagadorReclamo, Reclamo } from '@/lib/types';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 
 interface EventoApi {
   id: string;
@@ -42,7 +43,13 @@ interface ReclamoDetalleApi {
   pagador: PagadorReclamo | null;
   costoTrabajo: number | string | null;
   costoTrabajoNotas: string | null;
-  propiedad: { id: string; direccion: string; ciudad: string } | null;
+  propiedad: {
+    id: string;
+    direccion: string;
+    ciudad: string;
+    complejo?: string | null;
+    consorcio?: { nombre: string } | null;
+  } | null;
   contrato: {
     id: string;
     fechaInicio: string | null;
@@ -86,7 +93,10 @@ function mapReclamo(r: ReclamoDetalleApi): Reclamo {
     inquilino: r.contrato?.inquilinoTitular
       ? `${r.contrato.inquilinoTitular.nombre} ${r.contrato.inquilinoTitular.apellido ?? ''}`.trim()
       : '—',
-    direccion: r.propiedad?.direccion ?? '—',
+    // rotuloEnLinea, NO rotuloPrincipal: el reclamo termina en una orden a un
+    // plomero/electricista que tiene que llegar a la puerta. El complejo ayuda a
+    // ubicarla, la calle es la que no se puede perder.
+    direccion: r.propiedad ? rotuloEnLinea(r.propiedad) : '—',
     categoria: r.categoria,
     descripcion: r.descripcion,
     urgencia: r.urgencia,
@@ -150,9 +160,12 @@ export interface UseReclamoResult {
   /** Contacto real del inquilino del API en prod; null en demo (lo resuelve el mock). */
   contacto: ContactoInquilino | null;
   asignar: (profesionalId: string) => Promise<void>;
+  tomar: () => Promise<void>;
   resolver: (input: ResolverReclamoInput) => Promise<void>;
   clasificar: (pagador: PagadorReclamo) => Promise<void>;
   rechazar: (motivo: string) => Promise<void>;
+  /** Reabre un reclamo CERRADO para poder corregirlo (T-63-N1). Sólo con API real. */
+  reabrir: (motivo: string) => Promise<void>;
   responder: (mensaje: string, adjuntoUrl?: string) => Promise<void>;
 }
 
@@ -190,6 +203,16 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
     onSuccess: invalidar,
   });
 
+  // Tomar el reclamo: ABIERTO → EN_CURSO. Es idempotente del lado del server, así que
+  // tocarlo dos veces no duplica el evento del historial.
+  const tomarM = useMutation({
+    mutationFn: async () => {
+      await ensureApiSession();
+      await apiFetch(`/reclamos/${id}/tomar`, { method: 'POST' });
+    },
+    onSuccess: invalidar,
+  });
+
   const resolverM = useMutation({
     mutationFn: async (input: ResolverReclamoInput) => {
       await ensureApiSession();
@@ -216,6 +239,17 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
     mutationFn: async (motivo: string) => {
       await ensureApiSession();
       await apiFetch(`/reclamos/${id}/rechazar`, {
+        method: 'POST',
+        body: JSON.stringify({ motivo }),
+      });
+    },
+    onSuccess: invalidar,
+  });
+
+  const reabrirM = useMutation({
+    mutationFn: async (motivo: string) => {
+      await ensureApiSession();
+      await apiFetch(`/reclamos/${id}/reabrir`, {
         method: 'POST',
         body: JSON.stringify({ motivo }),
       });
@@ -251,9 +285,12 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
       deApi: false,
       contacto: null,
       asignar: async () => {},
+      tomar: async () => {},
       resolver: async () => {},
       clasificar: async () => {},
       rechazar: async () => {},
+      // En demo no hay backend que reabra: el resto de las acciones también son no-op acá.
+      reabrir: async () => {},
       responder: async () => {},
     };
   }
@@ -266,9 +303,11 @@ export function useReclamo(id: string | undefined): UseReclamoResult {
     deApi: true,
     contacto: q.data?.contacto ?? null,
     asignar: (profesionalId) => asignarM.mutateAsync(profesionalId),
+    tomar: () => tomarM.mutateAsync(),
     resolver: (input) => resolverM.mutateAsync(input),
     clasificar: (pagador) => clasificarM.mutateAsync(pagador),
     rechazar: (motivo) => rechazarM.mutateAsync(motivo),
+    reabrir: (motivo) => reabrirM.mutateAsync(motivo),
     responder: (mensaje, adjuntoUrl) => responderM.mutateAsync({ mensaje, adjuntoUrl }),
   };
 }

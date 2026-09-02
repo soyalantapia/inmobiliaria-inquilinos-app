@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AudienciaAnuncio } from '@prisma/client';
 import type { JwtInquilino } from '@llave/shared';
 import { prisma } from '../db.js';
+import { liqQueDefineEstado, liqVencida } from '../lib/estado-de-pago.js';
 import { requireContratoAcceso, requireInquilino, requireUsuario } from '../auth/guards.js';
 import { enviarAnuncioEmail, mailerConfigured } from '../mailer.js';
 
@@ -50,10 +51,32 @@ const AUDIENCIAS_INQUILINO: AudienciaAnuncio[] = [
   'CONTRATOS_ESPECIFICOS',
 ];
 
-/** Mismo derivado que GET /contratos: vencida manda; si no, la más reciente. */
-function derivarEstadoPago(liqs: Array<{ estado: string }>): string {
-  const vencida = liqs.find((l) => l.estado === 'VENCIDO');
-  return (vencida ?? liqs[0])?.estado ?? 'PENDIENTE';
+/**
+ * Estado de pago del inquilino, con LA MISMA regla que el panel — ahora de verdad.
+ *
+ * ACÁ DECÍA "Mismo derivado que GET /contratos" y era falso, y el costo era plata:
+ *
+ *   · miraba el enum PERSISTIDO (`l.estado === 'VENCIDO'`), y el barrido
+ *     `marcarLiquidacionesVencidas` NO toca las PARCIAL a propósito. La cuota de quien pagó una
+ *     parte nunca vira a VENCIDO, así que ese inquilino quedaba afuera de `INQUILINOS_MOROSOS`
+ *     (no es VENCIDO) y también de `INQUILINOS_PENDIENTES` (no es PENDIENTE). El que más
+ *     necesita el aviso era el único que no lo recibía;
+ *   · y el `?? liqs[0]` tomaba la cuota del mes SIGUIENTE —el devengo la genera por
+ *     adelantado—, así que un inquilino al día caía en `INQUILINOS_PENDIENTES`.
+ *
+ * Los dos se arreglan usando `liqQueDefineEstado` + `liqVencida`, que es la regla real.
+ */
+function derivarEstadoPago(
+  liqs: Array<{ periodo: string; estado: string; fechaVencimiento: Date | string }>,
+  now: Date = new Date(),
+): string {
+  const l = liqQueDefineEstado(liqs, now);
+  if (!l) return 'PENDIENTE';
+  if (liqVencida(l, now)) return 'VENCIDO';
+  // Un PARCIAL que TODAVÍA NO venció también debe plata, así que entra en el recordatorio.
+  // Dejarlo afuera sería el mismo agujero de arriba corrido un mes: alguien que pagó de menos
+  // y no recibe el aviso justo antes del vencimiento.
+  return l.estado === 'PARCIAL' ? 'PENDIENTE' : l.estado;
 }
 
 /** Contrato + estado de pago del inquilino logueado (contexto de audiencia). */
@@ -65,7 +88,7 @@ async function contextoContrato(inq: JwtInquilino) {
           id: true,
           estado: true,
           propiedad: { select: { direccion: true, consorcioId: true } },
-          liquidaciones: { orderBy: { periodo: 'desc' }, take: 6, select: { estado: true } },
+          liquidaciones: { orderBy: { periodo: 'desc' }, take: 6, select: { periodo: true, estado: true, fechaVencimiento: true } },
         },
       })
     : null;
@@ -126,7 +149,15 @@ async function resolverAudiencia(
 ): Promise<{ inquilinoIds: string[]; destinatariosCount: number }> {
   switch (audiencia) {
     case 'TODOS_PROPIETARIOS':
-      return { inquilinoIds: [], destinatariosCount: await prisma.propietario.count({ where: { inmobiliariaId: tid } }) };
+      // `activo: true` tiene que estar acá TAMBIÉN, no sólo en el envío. El envío ya
+      // excluye a los dados de baja (más abajo, en `destinos`), pero este contador es
+      // el que se persiste en `Anuncio.destinatariosCount` y el que muestra el panel:
+      // sin el filtro decía "12 destinatarios" mientras salían 7 mails. Un número de
+      // alcance inflado es peor que no tenerlo, porque nadie lo va a dudar.
+      return {
+        inquilinoIds: [],
+        destinatariosCount: await prisma.propietario.count({ where: { inmobiliariaId: tid, activo: true } }),
+      };
     case 'TODOS_CONSORCIOS':
       return { inquilinoIds: [], destinatariosCount: await prisma.consorcio.count({ where: { inmobiliariaId: tid } }) };
     case 'CONTRATOS_ESPECIFICOS': {
@@ -171,7 +202,7 @@ async function resolverAudiencia(
         select: {
           id: true,
           contrato: {
-            select: { liquidaciones: { orderBy: { periodo: 'desc' }, take: 6, select: { estado: true } } },
+            select: { liquidaciones: { orderBy: { periodo: 'desc' }, take: 6, select: { periodo: true, estado: true, fechaVencimiento: true } } },
           },
         },
       });
@@ -206,15 +237,20 @@ async function enviarEmailsAnuncio(
 ): Promise<void> {
   const inmo = await prisma.inmobiliaria.findUnique({
     where: { id: anuncio.inmobiliariaId },
-    select: { nombre: true },
+    select: { nombre: true, email: true },
   });
   const inmoNombre = inmo?.nombre ?? 'Tu inmobiliaria';
+  // A dónde contesta el que recibe el anuncio. Sale de la inmobiliaria dueña del anuncio.
+  const inmoEmail = inmo?.email ?? null;
 
   // Destinatarios con email real, deduplicados (co-titulares pueden compartir casilla).
   const destinos: Array<{ email: string; paraInquilino: boolean }> = [];
   if (anuncio.audiencia === 'TODOS_PROPIETARIOS') {
+    // Sin `activo: true` esto le seguía mandando los anuncios de la inmobiliaria
+    // a ex-propietarios: es la fuga hacia afuera más visible de la baja lógica,
+    // porque llega a la casilla de alguien que ya no tiene nada que ver.
     const owners = await prisma.propietario.findMany({
-      where: { inmobiliariaId: anuncio.inmobiliariaId },
+      where: { inmobiliariaId: anuncio.inmobiliariaId, activo: true },
       select: { email: true },
     });
     for (const o of owners) destinos.push({ email: o.email, paraInquilino: false });
@@ -245,6 +281,7 @@ async function enviarEmailsAnuncio(
         cuerpo: anuncio.cuerpo,
         prioridad: anuncio.prioridad,
         inmobiliariaNombre: inmoNombre,
+        inmobiliariaEmail: inmoEmail,
         paraInquilino: d.paraInquilino,
       });
       if (enviado) ok += 1;

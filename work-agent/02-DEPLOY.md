@@ -1,3 +1,30 @@
+> # ⛔ OJO: TODO LO DE ABAJO ES DE RAILWAY, Y RAILWAY YA NO EXISTE
+>
+> El 28/08/2026 Railway restringió la cuenta entera. **Desde el 29/08 producción corre en
+> Render.** Los nombres de servicio, las URLs, los comandos `railway …` y el «`git push` ES el
+> deploy» que se leen más abajo **son todos falsos hoy**.
+>
+> Esto está arriba de todo a propósito: el que lee este documento está de guardia, con algo
+> roto, leyendo bajo presión. Lo primero que necesita es no perder veinte minutos en una
+> plataforma que no le va a contestar.
+>
+> | qué | dónde, hoy |
+> |---|---|
+> | API | [`myalq-api`](https://dashboard.render.com/web/srv-da99tce7bikc738o2o20) · `https://myalq-api.onrender.com` |
+> | Panel | [`myalq-panel`](https://dashboard.render.com/web/srv-da99ut142hec73f7tltg) · `https://myalq-panel.onrender.com` |
+> | PWA del inquilino | [`myalq-inquilino`](https://dashboard.render.com/web/srv-da99utgn74is73fckvog) · `https://myalq-inquilino.onrender.com` |
+> | Base | `myalq-db` (Postgres 16) |
+>
+> - **Salud:** `curl -s https://myalq-api.onrender.com/health` → trae `version` con el SHA que
+>   se está sirviendo.
+> - **Deploy:** `autoDeploy` está en **no** en los tres servicios. Mergear a `main` NO despliega;
+>   se dispara a mano desde el dashboard de cada uno.
+> - **Vuelta atrás:** dashboard del servicio → *Deploys* → *Rollback*. Ojo: la API aplica las
+>   migraciones al arrancar, así que volver el código **no vuelve el esquema**.
+> - **Logs:** dashboard del servicio → *Logs*. No hay `railway logs`.
+>
+> El expediente de la migración vive fuera del repo, en `deenex-infra` (`MYALQ.md`).
+
 # Deploy y operación — My Alquiler
 
 ## Railway
@@ -28,8 +55,36 @@ deployados vía `railway up`, **exit 0** cada uno ("Deploy complete"). HEAD == `
 
 ## Cómo deployar
 
-⚠️ Los servicios **NO están conectados a GitHub** — pushear a `main` **NO** auto-deploya.
-Para desplegar:
+> ## 🔴 CORRECCIÓN 20/08/2026 — esto estaba al revés, y es lo más importante de la página
+>
+> Decía que los servicios **no** estaban conectados a GitHub y que pushear a `main` **no**
+> deployaba. **Es falso.** Los tres servicios tienen
+> `Source repo: soyalantapia/inmobiliaria-inquilinos-app` (verificado contra la API de Railway,
+> `get_service_config`).
+>
+> **Pushear a `main` deploya producción solo, sin pedir nada.** Se comprobó el 20/08: el push de
+> `94d4000` disparó los tres deploys a las 01:09:45 UTC —el mismo segundo, el mismo SHA— y con
+> ellos **trece migraciones**, una de las cuales borró datos de forma irreversible.
+>
+>
+> | servicio | deployment del 20/08 | estado |
+> |---|---|---|
+> | `myalquiler-back` | `1d6f9d4b` | SUCCESS |
+> | `myalquiler-front` | `7b75cfb7` | SUCCESS |
+> | `myalquiler-inquilino` | `8873507e` | SUCCESS |
+>
+> Y las migraciones tampoco se aplican a mano: el `CMD` del Dockerfile del back corre
+> `pnpm db:deploy && exec node dist/index.js`, así que corren ANTES de levantar y si fallan el
+> contenedor no arranca. Por eso nunca puede quedar código nuevo contra un esquema viejo — y
+> por eso también el push se lleva las migraciones puestas sin preguntar.
+>
+> Consecuencia práctica: **`git push origin main` ES el deploy.** No es un paso previo seguro.
+> Todo lo que haya que revisar antes de tocar producción, hay que revisarlo antes del push, no
+> entre el push y un `railway up` que nunca va a hacer falta.
+
+El deploy normal es automático: **push a `main`**. Lo de abajo (`railway up`) sirve para forzar
+un deploy sin pasar por git — por ejemplo para probar el working tree — y hay que usarlo sabiendo
+lo que sube:
 
 ```bash
 railway up --service <svc> --detach        # back / front / inquilino — solo lo que tocaste
@@ -37,9 +92,13 @@ railway up --service <svc> --detach        # back / front / inquilino — solo l
 ```
 
 ⚠️ **`railway up` sube el WORKING TREE, no solo lo commiteado.** Antes de deployar,
-**verificá que el árbol esté limpio** (`git status`) — si hay cambios sin commitear se van
-a prod igual, aunque no estén en `main`. Combinado con lo de arriba (push a `main` NO
-auto-deploya), la regla es: commiteá primero, confirmá árbol limpio, después `railway up`.
+**verificá que el árbol esté limpio** (`git status`) — si hay cambios sin commitear se van a
+prod igual, aunque no estén en ningún commit. La regla es: commiteá primero, confirmá árbol
+limpio, después `railway up`.
+
+Y ojo con la otra mitad: como el push a `main` **sí** auto-deploya, un `railway up` desde un
+árbol sucio queda **pisado** por el siguiente merge a `main`, en silencio. Si algo se subió así
+y hace falta que sobreviva, tiene que terminar commiteado.
 
 Para saber cuándo quedó live un endpoint nuevo: pollear hasta que pase de **404→401**
 (route registrado pero sin token) en vez de pollear `railway status`. Ej:
@@ -53,6 +112,63 @@ Mecánica de los Dockerfiles (fronts): `RAILWAY_DOCKERFILE_PATH=apps/<app>/Docke
 contexto = raíz del monorepo, `NEXT_PUBLIC_API_URL` se hornea como build ARG. El
 Dockerfile **debe copiar `tsconfig.base.json`** (cadena tsconfig → @llave/config →
 ../../tsconfig.base.json). `CORS_ORIGINS` del back debe incluir los dominios de los fronts.
+
+## El portal del propietario vive adentro del panel, en `/propietario`
+
+No tiene servicio propio en Railway **a propósito**. Es una app de sólo lectura y 100%
+estática —ya se exportaba así para la demo—, así que un servicio aparte serían dólares por mes
+y un dominio más para mantener a cambio de servir unos HTML. El build del panel la genera y la
+deja en `apps/inmobiliaria/public/propietario/`.
+
+**La URL para un propietario es `https://admin.myalquiler.com/propietario`.**
+
+Las tres piezas, por si alguna se toca:
+
+1. `apps/propietario/next.config.mjs` lee `BASE_PATH` (default: el de GitHub Pages, que es lo
+   que espera `scripts/build-static.sh`).
+2. El `Dockerfile` del panel buildea el portal con `BASE_PATH=/propietario` y le pasa el
+   `NEXT_PUBLIC_API_URL` del service, y copia el `out/` a `public/propietario/`. **Va antes**
+   del build del panel, porque `public/` se lee durante ese build.
+3. `apps/inmobiliaria/next.config.mjs` tiene dos rewrites en `afterFiles`. Sin ellos
+   `/propietario` da 404 aunque el archivo esté: Next sirve `public/` archivo por archivo y no
+   resuelve índices de directorio. Van en `afterFiles` y no en `beforeFiles` para que los
+   assets reales se sirvan primero y no les pegue la regla comodín.
+
+**Por qué el panel y no la PWA del inquilino:** la PWA registra un service worker con scope
+`/`, que tomaría el control de `/propietario/*`. El panel no tiene ninguno.
+
+**No pasarle `NEXT_PUBLIC_DEMO`.** Con `NEXT_PUBLIC_API_URL` puesta `demoEnabled` ya da false
+—pide las dos cosas—, pero el día que alguien lo agregue "para probar" estaría publicando datos
+inventados en un dominio real.
+
+### Ya está linkeado — cómo llega el propietario
+
+Hasta el 20/08 el portal se podía abrir pero **ninguna superficie decía que existía**: era la
+diferencia entre "deployado" y "entregado". Las dos puertas que faltaban ya están:
+
+- **Por mail, al propietario.** `enviarAnuncioEmail` manda el CTA de los dos lados: al
+  inquilino "Ver en la app", al propietario **"Ver mis rendiciones"** hacia
+  `APP_PROPIETARIO_URL`, que por default es `https://admin.myalquiler.com/propietario`. Si se
+  setea en Railway tiene que apuntar al host del **panel** con `/propietario` — el portal no
+  tiene servicio propio (ver arriba). **Es el único mail que hoy le llega a un propietario**
+  además del OTP de login del portal: no hay mail de rendición ni de alta, así que ésta era la
+  única superficie donde meterlo.
+- **Desde el panel, para que la inmobiliaria lo comparta.** Configuración tiene la card **"Link
+  del portal para tus propietarios"** (`configuracion-prod.tsx`), al lado de la del link de la
+  app del inquilino: el link y un "Copiar link". Ahí la URL va **hardcodeada y sin env que la
+  pise** a propósito — el portal se sirve desde el mismo host que el panel, así que la única
+  variante posible sería una mal configurada.
+
+El copy de las dos lo confirmó el dueño el 20/08 —toca a un usuario final, así que no lo decide
+un dev—: botón «Ver mis rendiciones» en el mail y el texto de la card.
+
+Verificado el 20/08 sirviendo el export desde el panel: las cinco rutas (`/propietario`,
+`/login`, `/unidades`, `/reclamos`, `/perfil`) dan 200, los assets resuelven bajo
+`/propietario/_next/`, y el bundle tiene horneada la URL del API de producción, no la de la
+demo. **Lo que NO se pudo probar acá es el build de Docker** (el daemon no estaba levantado):
+si algo falla, falla el deploy del panel y Railway se queda con el anterior.
+
+---
 
 ## Migraciones (Prisma)
 
@@ -117,6 +233,45 @@ pnpm --filter @llave/inquilino exec tsc --noEmit
 pnpm --filter @llave/inquilino build
 ```
 
+### ⚠️ En Windows el build del panel falla y NO es un problema del deploy
+
+`pnpm --filter @llave/inmobiliaria build` termina en rojo en esta máquina con:
+
+```
+Error occurred prerendering page "/inicio/opengraph-image-b368cs"
+TypeError: Invalid URL ... at fileURLToPath ... @vercel/og/index.node.js:18988
+```
+
+**Es un bug de Windows dentro del `@vercel/og` que Next 14 trae bundleado, no del repo.**
+Esa línea hace `fileURLToPath(join(import.meta.url, "../noto-sans-v27-latin-regular.ttf"))`,
+y `join` es `path.join`, que no sabe de URLs:
+
+| plataforma | resultado del join | `new URL(...)` |
+|---|---|---|
+| win32 | `.\file:\repo\...\noto-sans.ttf` | **Invalid URL** ← lo que ves |
+| posix | `file:/repo/.../noto-sans.ttf` | parsea, pathname `/repo/...` |
+
+El parseo de URL es de spec y no depende del sistema operativo, así que en el contenedor
+de Railway (node:22-slim) no puede fallar.
+
+**Y no hace falta creerle al razonamiento: está comprobado en producción.** El 20/08 el
+panel se deployó desde este mismo commit —build de Docker, `next build` SIN
+`STATIC_EXPORT`, o sea exactamente el camino que prerenderiza esta ruta— con estado
+SUCCESS, y la imagen se sirve:
+
+```bash
+curl -sI https://admin.myalquiler.com/inicio/opengraph-image-b368cs   # 200 image/png
+```
+
+> ⚠️ **Ojo con la URL.** `/inicio/opengraph-image` (sin el sufijo) da **404**, y ese 404 no
+> significa nada: Next publica la ruta con un hash. Yo tomé ese 404 como evidencia de que
+> el build había rechazado la imagen, y no era eso.
+
+Tampoco es evidencia que el workflow de GitHub Pages esté verde: ese build es
+`STATIC_EXPORT=1` y pasa por `scripts/build-static.sh`, que **renombra el `middleware.ts`**
+antes de compilar. Correr `STATIC_EXPORT=1 next build` a mano sin ese paso falla por otra
+cosa (`Can't resolve '@clerk/nextjs/server'`) y no compara nada.
+
 ## Tests (DB de test, NO prod)
 
 Las suites de `apps/api` (`pnpm --filter api test`, vitest) pegan a una **DB de test**
@@ -141,3 +296,41 @@ en `beforeAll`. Es **distinta de prod** — pero la regla dura sigue: si no ten�
 3. No crear cuentas / data de prueba en el tenant real (Tapia Propiedades).
 4. Repo `soyalantapia/inmobiliaria-inquilinos-app`. gh token **sin** workflow scope
    (no tocar `.github/workflows/`). Pushear a `main` es OK en este repo.
+
+---
+
+## Qué hay arriba — 20/08/2026
+
+Deploy automático disparado por el push del merge `94d4000` a `main`.
+
+| servicio | URL | commit | verificado |
+|---|---|---|---|
+| API | `api-production-262e.up.railway.app` | `94d4000` | `/health` → `200 {"ok":true,"db":"up","version":"94d4000"}` |
+| Panel | `admin.myalquiler.com` | `94d4000` | HTTP 200 |
+| PWA inquilino | `app.myalquiler.com` | `94d4000` | HTTP 200 |
+| Landing | `myalquiler.com` | `94d4000` | HTTP 200 |
+| Demo estática | GitHub Pages | `94d4000` | 200, incluido `/propietario/` |
+
+**Migraciones:** las trece pendientes se aplicaron en ese deploy —
+*"All migrations have been successfully applied"* en el log.
+
+**Smoke test de rutas** (sin auth, sólo para confirmar que están registradas y no rotas):
+`/rendiciones`, `/caja/movimientos`, `/metricas/resumen`, `/portal/rendiciones`,
+`/mis-liquidaciones` → **401** las cinco. Cero 500.
+
+**CI:** las dos workflows verdes en ese push — `Revisión` (typecheck + 395 tests de API + 95 de
+los fronts) en 1m05s, y `Deploy to GitHub Pages` en 2m24s. Es el **primer Pages verde desde el
+3 de agosto**: los tres deploys anteriores en `main` estaban en failure.
+
+### Cómo saber qué commit está arriba, de ahora en más
+
+```bash
+curl -s https://api-production-262e.up.railway.app/health          # API: campo "version"
+curl -s https://admin.myalquiler.com | grep build-commit           # panel
+curl -s https://app.myalquiler.com   | grep build-commit           # PWA
+```
+
+El `<meta name="build-commit">` de los fronts se agregó en **T-02-N1**: hasta entonces sólo la
+API decía qué versión corría, y de los fronts no había forma de saberlo. Si dice `desconocido`,
+es un build que se hizo sin `RAILWAY_GIT_COMMIT_SHA` ni `GITHUB_SHA` — no es un error, es el
+fallback honesto.

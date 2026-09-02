@@ -1,10 +1,14 @@
 # Estado del proyecto — My Alquiler
 
 > **Documento de handoff.** Resumen ejecutivo de dónde está el proyecto hoy.
-> Última actualización: **2026-07-28**. Último commit: `09b454a`.
-> **Último hito (28/07): caza de REGRESIONES sobre los fixes del 27** — 14 confirmados,
+> Última actualización: **2026-08-21**. Último commit en `main`: `9208578`.
+> **Último hito (19-20/08): el portal del propietario en pestañas, y la suite de integración
+> corriendo por primera vez.** Las dos cosas se cuentan juntas porque la segunda destrabó a la
+> primera. Detalle abajo, en «Verificado el 20/08».
+> Hito previo (28/07): caza de REGRESIONES sobre los fixes del 27.
+> Sobre ese hito: 14 confirmados,
 > **los 14 cerrados**, 3 de ellos regresiones directas de los fixes del día anterior
-> (una costaba plata). ⚠️ **En `main`, TODAVÍA SIN DEPLOYAR.** Detalle en
+> (una costaba plata). Estuvo semanas en `main` sin deployar; hoy ya está en producción. Detalle en
 > `03-AUDITORIAS.md` §caza de regresiones 28/07.
 > Hito previo (27/07): cacería sistemática — ~75 hallazgos, **40 corregidos y deployados**.
 > Hitos previos (todo en prod, back+front, E2E/verificación OK):
@@ -21,12 +25,16 @@
 ## Qué es
 
 **My Alquiler** (codename `@llave/*`) es un SaaS **multi-tenant** de gestión de
-alquileres para **Tapia Propiedades** (y futuras inmobiliarias). Dos frentes:
+alquileres para **Tapia Propiedades** (y futuras inmobiliarias). **Tres** frentes:
 
 - **Panel de la inmobiliaria** (admin): contratos, propiedades, propietarios, pagos,
   rendiciones, caja, reclamos, equipo, sociedades, configuración.
 - **PWA del inquilino**: contrato/liquidaciones, informar pagos con comprobante,
   boletas de servicios, reclamos, co-inquilinos, notificaciones.
+- **Portal del propietario** (`apps/propietario`, puerto 3003): de **sólo lectura**, en cuatro
+  pestañas — Pagos (lo que se le rindió, más lo cobrado y todavía sin rendirle), Unidades,
+  Reclamos y Perfil. Login por OTP al email que la inmobiliaria le tiene cargado. Este doc
+  decía "dos frentes" y hacía meses que eran tres.
 
 ## EN VIVO (producción, Railway)
 
@@ -34,9 +42,23 @@ alquileres para **Tapia Propiedades** (y futuras inmobiliarias). Dos frentes:
 |---|---|
 | Panel inmobiliaria | **https://admin.myalquiler.com** |
 | PWA inquilino | **https://app.myalquiler.com** |
+| Portal del propietario | **https://admin.myalquiler.com/propietario** — sin servicio propio: es un export estático servido por el panel. Ver `02-DEPLOY.md`. |
 | API | https://api-production-262e.up.railway.app (`GET /health`) |
 
-Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com / Tapia.2026!`
+> ### 🔴 Credenciales — la de producción hay que ROTARLA
+>
+> **Ninguna credencial va en este repo.** La del admin del tenant real la tiene el dueño.
+>
+> **La que está en uso hoy hay que darla por comprometida.** Estuvo en texto plano en CINCO
+> archivos versionados —`README.md`, `PROJECT.MD`, este archivo, `05-DECISIONES.md` y
+> `historico/PROMPT-DEV-SENIOR.md`— desde el commit que creó cada uno, y el repo estuvo
+> público. Se sacó del árbol el 20/08/2026, y eso **no la invalida**: sigue viva en el
+> historial de git, donde `git show <sha>:<archivo>` la devuelve hoy.
+>
+> **Lo único que cierra el riesgo es rotarla, y eso lo hace el dueño** — ningún agente toca
+> credenciales de producción. Detalle y estado en T-26 (`09-TAREAS-REUNION-CAMILA.md`).
+
+Tenant real: **Tapia Propiedades** · admin `alannaimtapia@gmail.com` — la contraseña **no va en el repo**: la tiene el dueño (ver §Credenciales, arriba).
 (el **PIN de seguridad se eliminó** — ninguna acción lo pide).
 
 ## Dónde estamos
@@ -101,6 +123,178 @@ auditoría multi-agente arreglaron **~50+ bugs reales** verificados y deployados
   acción pide PIN (rol/capacidad + aislamiento multi-tenant siguen protegiendo). Tests actualizados.
 - ✅ **"Pagos recibidos"** en los comprobantes del inquilino — los cobros CONCILIADO (incl. manuales
   de la inmo, parciales o de meses futuros) se muestran como transacciones explícitas.
+
+## El área del propietario, reforzada el 20/08
+
+Se exploró entera —seguridad, plata, cobertura, robustez, producto y operación— y se cerró
+lo que apareció. Lo que sigue es el resumen; el detalle está en los commits.
+
+**Plata.** Tres bugs que le mostraban al dueño números equivocados, y uno que podía pagarle
+de más:
+
+- Con dos dueños, "cobrado y sin rendirte" mostraba el remanente de la UNIDAD: a uno le
+  sobraba y al otro le faltaba, al mismo tiempo.
+- Los dólares salían con signo de pesos, en el portal y en la rendición impresa.
+- La plata de la MIGRACIÓN DE CARTERA se contaba como cobro rendible. `POST /rendiciones`
+  se la podía transferir de nuevo al dueño, y de paso trababa con 409 el cambio de reparto
+  de toda propiedad con historia previa. Se marca con `Pago.migradoDeCartera`.
+- Los períodos rendidos antes del 01/07/2026 no descontaban nada, porque
+  `alquileres_rendidos` se creó vacía. No se puede backfillear —`Rendicion` guarda un total
+  por (dueño, período), no el desglose—, así que se dan por saldados los períodos con una
+  rendición sin líneas.
+
+**Seguridad.** El email es la llave del portal y nadie lo revalidaba: corregir un typo no
+cerraba la sesión del que había entrado con el mail equivocado. Ahora sí, con mensaje
+distinto al de la baja. ⚠️ Cierra la ventana POSTERIOR a la corrección, no la brecha:
+mientras el typo vive, el OTP se manda igual a esa casilla.
+
+**Cobertura.** El portal tenía CERO tests por HTTP: los 7 endpoints y el login nunca se
+habían ejecutado. `test/portal-propietario-e2e.test.ts` los cubre, con aislamiento contra
+una segunda inmobiliaria REAL y la revocación por baja lógica. Encontró dos cosas en su
+primera corrida.
+
+**Lo que hay que saber para no romperlo:**
+
+- El portal se compila de TRES formas y sólo una llega a un dueño real
+  (`BASE_PATH=/propietario STATIC_EXPORT=1`). Las tres corren en CI.
+- Comparte `localStorage` con el panel, porque comparte origen. El logout del panel barre
+  las dos sesiones a propósito.
+- `anular` una rendición ya NO borra la fila: es baja lógica (`Rendicion.anuladaAt`,
+  `motivoAnulacion`, `anuladaPorId`). Se le borran los `AlquilerRendido` para que la plata
+  vuelva a contar como sin rendir, la cabecera sobrevive marcada, el dueño la ve tachada con
+  el motivo en su portal y el operador la ve igual en el historial del panel.
+  `GET /rendiciones` **las esconde por default**: cinco pantallas preguntan "¿ya se le
+  rindió?" y ninguna sabía de la baja lógica. Quien las quiera, `?incluirAnuladas=1`.
+
+### Segunda vuelta (20/08, tarde): revisión adversarial de las cinco lentes
+
+Se corrió una revisión con cinco lentes distintas sobre el área —plata, aislamiento
+multi-tenant, el portal como producto, ciclo de vida de estados raros y consistencia
+panel↔portal—, cada hallazgo refutado por un escéptico antes de contarlo. **20 hallazgos, 15
+sobrevivieron, 12 cerrados.** Los tres que faltan son decisiones de producto, abajo.
+
+Lo más grave, en orden:
+
+- **Se le podía pagar DOS VECES al dueño.** El anti-doble de `POST /rendiciones` se apoya
+  entero en `alquileres_rendidos`, que nació vacía: para todo período rendido antes del
+  01/07/2026 leía cero y daba vía libre. La regla existía sólo del lado de LECTURA, así que
+  el portal y el "por rendir" daban el período por saldado y el cobro doble no aparecía en
+  ninguna pantalla. Verificado al revés: con el guard desactivado el test da 201 en vez de 409.
+- **Un rol CARGA podía redirigir la plata.** `propietarios.crear` incluye a CARGA y gateaba
+  el `cbuAlias` del dueño, la cuenta de cobranza directa —el CBU que la PWA le muestra al
+  inquilino— y el `email`, que es la credencial del portal. Sin rastro. Ahora hay corte de
+  rol y evento `PROPIETARIO_CUENTA_CAMBIADA` con el valor viejo y el nuevo.
+- **Un PUT parcial le borraba el CBU al propietario**, y sin CBU no se le puede rendir. Es la
+  misma mina que el `email` tenía documentada y arreglada tres líneas más arriba, que nunca
+  se aplicó a los vecinos. Lo encontró un test que buscaba otra cosa.
+- **CAJA recibía el CBU y el CUIT de cada dueño** por `GET /contratos/:id`, que pide
+  `contratos.ver`. A CAJA se le negó `propietarios.ver` a propósito: la restricción existía y
+  se filtraba entera por la puerta de al lado.
+- **Al terminar un contrato, la plata cobrada y sin rendir desaparecía del panel.** El join
+  era por `contratoActualId`, que se corta solo en la baja y en la renovación. El server sí se
+  la habría rendido y el portal la seguía mostrando como pendiente.
+- **Pedir el OTP delataba por el reloj** si un email era propietario: la rama del email que
+  existe awaiteaba dos escrituras más (~450 ms cada una contra la base remota). Se sacaron del
+  camino del request — se elimina la diferencia en vez de taparla. Mismo agujero en el OTP del
+  inquilino, arreglado igual.
+
+Y: el borrado de caja no protegía los INGRESO_EXTRA rendidos a medias (miraba sólo el ledger
+de gastos); todo contrato importado "en curso" quedaba trabado para siempre sin poder cambiar
+de modo de cobranza; la moneda se perdía en tres pantallas más y en el WhatsApp al dueño; la
+ficha prometía rendir el alquiler de contratos que cobra el dueño mismo; una rendición anulada
+se contradecía a sí misma en el portal; el resumen anual para el contador desaparecía en enero.
+
+**Las tres decisiones de producto que quedaron abiertas** (no las toma un agente):
+
+1. `rendidoAt` es cuándo el operador CARGÓ la rendición, y el portal lo presenta como
+   *"Te depositamos el X"* y bucketea con él el resumen del contador. O se agrega un campo de
+   fecha real de transferencia, o el copy tiene que decir "Rendido el".
+2. En Unidades, el renglón *"pagó $X de $Y"* compara contra `montoTotal` (alquiler +
+   expensas), así que le muestra al dueño un faltante que incluye plata del consorcio.
+3. El resumen anual no tiene selector de año (hoy ofrece el último año con rendiciones).
+
+Y una cuarta, más de fondo: **el email del propietario nunca se verifica**. Es la credencial
+del portal y alcanza con escribirlo en la ficha para recibir el OTP. Hoy la única defensa es
+la auditoría.
+
+---
+
+### Tercera vuelta (21/08): carreras, datos preexistentes y lo que el código promete
+
+Segunda revisión adversarial, con cinco lentes que la primera NO usó —concurrencia, filas
+anteriores a cada feature, comentarios y tests que afirman lo que el código ya no hace, el
+camino del error, y lo que se le comunica al dueño—. **13 hallazgos, 11 sobrevivieron, 10
+cerrados.**
+
+- **Las condonaciones de 16 días se le rindieron al dueño como plata cobrada.** El botón
+  Condonar salió el 05/07 y crea un `Pago` CONCILIADO por el saldo entero: cancela la deuda del
+  inquilino sin que entre un peso. `Pago.condonado` —lo único que lo distingue de un cobro
+  real— se agregó el 21/07 con `DEFAULT false` y **sin backfill**. Las dos superficies que la
+  marca vino a proteger las seguían contando: el cierre de caja con comisión, y
+  `POST /rendiciones` transfiriéndoselas al propietario. Migración
+  `20260821030000_backfill_pago_condonado`, verificada caso por caso contra filas reales y
+  aplicada en producción con OK del dueño. **Lo que el backfill NO hace es devolver lo que ya se
+  transfirió de más** — eso queda para decidir.
+- **Cuatro guards de plata decidían con una foto tomada fuera de la transacción.** El mismo
+  patrón: leer con `prisma` en autocommit, contestar 409, y recién ahí abrir la tx y escribir
+  por clave primaria pelada. El peor —anular un pago mientras se rinde— dejaba
+  `AlquilerRendido` sobre un pago que terminaba RECHAZADO **y sin salida**: reintentar anular da
+  409 porque el pago ya está rechazado. Los otros: resolver el depósito dos veces contra la
+  misma deuda, borrar el movimiento que la rendición acababa de acreditar, y cambiar el reparto
+  con plata en el aire (que además ignoraba los pagos INFORMADOS, donde la ventana no son
+  milisegundos sino días). El repo ya tenía el arreglo escrito y comentado en
+  `PATCH /modo-cobranza` y en `DELETE /caja/movimientos/:id`; estos cuatro habían quedado
+  afuera. El test es **estructural**: reproducir la carrera pide dos requests entrelazados en el
+  punto exacto y sale flaky por construcción; la forma del código no.
+- **El panel contaba los errores como buenas noticias.** "Todos rendidos este mes 🎉", "Todos
+  tienen CBU cargado" y "Sin rendiciones todavía" se pintaban igual con la consulta caída. Y no
+  hace falta que se caiga nada: el rol CARGA no tiene `pagos.ver`, así que para él ese cartel
+  verde es el estado PERMANENTE.
+- **Rendir en efectivo a un dueño sin CBU era imposible**, aunque el panel lo ofrecía y lo
+  recomendaba: el 409 era incondicional, antes de mirar el método.
+- **El comprobante de WhatsApp salía de una rendición elegida al azar** cuando el período tenía
+  varias (la rendición es incremental y va una por moneda), porque `GET /rendiciones` ordenaba
+  sólo por período y el panel pisaba en cada vuelta.
+- Y: la doc de la rendición mentía en tres archivos (la fórmula del neto sin `+ totalIngresos`,
+  y un `@@unique` como "lock anti-doble" que se dropeó el 01/07); `smoke-prod.mjs` fallaba
+  siempre porque usaba la credencial del seed, que en prod no existe; y el test de partición del
+  suite que `vitest.con-db.config.ts` prometía por su nombre exacto no existía, con el criterio
+  duplicado y divergido — el riesgo ahí no es que un test corra dos veces, es que no corra en
+  **ninguno** de los dos jobs.
+
+**El que queda, y es decisión de producto:** al propietario **nunca se le avisa que le anularon
+la rendición**. No hay canal de notificación al dueño —el portal es pull— así que o se crea uno,
+o el diálogo de Deshacer lleva el mismo botón de WhatsApp que ya tiene el de Rendir.
+
+---
+
+## Verificado el 20/08 — qué se corrió de verdad
+
+No es una lista de lo que "debería andar": es lo que se ejecutó, con el resultado que dio.
+
+| Qué | Resultado |
+|---|---|
+| `tsc --noEmit` en los 6 paquetes | verde |
+| Tests sin base (41 archivos) | verde |
+| Tests de los tres fronts (12 archivos, 98 tests) | verde |
+| Integración, por lotes contra la DB de test | en curso, verde hasta ahora |
+| Build de `propietario` y de `inquilino` | verde |
+| Build de `inmobiliaria` | **rojo en Windows y sólo en Windows** — ver `02-DEPLOY.md` |
+| Portal del propietario, las 4 pestañas con login OTP real | verde |
+
+**Lo que destrabó todo esto fue crear `apps/api/.env`.** Está gitignoreado, así que en un
+checkout nuevo no existe y la suite de integración entera falla con un ZodError de entorno
+*antes* de tocar la red. Dos tareas anteriores leyeron ese síntoma como "no se puede correr acá"
+y lo anotaron como un hecho del repo. Con el archivo puesto corrieron ~60 archivos que llevaban
+meses sin ejecutarse, y aparecieron dos bugs que sólo se ven corriéndolos (ver `d65d655`).
+La receta está en `docs/TESTING.md`, junto con lo que cuesta: son ~94 archivos contra una
+Postgres remota, tarda **horas**, y un timeout que la corta devuelve exit 0 y parece verde.
+
+**Rojo conocido y preexistente:** `certificado-antiguedad.test.ts` falla con 401. Confirmado
+con `git stash` que falla igual sin ninguno de los cambios de estos días. Que nadie lo persiga
+creyendo que lo rompió.
+
+---
 
 ## Qué falta (próximo chat)
 

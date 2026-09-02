@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 /**
  * Regresión del bug multi-propietario (B2): en una propiedad con varios dueños,
@@ -34,6 +35,10 @@ async function limpiar() {
   await prisma.pago.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.liquidacion.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.propiedad.updateMany({ where: { id: { startsWith: P } }, data: { contratoActualId: null } });
+  // El historial va ANTES que el contrato: su FK es RESTRICT y desde que el alta escribe
+  // un evento CREADO (T-29), todo contrato creado por la API tiene al menos una fila acá.
+  // Se filtra por la relación para no repetir —ni desincronizar— el where de abajo.
+  await prisma.eventoContrato.deleteMany({ where: { contrato: { id: { startsWith: P } } } });
   await prisma.contrato.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.participacionPropietario.deleteMany({ where: { propiedadId: { startsWith: P } } });
   await prisma.propietario.deleteMany({ where: { id: { in: [`${P}ownA`, `${P}ownB`] } } });
@@ -133,12 +138,7 @@ beforeAll(async () => {
   });
 
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({
-    method: 'POST',
-    url: '/auth/login',
-    payload: { email: 'roberto@delsol.com', password: 'delsol123' },
-  });
-  token = login.json().token;
+  token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {
@@ -395,7 +395,8 @@ describe('Anular una rendición parcial: el gasto vuelve a quedar pendiente', ()
       method: 'POST',
       url: `/rendiciones/${rendA!.id}/anular`,
       headers: auth(token),
-      payload: {},
+      // Motivo obligatorio desde la baja lógica.
+      payload: { motivo: 'prueba de anulación multi-dueño' },
     });
     expect(res.statusCode).toBe(200);
 
@@ -509,7 +510,7 @@ describe('Moneda de la caja: la rendición sólo descuenta los gastos de SU mone
     expect(ars.descontadoEnRendicion).toBe(false); // sólo A rindió: falta la mitad de B
     const partes = await prisma.gastoRendido.findMany({ where: { refId: `${P}gasto4ars` } });
     expect(partes).toHaveLength(1);
-    expect(Number(partes[0].monto)).toBe(100);
+    expect(Number(partes[0]!.monto)).toBe(100);
   });
 
   it('un gasto en USD tampoco se le cobra al co-dueño', async () => {

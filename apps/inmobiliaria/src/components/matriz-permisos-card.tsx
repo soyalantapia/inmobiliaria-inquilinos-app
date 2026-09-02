@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Eye,
   FileEdit,
-  KeyRound,
   Settings2,
   ShieldCheck,
   Workflow,
@@ -47,10 +46,13 @@ export function MatrizPermisosCard() {
           <Settings2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
           <div className="flex-1">
             <p className="text-sm font-semibold">Matriz de permisos</p>
+            {/* Acá decía además: "Las acciones marcadas con 🔑 piden el PIN del usuario". Era
+                falso desde que el PIN se sacó de la plataforma, y es la peor pantalla donde
+                serlo: es donde el admin viene a entender qué protege su sistema. Lo que de
+                verdad limita cada acción es el ROL, que el server resuelve contra la base en
+                cada request. */}
             <p className="text-xs text-muted-foreground">
-              Quién puede ver y hacer qué en el panel. Las acciones marcadas con
-              <KeyRound className="mx-1 inline-block h-3 w-3 text-primary" />
-              piden el PIN del usuario. Las que tienen
+              Quién puede ver y hacer qué en el panel. Las que tienen
               <Badge variant="warning" className="mx-1 align-middle text-[8px]">
                 pendiente
               </Badge>
@@ -127,15 +129,13 @@ function FilaCapacidad({ cap }: { cap: DefinicionCapacidad }) {
   return (
     <tr className="border-b border-border/50 last:border-0">
       <td className="sticky left-0 bg-background px-2 py-2 text-xs">
-        <div className="flex items-center gap-1.5">
-          <span>{cap.label}</span>
-          {cap.requierePin && (
-            <KeyRound
-              className="h-3 w-3 text-primary"
-              aria-label="Requiere PIN"
-            />
-          )}
-        </div>
+        {/* Acá había un candado con aria-label="Requiere PIN" sobre las capacidades marcadas
+            `requierePin: true`. El PIN se eliminó de la plataforma por decisión de producto
+            (`apps/api/src/auth/pin.ts` siempre aprueba), así que el icono le prometía al admin
+            un segundo factor sobre confirmar un pago, revertir una conciliación o rendirle a un
+            propietario — y no existe. Que lo mostrara JUSTO en la pantalla de permisos es lo
+            que lo hacía peor: es donde alguien va a entender qué protege su sistema. */}
+        <span>{cap.label}</span>
       </td>
       {ROLES_ORDEN.map((r) => {
         const tiene = cap.roles.includes(r);

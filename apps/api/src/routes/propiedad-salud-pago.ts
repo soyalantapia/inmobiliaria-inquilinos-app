@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { yaVencio } from '@llave/shared';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
-import { conSaldo, montoPagadoPorLiquidacion } from '../lib/saldos.js';
+import { conSaldo, montoPagadoPorLiquidacion, pagadoAlVencimientoPorLiquidacion } from '../lib/saldos.js';
 import { calcularMora, resolverEsquemaMora } from '../lib/punitorios.js';
 
 const r2c = (n: number) => Math.round(n * 100) / 100;
@@ -77,13 +77,15 @@ export async function propiedadSaludPagoRoutes(app: FastifyInstance) {
         })
       : [];
     const pagadoMap = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
+    // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+    const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(liqs);
     // Mora al día con el esquema EFECTIVO (cascada contrato → default de la inmobiliaria,
     // el manual pisa). Antes esta vista leía `l.montoPunitorio`, una columna que siempre
     // vale 0: la deuda impaga salía SIN mora y no coincidía con la que ven el detalle del
     // contrato, el inquilino y la cobranza.
     const inmoMora = await prisma.inmobiliaria.findUnique({
       where: { id: u.inmobiliariaId },
-      select: { moraTipoDefault: true, moraValorDefault: true },
+      select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
     });
     const esquemaPorContrato = new Map(contratos.map((c) => [c.id, resolverEsquemaMora(c, inmoMora)]));
 
@@ -102,7 +104,13 @@ export async function propiedadSaludPagoRoutes(app: FastifyInstance) {
       const asOf = l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : now;
       const esquema = esquemaPorContrato.get(l.contratoId);
       const punitorio = esquema
-        ? calcularMora(Number(l.montoTotal), esquema, l.fechaVencimiento, asOf, l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null)
+        ? calcularMora(
+            { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
+            esquema,
+            l.fechaVencimiento,
+            asOf,
+            l.montoPunitorioManual != null ? Number(l.montoPunitorioManual) : null,
+          )
         : 0;
       const dec = conSaldo(l, pagadoMap, punitorio);
       if (liqVencida(l, now) && dec.saldo > 0) {

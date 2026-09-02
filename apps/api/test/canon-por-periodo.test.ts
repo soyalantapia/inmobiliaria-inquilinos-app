@@ -19,6 +19,13 @@ const CONTRATO = {
   fechaInicio: new Date('2026-01-01T00:00:00.000Z'),
   fechaFin: new Date('2027-12-31T00:00:00.000Z'),
   diaPago: 10,
+  // `devengarDesde` y `tipoContrato` son OBLIGATORIOS a propósito (ver el docblock de
+  // ContratoParaLiquidar): se hicieron requeridos para que el compilador no deje que un caller
+  // se los saltee. Este fixture se los salteaba igual, porque hasta hoy `test/` no entraba al
+  // typecheck. Los valores son los que el runtime venía usando de hecho: `undefined` no es
+  // 'SOLO_EXPENSAS', así que devengaba como ALQUILER.
+  devengarDesde: null,
+  tipoContrato: 'ALQUILER' as const,
 };
 
 describe('CAZABUG — canonDelPeriodo', () => {
@@ -77,5 +84,41 @@ describe('CAZABUG — el devengo no cobra el canon nuevo a los meses intermedios
     const ago = data.find((l) => l.periodo === '2026-08');
     expect(Number(ago!.montoAlquiler)).toBe(100000);
     expect(Number(ago!.montoTotal)).toBe(120000);
+  });
+});
+
+// T-16 — PATCH /contratos/:id/monto pasó a dejar fila en `AjusteAlquiler` (antes no dejaba
+// ninguna, así que el historial salía incompleto y el aviso al inquilino nunca se disparaba
+// por ese camino). Esa fila lleva `periodoDesde` = período ACTUAL, que es desde donde ese
+// endpoint re-devenga.
+//
+// Este test blinda que ese cambio sea INERTE para el devengo: `vigenciasFuturas` sólo
+// levanta ajustes con `periodoDesde > periodo`, así que una vigencia del período en curso
+// —o anterior— no puede retroceder el canon. Si alguien cambiara ese filtro a `gte`, el
+// monto recién ajustado dejaría de aplicarse al mes en curso y el inquilino pagaría el
+// canon viejo: acá se pondría en rojo.
+describe('T-16 — la fila de ajuste de PATCH /monto no cambia el devengo', () => {
+  it('una vigencia del período EN CURSO no retrocede el canon', () => {
+    const vig = [{ desde: '2026-07', montoAnterior: 100000 }];
+    expect(canonDelPeriodo('2026-07', 150000, vig)).toBe(150000);
+  });
+
+  it('una vigencia PASADA tampoco lo retrocede', () => {
+    const vig = [{ desde: '2026-05', montoAnterior: 100000 }];
+    expect(canonDelPeriodo('2026-07', 150000, vig)).toBe(150000);
+    expect(canonDelPeriodo('2026-06', 150000, vig)).toBe(150000);
+  });
+
+  it('convive con una vigencia futura real sin pisarla', () => {
+    // La del período en curso (PATCH /monto) + una renovación pactada para octubre.
+    const vig = [
+      { desde: '2026-07', montoAnterior: 100000 },
+      { desde: '2026-10', montoAnterior: 150000 },
+    ];
+    // Julio a septiembre siguen al canon vigente hasta octubre…
+    expect(canonDelPeriodo('2026-07', 200000, vig)).toBe(150000);
+    expect(canonDelPeriodo('2026-09', 200000, vig)).toBe(150000);
+    // …y desde octubre manda el nuevo.
+    expect(canonDelPeriodo('2026-10', 200000, vig)).toBe(200000);
   });
 });

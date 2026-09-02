@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 /**
  * CAZABUG (review de fix/import-multi-alquiler, Important 1) — `buscarOCrearPersona`
@@ -60,6 +61,10 @@ async function limpiar() {
     await prisma.liquidacion.deleteMany({ where: { contratoId: { in: cIds } } });
     await prisma.inquilino.deleteMany({ where: { contratoId: { in: cIds } } });
     await prisma.propiedad.updateMany({ where: { id: { in: ids } }, data: { contratoActualId: null } });
+    // El historial va ANTES que el contrato: su FK es RESTRICT y desde que el alta escribe
+    // un evento CREADO (T-29), todo contrato creado por la API tiene al menos una fila acá.
+    // Se filtra por la relación para no repetir —ni desincronizar— el where de abajo.
+    await prisma.eventoContrato.deleteMany({ where: { contrato: { id: { in: cIds } } } });
     await prisma.contrato.deleteMany({ where: { id: { in: cIds } } });
     await prisma.participacionPropietario.deleteMany({ where: { propiedadId: { in: ids } } });
     await prisma.propiedad.deleteMany({ where: { id: { in: ids } } });
@@ -76,12 +81,7 @@ beforeAll(async () => {
   inmobiliariaId = base.inmobiliariaId;
   await limpiar();
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({
-    method: 'POST',
-    url: '/auth/login',
-    payload: { email: 'roberto@delsol.com', password: 'delsol123' },
-  });
-  token = login.json().token;
+  token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 }, 420_000);
 
 afterAll(async () => {

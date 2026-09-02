@@ -36,6 +36,7 @@ import {
   MoraDefaultCard,
 } from '@/components/configuracion-prod';
 import { ConfiguracionPais } from '@/components/configuracion-pais';
+import { AvisosDestinatarios } from '@/components/avisos-destinatarios';
 import { apiEnabled, ApiError } from '@/lib/api/client';
 import {
   setContratosRequierenAprobacion,
@@ -82,6 +83,10 @@ function MiInmobiliariaReal() {
             <MoraDefaultCard />
             <RescisionCard reglas={reglas} />
             <AprobacionContratosCard reglas={reglas} />
+            {/* `puedeEditar` fijo en true: si llegaste hasta acá sos ADMIN — la página entera
+                cae a <SoloAdmin/> cuando GET /mi-inmobiliaria/reglas devuelve 403. El prop
+                existe igual para que el componente no asuma su contexto. */}
+            <AvisosDestinatarios puedeEditar />
             <section>
               <h2 className="mb-2 px-1 text-sm font-semibold text-muted-foreground">
                 Mercado y ajuste
@@ -198,9 +203,21 @@ function RescisionCard({ reglas }: { reglas: ReglasMiInmobiliaria | null }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* EL COPY ANTERIOR ERA FALSO EN LAS DOS MITADES, y para campos distintos.
+            "Podés pisarlo contrato por contrato" es imposible para el PREAVISO: `Contrato` sólo
+            tiene `penalidadRescisionMeses`, no hay columna de preaviso. Y "los heredan los
+            contratos" tampoco vale para el preaviso, que no lo lee NADIE: se escribe acá y sólo
+            se relee para repintar este mismo input.
+            La penalidad, en cambio, sí funciona: `core.ts` la usa como penalidad sugerida al
+            finalizar y termina emitida como CargoContrato. Que el compañero de tarjeta funcione
+            es justamente lo que hacía creer que el preaviso también.
+            Qué hacer con él —darle un consumidor real o rotularlo informativo— es una decisión
+            de producto: ver `work-agent/DOS-PROMESAS-QUE-NO-SE-CUMPLEN.md`. */}
         <p className="text-xs text-muted-foreground">
-          Valores por defecto cuando un contrato se da de baja antes de tiempo. Los heredan los
-          contratos que no definan lo suyo; podés pisarlo contrato por contrato.
+          Valores por defecto cuando un contrato se da de baja antes de tiempo. La{' '}
+          <strong>penalidad</strong> la heredan los contratos que no definan la suya y aparece
+          sugerida al finalizar. El <strong>preaviso</strong> hoy queda sólo como referencia: no
+          dispara ningún aviso ni entra en ningún cálculo.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">

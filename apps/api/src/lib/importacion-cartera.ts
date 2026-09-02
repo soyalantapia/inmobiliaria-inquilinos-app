@@ -6,6 +6,7 @@
  * confirma/corrige.
  */
 import { parsearMonto } from './monto.js';
+import { normalizarDni } from './normalizar-dni.js';
 
 export type TipoPropiedadImport = 'DEPARTAMENTO' | 'CASA' | 'LOCAL' | 'GALPON';
 
@@ -141,7 +142,9 @@ export function parsearFilaMapeada(fila: unknown[], mapeo: Record<string, number
     inquilinoApellido: apellido,
     inquilinoEmail: texto(celda(fila, mapeo, 'inquilinoEmail')).toLowerCase() || null,
     inquilinoTelefono: texto(celda(fila, mapeo, 'inquilinoTelefono')) || null,
-    inquilinoDni: texto(celda(fila, mapeo, 'inquilinoDni')) || null,
+    // A dígitos: esta columna acepta 'dni', 'documento', 'cuit' y 'cuil' como sinónimos, así
+    // que llega de todas las formas. Sin normalizar, cada formato creaba una Persona distinta.
+    inquilinoDni: normalizarDni(texto(celda(fila, mapeo, 'inquilinoDni'))),
     propietarioNombre: texto(celda(fila, mapeo, 'propietarioNombre')) || null,
     monto: Number.isFinite(monto) ? monto : NaN,
     moneda,

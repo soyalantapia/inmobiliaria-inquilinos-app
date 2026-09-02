@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 /**
  * La importación de cartera crea N contratos —cada uno en su propia transacción— dentro de
@@ -41,6 +42,14 @@ async function limpiar() {
     await prisma.liquidacion.deleteMany({ where: { contratoId: { in: cIds } } });
     await prisma.inquilino.deleteMany({ where: { contratoId: { in: cIds } } });
     await prisma.propiedad.updateMany({ where: { id: { in: ids } }, data: { contratoActualId: null } });
+    // El historial va ANTES que el contrato: su FK es RESTRICT y desde que el alta escribe
+    // un evento CREADO (T-29), todo contrato creado por la API tiene al menos una fila acá.
+    // Se filtra por la relación para no repetir —ni desincronizar— el where de abajo.
+    await prisma.eventoContrato.deleteMany({ where: { contrato: { id: { in: cIds } } } });
+    // El rastro de auditoría de lo importado (tercera auditoría). `entidadId` es polimórfico
+    // y sin FK, así que no bloquea nada — pero dejarlo acumulado ensucia las suites que
+    // cuentan eventos.
+    await prisma.eventoAuditoria.deleteMany({ where: { entidadId: { in: [...cIds, ...ids] } } });
     await prisma.contrato.deleteMany({ where: { id: { in: cIds } } });
     await prisma.participacionPropietario.deleteMany({ where: { propiedadId: { in: ids } } });
     await prisma.propiedad.deleteMany({ where: { id: { in: ids } } });
@@ -58,12 +67,7 @@ beforeAll(async () => {
   inmobiliariaId = base.inmobiliariaId;
   await limpiar();
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({
-    method: 'POST',
-    url: '/auth/login',
-    payload: { email: 'roberto@delsol.com', password: 'delsol123' },
-  });
-  token = login.json().token;
+  token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 }, 420_000);
 
 afterAll(async () => {
@@ -102,6 +106,39 @@ describe('Importación de cartera: el reintento no duplica', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().creadas).toBe(2);
     expect(await contarPropiedades()).toBe(2);
+  });
+
+  it('y deja UNA línea de auditoría por contrato, no una por importación', async () => {
+    // TERCERA AUDITORÍA · en todo `importaciones-cartera.ts` no había un solo
+    // `registrarEvento`, mientras que los otros TRES caminos que llegan al mismo estado sí lo
+    // escriben — entre ellos la importación HERMANA de morosos, que audita una línea POR
+    // DEUDA con el argumento explícito de que un «se importaron 50» no sirve para rastrear
+    // de dónde salió UNA que alguien viene a reclamar.
+    //
+    // Y no había otro lado donde mirar: los contratos importados nacen ACTIVO, así que
+    // `cargadoPor`/`cargadoAt` quedan inalcanzables desde el panel (sólo se renderizan dentro
+    // de `AprobacionContratoCard`, detrás de `pendienteAprobacion`).
+    const props = await prisma.propiedad.findMany({
+      where: { inmobiliariaId, direccion: { startsWith: 'Reanudable ' } },
+      select: { id: true, direccion: true },
+    });
+    expect(props).toHaveLength(2);
+    const cnts = await prisma.contrato.findMany({
+      where: { propiedadId: { in: props.map((p) => p.id) } },
+      select: { id: true },
+    });
+    const eventos = await prisma.eventoAuditoria.findMany({
+      where: { entidadId: { in: [...cnts.map((c) => c.id), ...props.map((p) => p.id)] } },
+    });
+    // Con el bug: 0. En /auditoría no aparecía absolutamente nada de 340 filas importadas.
+    expect(eventos.filter((e) => e.tipo === 'CONTRATO_CARGADO')).toHaveLength(2);
+    expect(eventos.filter((e) => e.tipo === 'PROPIEDAD_CARGADA')).toHaveLength(2);
+    // Con autor y con la dirección: es lo que se busca cuando alguien viene a reclamar por
+    // UNA fila y hay que saber quién la cargó.
+    const unContrato = eventos.find((e) => e.tipo === 'CONTRATO_CARGADO');
+    expect(unContrato?.autorId).toBeTruthy();
+    expect(unContrato?.entidadDescripcion).toContain('Reanudable ');
+    expect(unContrato?.entidadDescripcion).toContain('importación de cartera');
   });
 
   it('reanudar una importación cortada NO vuelve a crear lo ya procesado', async () => {

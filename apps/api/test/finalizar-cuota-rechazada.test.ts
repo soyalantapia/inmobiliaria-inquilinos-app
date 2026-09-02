@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 // CAZABUG P1 — al finalizar un contrato, el deleteMany de cuotas futuras impagas
 // usaba `pagos: { none: {} }` para "proteger un pago en vuelo", pero eso también
@@ -54,8 +55,7 @@ beforeAll(async () => {
   await crearCuotaFutura(LIQ_RECH, '2099-06', 'RECHAZADO');
   await crearCuotaFutura(LIQ_CONC, '2099-07', 'CONCILIADO');
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'roberto@delsol.com', password: 'delsol123' } });
-  tADMIN = login.json().token;
+  tADMIN = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {

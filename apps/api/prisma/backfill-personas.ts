@@ -76,6 +76,12 @@ async function backfillTenant(inmobiliariaId: string, nombreTenant: string) {
     let personaId = filas.find((f) => f.personaId)?.personaId ?? null;
     // Representante: la fila más reciente, con fallback a valores no vacíos del grupo.
     const rep = [...filas].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
+    // `filas` nunca viene vacío: el Map se llena empujando, así que todo grupo tiene al menos
+    // una fila. `sort()[0]` igual tipa `T | undefined` por `noUncheckedIndexedAccess`. Se
+    // afirma acá, una vez, y se afirma TIRANDO: este script escribe Personas sobre datos
+    // reales, y saltear un grupo en silencio dejaría inquilinos sin linkear sin que nadie se
+    // entere. Si esto llegara a pasar, es un bug de la agrupación de arriba y hay que verlo.
+    if (!rep) throw new Error('grupo sin filas — imposible por construcción del Map');
     const dni = norm(rep.dni) || filas.map((f) => norm(f.dni)).find(Boolean) || null;
     const email = norm(rep.email) || filas.map((f) => norm(f.email)).find(Boolean) || null;
 

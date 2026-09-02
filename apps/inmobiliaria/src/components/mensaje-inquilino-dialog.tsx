@@ -15,6 +15,9 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
+import { apiEnabled, apiFetch } from '@/lib/api/client';
+import { ensureApiSession } from '@/lib/api/session';
 import {
   type CanalComunicacion,
   plantillasMensajeMock,
@@ -27,6 +30,8 @@ import {
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /** Para registrar la comunicación en el historial del contrato. */
+  contratoId: string;
   inquilino: { nombre: string; telefono?: string; email?: string };
   direccion?: string;
   fechaFin?: string;
@@ -35,14 +40,19 @@ interface Props {
 export function MensajeInquilinoDialog({
   open,
   onOpenChange,
+  contratoId,
   inquilino,
   direccion,
   fechaFin,
 }: Props) {
+  const qc = useQueryClient();
   const [canal, setCanal] = useState<CanalComunicacion>('WHATSAPP');
   const [asunto, setAsunto] = useState('');
   const [cuerpo, setCuerpo] = useState('');
   const [plantillaActiva, setPlantillaActiva] = useState<string | null>(null);
+  // T-42 — El botón no se bloqueaba mientras corría el POST de la comunicación: dos clicks
+  // dejaban DOS renglones en el historial del contrato por un solo mensaje.
+  const [enviando, setEnviando] = useState(false);
 
   // Reset al abrir/cerrar
   useEffect(() => {
@@ -61,7 +71,8 @@ export function MensajeInquilinoDialog({
     setCuerpo(interpolar(p.cuerpo, inquilino, { direccion, fechaFin }));
   };
 
-  const enviar = () => {
+  const enviar = async () => {
+    if (enviando) return; // guard: el disabled tarda un tick en aplicarse
     if (!cuerpo.trim()) {
       toast({ title: 'Falta el mensaje', variant: 'destructive' });
       return;
@@ -86,7 +97,8 @@ export function MensajeInquilinoDialog({
       });
       return;
     }
-    // En backend real: POST a /api/comunicaciones. Acá abrimos el canal.
+    // Abrimos el canal para que la persona mande el mensaje ella misma (no hay envío
+    // automático: no existe integración de WhatsApp).
     if (canal === 'WHATSAPP') {
       window.open(`https://wa.me/${tel}?text=${encodeURIComponent(cuerpo)}`, '_blank');
     } else if (canal === 'EMAIL') {
@@ -96,16 +108,44 @@ export function MensajeInquilinoDialog({
     } else if (canal === 'LLAMADA') {
       window.location.href = `tel:${tel}`;
     }
-    // Honesto: abrimos el canal con el mensaje listo, pero NO se está guardando en
-    // "Comunicaciones" (todavía no hay backend para eso). Antes el toast decía
-    // "enviado · queda registrado en Comunicaciones" y era un falso éxito.
+
+    // Y AHORA SÍ dejamos constancia. El diálogo prometía "queda registrado en el historial
+    // del contrato" y no registraba nada: en una discusión con un inquilino ("yo te avisé
+    // del aumento el 12") no había ninguna evidencia. Ahora se guarda un EventoContrato
+    // COMUNICACION_ENVIADA que aparece en la pestaña Historial.
+    //
+    // Best-effort y DESPUÉS de abrir el canal: si el registro falla, el mensaje igual se
+    // mandó — sería peor bloquear la comunicación por no poder anotarla. Pero el toast
+    // dice la verdad en cada caso, en vez de afirmar un registro que no ocurrió.
+    let registrado = false;
+    if (apiEnabled) {
+      setEnviando(true);
+      try {
+        await ensureApiSession();
+        await apiFetch(`/contratos/${contratoId}/comunicaciones`, {
+          method: 'POST',
+          body: JSON.stringify({ canal, asunto: asunto || 'Sobre tu contrato', cuerpo }),
+        });
+        registrado = true;
+        // Alcanza al timeline porque cuelga de ['contrato', id, 'eventos'] (T-41).
+        qc.invalidateQueries({ queryKey: ['contrato'] });
+      } catch {
+        registrado = false;
+      } finally {
+        setEnviando(false);
+      }
+    }
+
+    const canalLabel =
+      canal === 'WHATSAPP' ? 'WhatsApp' : canal === 'EMAIL' ? 'tu correo' : 'el marcador';
     toast({
-      title:
-        canal === 'WHATSAPP'
-          ? 'Abrimos WhatsApp con el mensaje listo 📲'
-          : canal === 'EMAIL'
-            ? 'Abrimos tu correo con el mensaje listo 📧'
-            : 'Abrimos el marcador para llamar 📞',
+      title: `Abrimos ${canalLabel} con el mensaje listo`,
+      description: registrado
+        ? 'Quedó anotado en el historial del contrato.'
+        : apiEnabled
+          ? 'No pudimos anotarlo en el historial — el mensaje igual se abrió.'
+          : undefined,
+      ...(apiEnabled && !registrado ? { variant: 'warning' as const } : {}),
     });
     onOpenChange(false);
   };
@@ -116,7 +156,8 @@ export function MensajeInquilinoDialog({
         <DialogHeader>
           <DialogTitle>Mensaje a {inquilino.nombre}</DialogTitle>
           <DialogDescription>
-            Plantillas listas o escribí libre. Queda registrado en el historial del contrato.
+            Plantillas listas o escribí libre. Vos mandás el mensaje desde tu WhatsApp o tu
+            correo; acá queda anotado en el historial del contrato.
           </DialogDescription>
         </DialogHeader>
 
@@ -207,12 +248,17 @@ export function MensajeInquilinoDialog({
         )}
 
         <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            className="flex-1"
+            disabled={enviando}
+            onClick={() => onOpenChange(false)}
+          >
             Cancelar
           </Button>
-          <Button className="flex-1" onClick={enviar}>
+          <Button className="flex-1" onClick={enviar} disabled={enviando}>
             <Send className="h-4 w-4" />
-            {canal === 'LLAMADA' ? 'Llamar' : 'Enviar'}
+            {enviando ? 'Anotando…' : canal === 'LLAMADA' ? 'Llamar' : 'Enviar'}
           </Button>
         </div>
       </DialogContent>

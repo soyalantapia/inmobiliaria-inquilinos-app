@@ -108,17 +108,19 @@ export function ConfiguracionPais() {
 
   return (
     <div className="space-y-5">
-      {/* Banner de descuento de lanzamiento — NO duplica al
-          CardDescription del wrapper en /configuracion → Mercado.
-          Sólo aporta el hook comercial: si elegís un país aún no
-          abierto, te avisamos con descuento. */}
+      {/* Decía "elegilo igual y te avisamos cuando abramos, con descuento de lanzamiento".
+          Prometía DOS cosas que no existen: no hay lista de espera —elegir el país no anota a
+          nadie en ningún lado— y no hay ningún descuento definido. Es la promesa más cara de
+          las tres de este tipo, porque compromete un beneficio comercial.
+          Queda lo que sí es cierto: podés dejarlo elegido. Si se quiere capturar el interés
+          de verdad, hay que construirlo (ver T-18-N2). */}
       <Card className="border-violet-200 bg-violet-50/40 dark:border-violet-900/40 dark:bg-violet-900/10">
         <CardContent className="flex items-start gap-3 p-4">
           <Globe2 className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" aria-hidden="true" />
           <p className="text-xs text-muted-foreground">
             <strong className="text-foreground">¿Tu país todavía no está activo?</strong>{' '}
-            Elegilo igual y te avisamos cuando abramos, con descuento de
-            lanzamiento para los que llegan primero.
+            Podés dejarlo elegido igual: cuando abramos, tu configuración ya va a
+            estar lista.
           </p>
         </CardContent>
       </Card>
@@ -178,10 +180,14 @@ export function ConfiguracionPais() {
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
             <div>
               <p className="font-medium">My Alquiler todavía no abrió en {pais.nombre}</p>
+              {/* Decía "Te avisamos por mail cuando esté listo" y no hay ninguna lista de
+                  espera detrás: nadie queda anotado y ese mail no lo manda nadie. Tampoco se
+                  reemplaza por un "escribinos a Soporte", porque /soporte es el proxy al bug
+                  tracker y está gateado por un allowlist de tenants — sería cambiar una media
+                  promesa por otra. Se dice lo que es verdad y nada más. */}
               <p className="text-xs text-muted-foreground">
-                Lanzamiento estimado: <strong>{pais.apertura}</strong>. Te
-                avisamos por mail cuando esté listo. Mientras tanto, podés
-                seguir operando en Argentina.
+                Lanzamiento estimado: <strong>{pais.apertura}</strong>. Mientras
+                tanto, podés seguir operando en Argentina.
               </p>
             </div>
           </CardContent>

@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 let app: FastifyInstance;
 let tokenAdmin: string;
@@ -113,10 +114,8 @@ beforeAll(async () => {
   await resetPlata(prisma);
   await prisma.$disconnect();
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const admin = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'roberto@delsol.com', password: 'delsol123' } });
-  tokenAdmin = admin.json().token;
-  const carga = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'camila@delsol.com', password: 'delsol123' } });
-  tokenCarga = carga.json().token;
+  tokenAdmin = await loginTest(app, 'roberto@delsol.com', 'delsol123');
+  tokenCarga = await loginTest(app, 'camila@delsol.com', 'delsol123');
 });
 
 afterAll(async () => {
@@ -277,7 +276,7 @@ describe('Rendición — el loop caja→rendición', () => {
     expect(res.statusCode).toBe(409);
   });
 
-  it('propietario sin CBU (Federico) → 409 con mensaje claro', async () => {
+  it('propietario sin CBU (Federico), por TRANSFERENCIA → 409 con mensaje claro', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/rendiciones',
@@ -286,6 +285,23 @@ describe('Rendición — el loop caja→rendición', () => {
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().message).toContain('CBU');
+  });
+
+  it('ese mismo propietario en EFECTIVO ya no se traba por el CBU', async () => {
+    // El 409 era incondicional, antes de mirar el método. Al dueño que pasa a buscar la plata
+    // por la oficina —que es justo el que no tiene CBU cargado— no se le podía rendir por
+    // ningún camino, aunque el zod acepta EFECTIVO y el panel ya ofrecía el botón.
+    //
+    // Lo que se afirma es que NO frena por CBU. Puede frenar por otra cosa —que no haya
+    // cobros nuevos del período es lo normal en este fixture—, y eso está bien: es otro 409,
+    // con otro motivo.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/rendiciones',
+      headers: auth(tokenAdmin),
+      payload: { propietarioId: 'own_003', periodo: '2026-06', metodo: 'EFECTIVO', pin: '1234' },
+    });
+    expect(res.json().message ?? '').not.toContain('CBU');
   });
 });
 
@@ -308,13 +324,37 @@ describe('Anular rendición y pago rendido', () => {
     });
     const res = await app.inject({
       method: 'POST', url: `/rendiciones/${rend.id}/anular`, headers: auth(tokenAdmin),
-      payload: { pin: '1234' },
+      // El motivo es obligatorio desde la baja lógica: lo lee el PROPIETARIO en su portal,
+      // tachado al lado de la rendición.
+      payload: { pin: '1234', motivo: 'se rindió el período equivocado' },
     });
     expect(res.statusCode).toBe(200); // antes 500 (FK RESTRICT sobre alquileres_rendidos)
     const caja = await app.inject({ method: 'GET', url: '/caja/movimientos', headers: auth(tokenAdmin) });
     expect(caja.json().find((m: { id: string }) => m.id === 'mov_002').descontadoEnRendicion).toBe(false);
     // No quedaron AlquilerRendido huérfanos de esa rendición.
     expect(await prismaTest.alquilerRendido.count({ where: { rendicionId: rend.id } })).toBe(0);
+    // Y la CABECERA sobrevive, marcada. Antes se borraba: al propietario se le desaparecía
+    // el depósito del portal sin una palabra y no quedaba con qué contestarle.
+    const anulada = await prismaTest.rendicion.findUniqueOrThrow({ where: { id: rend.id } });
+    expect(anulada.anuladaAt).not.toBeNull();
+    expect(anulada.motivoAnulacion).toContain('período equivocado');
+
+    // Y el LISTADO la esconde por default. No es cosmético: `GET /rendiciones` lo consumen
+    // cinco pantallas que preguntan "¿ya se le rindió?" —el badge Rendido de la ficha, el KPI
+    // de por rendir, el neto histórico, las últimas rendiciones, el comprobante de WhatsApp—.
+    // Si la anulada volviera al listado, anular dejaría de tener efecto apenas se recarga la
+    // página y la plata seguiría contando como rendida.
+    const listado = await app.inject({ method: 'GET', url: '/rendiciones', headers: auth(tokenAdmin) });
+    expect(listado.json().map((r: { id: string }) => r.id)).not.toContain(rend.id);
+
+    // Quien las quiera, que las pida: es el historial del propietario, la única pantalla que
+    // las muestra —tachadas y con el motivo— para poder contestarle al dueño que llama.
+    const conAnuladas = await app.inject({
+      method: 'GET', url: '/rendiciones?incluirAnuladas=1', headers: auth(tokenAdmin),
+    });
+    const fila = conAnuladas.json().find((r: { id: string }) => r.id === rend.id);
+    expect(fila, 'la anulada tiene que venir cuando se la pide').toBeTruthy();
+    expect(fila.motivoAnulacion).toContain('período equivocado');
   });
 
   it('tras anular la rendición, el pago SÍ se puede anular → 200', async () => {

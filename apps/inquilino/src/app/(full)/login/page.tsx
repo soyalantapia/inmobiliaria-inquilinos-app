@@ -289,20 +289,37 @@ export default function LoginPage() {
               Lo que vas a encontrar
             </p>
             <ul role="list" className="space-y-4">
+              {/* Acá decía "Pagás directo desde la app · Transferencia, MP o QR. Comprobante
+                  registrado al instante". Es la misma promesa que traía el onboarding, y las
+                  tres partes eran falsas: no hay checkout de ninguna pasarela en el monorepo,
+                  QR no está ni en el enum MetodoPago, y "al instante" tampoco — el pago nace
+                  INFORMADO y lo valida a mano alguien con la capacidad `pago.conciliar`.
+                  Pesa más que en el onboarding porque esto corre en PRODUCCIÓN, sin gate de
+                  apiEnabled y ANTES del login: es lo primero que lee un inquilino nuevo desde
+                  una pantalla grande, y después llegaba al checkout buscando un botón de pagar
+                  donde hay un CBU para copiar.
+                  Se reemplaza por el flujo real, que dicho de verdad vende igual. */}
               <Beneficio
                 Icon={CreditCard}
-                titulo="Pagás directo desde la app"
-                detalle="Transferencia, MP o QR. Comprobante registrado al instante."
+                titulo="Pagás por transferencia, sin adivinar"
+                detalle="Copiás el CBU, transferís y subís el comprobante. La validación la seguís desde acá."
               />
               <Beneficio
                 Icon={FileText}
                 titulo="Tu contrato siempre a mano"
                 detalle="Cláusulas, ajustes, depósito y vencimientos en un lugar."
               />
+              {/* Acá decía "Asistente IA — muy pronto · Vas a poder preguntarle cualquier duda
+                  del contrato y te cita la cláusula exacta". Es palabra por palabra una de las
+                  promesas que CLAUDE.md §14 mandó a sacar, y sobrevivió porque la limpieza se
+                  hizo archivo por archivo. Corre en PRODUCCIÓN, antes del login, así que la ve
+                  todo inquilino que entre desde una pantalla grande.
+                  Se reemplaza por algo que existe de verdad y es propio de esta app: el
+                  certificado de antigüedad, con su verificación pública. */}
               <Beneficio
                 Icon={Sparkles}
-                titulo="Asistente IA — muy pronto"
-                detalle="Vas a poder preguntarle cualquier duda del contrato y te cita la cláusula exacta."
+                titulo="Tu certificado de inquilino"
+                detalle="Descargá tu historial de pagos con un link que cualquiera puede verificar."
               />
             </ul>
           </div>
@@ -363,8 +380,12 @@ export default function LoginPage() {
             )}
           </Card>
 
-          {/* Banner DEMO con el código generado — más prominente que antes */}
-          {paso === 'otp' && codigoDemo && (
+          {/* Banner DEMO con el código generado. El gate de `!apiEnabled` es defensa en
+              profundidad: hoy en producción ya no hay quién setee `codigoDemo` —el camino
+              feliz dejó de mandar el código en 0b042656 y el fallback local se sacó en
+              T-67—, pero este banner le muestra un código de acceso en pantalla a quien
+              esté mirando, así que no puede depender de que nadie lo llene por error. */}
+          {!apiEnabled && paso === 'otp' && codigoDemo && (
             <Card className="border border-amber-300/60 bg-gradient-to-br from-amber-50 to-amber-100/60 p-4 dark:border-amber-900/40 dark:from-amber-950/40 dark:to-amber-900/20">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -555,7 +576,7 @@ function PasoEmail({
       {!apiEnabled && (
         <button
           type="button"
-          onClick={() => setEmail('mariela.sosa@gmail.com')}
+          onClick={() => setEmail('mariela.sosa@example.com')}
           className="flex w-full items-center justify-center gap-2 rounded-full border border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
         >
           <Sparkles className="h-3.5 w-3.5" />

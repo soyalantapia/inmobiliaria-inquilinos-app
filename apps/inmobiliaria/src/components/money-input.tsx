@@ -30,6 +30,51 @@ export interface MoneyInputProps extends BaseInputProps {
   moneda?: Moneda;
 }
 
+/**
+ * Texto tipeado o PEGADO → dígitos crudos, respetando el formato argentino.
+ *
+ * Antes esto era `value.replace(/\D/g, '')` a secas, y con eso pegar un monto
+ * desde una planilla multiplicaba por 100 **en silencio**: `150.000,00` daba
+ * 15000000 y `150,50` daba 15050. Los separadores de miles se limpiaban bien,
+ * pero los decimales se pegaban a la parte entera.
+ *
+ * La regla es la misma que usa `parsearMonto` en el backend (lib/monto.ts), que
+ * es la fuente de verdad de montos del sistema: **el último separador decide**.
+ * Si viene seguido de 1 o 2 dígitos es un decimal; si viene seguido de 3, es
+ * separador de miles.
+ *
+ *   "150.000"     → 150000   (miles)
+ *   "1.250.000"   → 1250000  (miles)
+ *   "150.000,00"  → 150000   (decimal, se descarta)
+ *   "150,50"      → 150      (decimal, se descarta)
+ *
+ * Los decimales se DESCARTAN, no se redondean: este input es de montos enteros
+ * por contrato (la app formatea con 0 decimales) y truncar es lo que menos
+ * sorprende. Lo que no puede pasar es que 150,50 entre como 15050.
+ */
+function soloDigitos(texto: string): string {
+  // Sólo la COMA marca decimales, nunca el punto. El punto es siempre separador
+  // de miles.
+  //
+  // La primera versión de esto aceptaba cualquiera de los dos, y rompía al
+  // BORRAR: el input muestra "150.000", el operador aprieta Backspace, queda
+  // "150.00" — y ese ".00" se leía como decimales, así que el monto se convertía
+  // en 150. Perdía tres ceros mientras tipeaba, en un campo de plata.
+  //
+  // Con la coma como único decimal los dos casos salen bien: "150.00" es un
+  // 150.000 al que le falta un dígito (→ 15000) y "150.000,00" sigue siendo
+  // 150000. Y "1,234" —tres dígitos después de la coma— se lee como miles, no
+  // como decimales.
+  //
+  // LIMITACIÓN CONOCIDA: un pegado en formato US con decimales ("1,234.56")
+  // entra como 123456. Es un input del panel argentino y el que pega viene de su
+  // propio Excel en es-AR; el formato US sí lo maneja `parsearMonto` en el
+  // backend, que es por donde entran los extractos bancarios.
+  const conDecimal = /^(.*),(\d{1,2})$/.exec(texto);
+  const enteroTexto = conDecimal ? conDecimal[1]! : texto;
+  return enteroTexto.replace(/\D/g, '');
+}
+
 /** Formatea la parte entera con separador de miles es-AR. '' si no hay dígitos. */
 function formatEntero(value: string | number | null | undefined): string {
   const intPart = (String(value ?? '').split(/[.,]/)[0] ?? '').replace(/\D/g, '');
@@ -57,7 +102,7 @@ export function MoneyInput({ value, onChange, moneda, className, ...props }: Mon
         type="text"
         inputMode="numeric"
         value={formatEntero(value)}
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
+        onChange={(e) => onChange(soloDigitos(e.target.value))}
         className={cn('w-full text-right tabular-nums', cur === 'USD' ? 'pl-12' : 'pl-9')}
       />
     </span>

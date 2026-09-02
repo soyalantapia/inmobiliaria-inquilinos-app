@@ -33,7 +33,7 @@ export const garanteMock: GaranteContrato = {
   vigenciaHasta: '2028-08-31',
   contactoNombre: 'Equipo de gestión SUMA',
   contactoTelefono: '+54 11 5288 9000',
-  contactoEmail: 'soporte@cobsuma.com.ar',
+  contactoEmail: 'soporte@example.com',
 };
 
 export const hitosContratoMock: HitoContrato[] = [
@@ -82,6 +82,10 @@ export const contratoMock: Contrato = {
   proximoAjuste: '2026-06-01',
   montoActual: 480000,
   moneda: 'ARS',
+  // Explícito aunque sea el default: el campo es opcional y su ausencia se lee como
+  // ALQUILER, pero dejarlo escrito evita que el próximo que mire el mock crea que la
+  // demo no contempla el caso de solo expensas. Ver lib/tipo-contrato.ts.
+  tipoContrato: 'ALQUILER',
   // Depósito de la firma, deliberadamente distinto del alquiler de hoy: la demo
   // tiene que mostrar la diferencia que motivó el fix (antes se mostraba
   // montoActual rotulado como depósito). Sin este campo la fila no se renderiza

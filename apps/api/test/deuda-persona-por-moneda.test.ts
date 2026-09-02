@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest } from './_login.js';
 
 /**
  * CAZABUG — la deuda de una persona sumaba pesos con dólares.
@@ -28,6 +29,10 @@ async function limpiar() {
   await prisma.pago.deleteMany({ where: { contratoId: { startsWith: P } } });
   await prisma.liquidacion.deleteMany({ where: { contratoId: { startsWith: P } } });
   await prisma.inquilino.deleteMany({ where: { contratoId: { startsWith: P } } });
+  // El historial va ANTES que el contrato: su FK es RESTRICT y desde que el alta escribe
+  // un evento CREADO (T-29), todo contrato creado por la API tiene al menos una fila acá.
+  // Se filtra por la relación para no repetir —ni desincronizar— el where de abajo.
+  await prisma.eventoContrato.deleteMany({ where: { contrato: { id: { startsWith: P } } } });
   await prisma.contrato.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.propiedad.deleteMany({ where: { id: { startsWith: P } } });
   await prisma.persona.deleteMany({ where: { id: { startsWith: P } } });
@@ -79,11 +84,7 @@ beforeAll(async () => {
   }
 
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  const login = await app.inject({
-    method: 'POST', url: '/auth/login',
-    payload: { email: 'roberto@delsol.com', password: 'delsol123' },
-  });
-  token = login.json().token;
+  token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 }, 420_000);
 
 afterAll(async () => {

@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from '../src/app.js';
 import { seedBase } from '../prisma/seed.js';
+import { loginTest, loginDemoTest } from './_login.js';
 
 // Regresión de la BAJA de contrato (auditoría "el inquilino sigue viendo el contrato
 // activo tras la baja"). Cubre el circuito completo:
@@ -26,7 +27,7 @@ const PERIODO_VENCIDO = '2099-02'; // periodo distinto; lo marcamos VENCIDO a ma
 const PERIODO_FUT_CON_PAGO = '2099-03'; // cuota FUTURA con un pago RECHAZADO (regresión M4)
 
 const DEMO_CONTRATO = 'cnt_001';
-const DEMO_INQ_EMAIL = 'mariela.sosa@gmail.com';
+const DEMO_INQ_EMAIL = 'mariela.sosa@example.com';
 
 beforeAll(async () => {
   prisma = new PrismaClient();
@@ -50,15 +51,9 @@ beforeAll(async () => {
 
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
 
-  const admin = await app.inject({
-    method: 'POST',
-    url: '/auth/login',
-    payload: { email: 'roberto@delsol.com', password: 'delsol123' },
-  });
-  tokenAdmin = admin.json().token;
+  tokenAdmin = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 
-  const demo = await app.inject({ method: 'POST', url: '/auth/demo' });
-  tokenInq = demo.json().token;
+  tokenInq = await loginDemoTest(app);
 
   // Limpieza idempotente de corridas previas (pagos primero por la FK).
   await prisma.pago.deleteMany({
@@ -163,8 +158,10 @@ describe('Baja de contrato — estado y colaterales', () => {
     expect(base.statusCode).toBe(200);
     const antes = base.json();
 
-    // Cuota FUTURA (vencimiento a 90 días) con un pago RECHAZADO: no se anula (tiene un
-    // pago) pero TAMPOCO es deuda vencida. Con el bug se sumaba su montoTotal completo.
+    // Cuota FUTURA (vencimiento a 90 días) con un pago RECHAZADO. NO es deuda vencida —con
+    // el bug original de este test se sumaba su montoTotal completo— y SÍ se anula: un pago
+    // rechazado no es plata, así que la cuota es deuda fantasma igual que una sin pagos, y el
+    // POST /finalizar la borra (suelta los pagos muertos antes del deleteMany, justo para eso).
     const liqFP = await prisma.liquidacion.create({
       data: {
         inmobiliariaId: tid,
@@ -197,10 +194,16 @@ describe('Baja de contrato — estado y colaterales', () => {
     });
     const despues = after.json();
 
-    // La cuota futura-con-pago no debe sumar cuotas impagas ni entrar a "futuras a anular"
-    // (tiene un pago), y no debe inflar deudaVencida (crecería ~100000 con el bug).
+    // La cuota futura-con-pago-muerto no suma cuotas impagas ni infla deudaVencida
+    // (crecería ~100000 con el bug M4 original), pero SÍ cuenta como futura a anular.
     expect(despues.cuotasImpagas).toBe(antes.cuotasImpagas);
-    expect(despues.cuotasFuturasAAnular).toBe(antes.cuotasFuturasAAnular);
+    // ESTA ASERCIÓN ESTABA INVERTIDA y consagraba un segundo defecto (tercera auditoría): el
+    // preview contaba `_count.pagos` de CUALQUIER estado, así que esta cuota no entraba acá
+    // —y como tampoco es deuda vencida, tampoco entraba en `deudaVencida`—: no figuraba en
+    // NINGÚN número del diálogo, y el POST la borraba igual. El operador confirmaba una baja
+    // irreversible sobre un resumen que le ocultaba una cuota. Con el `_count` filtrado por
+    // pagos VIVOS, el preview dice lo mismo que hace el POST.
+    expect(despues.cuotasFuturasAAnular).toBe(antes.cuotasFuturasAAnular + 1);
     expect(despues.deudaVencida).toBeLessThan(antes.deudaVencida + 1);
 
     await prisma.pago.deleteMany({ where: { liquidacionId: liqFP.id } });

@@ -26,7 +26,12 @@ export async function healthRoutes(app: FastifyInstance) {
       // archivo, no un directorio, y el CLI no lo lee) y el campo quedaba en 'desconocido' —
       // justo lo que este endpoint venía a resolver. `RAILWAY_DEPLOYMENT_ID` está SIEMPRE, y
       // se cruza con `railway deployment list` para saber qué se subió y cuándo.
+      // Desde el 29/08 produccion corre en RENDER, que expone `RENDER_GIT_COMMIT`. Mientras
+      // esto leia solo las variables de Railway, /health contestaba 'desconocido' en
+      // produccion — o sea que no habia forma de saber DESDE AFUERA que version esta
+      // sirviendo, que es justo lo que hace falta para verificar un deploy o una vuelta atras.
       version:
+        process.env.RENDER_GIT_COMMIT?.slice(0, 7) ??
         process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ??
         (process.env.RAILWAY_DEPLOYMENT_ID ? `deploy:${process.env.RAILWAY_DEPLOYMENT_ID.slice(0, 8)}` : 'desconocido'),
       ts: new Date().toISOString(),

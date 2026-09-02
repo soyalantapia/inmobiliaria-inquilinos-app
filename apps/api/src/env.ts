@@ -24,9 +24,23 @@ const EnvSchema = z.object({
     .transform((v) => v === 'true'),
   CORS_ORIGINS: z
     .string()
-    .default('http://localhost:3000,http://localhost:3001,https://soyalantapia.github.io')
+    .default('http://localhost:3000,http://localhost:3001,http://localhost:3003,https://soyalantapia.github.io')
     .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  /**
+   * Qué hace `GET /uploads` cuando un archivo cae FUERA del ámbito del actor (T-72).
+   *
+   *   off → no se chequea nada (comportamiento previo: sólo tenant).
+   *   log → se chequea y se registra, pero se sirve igual. **Default.**
+   *   on  → se deniega con 403.
+   *
+   * Arranca en `log` porque es un cambio de autorización sobre una inmobiliaria en uso: si
+   * alguna lectura legítima quedó fuera de las columnas del ámbito, enterarse bloqueando cuesta
+   * que un inquilino real pierda un documento; enterarse observando cuesta una línea de log.
+   * TIENE DEFAULT a propósito: una variable nueva sin default en este schema hace fallar el
+   * `parse` y el contenedor no arranca.
+   */
+  UPLOADS_AMBITO: z.enum(['off', 'log', 'on']).default('log'),
   // Fin del acceso gratis pre-lanzamiento (la usa /auth/registro). Si está seteada,
   // tiene que ser una fecha parseable → una basura falla en el ARRANQUE con mensaje
   // claro, en vez de un 500 silencioso al registrarse. Lenient: ISO con o sin hora.
@@ -77,6 +91,16 @@ const EnvSchema = z.object({
   SMTP_PORT: z.string().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  // Bases de los CTA de los emails (las lee `mailer.ts`, que ya tiene el default de
+  // producción de cada una). `.url()` por el mismo motivo que SONAR_API_URL: una URL mal
+  // escrita falla en el ARRANQUE, en vez de descubrirse cuando a alguien le llega un mail
+  // con un link roto.
+  APP_INQUILINO_URL: z.string().url().optional(),
+  APP_ADMIN_URL: z.string().url().optional(),
+  // ⚠️ El portal del propietario NO tiene servicio propio en Railway: se sirve como export
+  // estático desde el host del PANEL, bajo /propietario (ver work-agent/02-DEPLOY.md). Si se
+  // setea, tiene que tener esa forma — un dominio propio del portal no existe.
+  APP_PROPIETARIO_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

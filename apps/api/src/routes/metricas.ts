@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
-import { montoPagadoPorLiquidacion, conSaldo } from '../lib/saldos.js';
+import { montoPagadoPorLiquidacion, conSaldo, pagadoAlVencimientoPorLiquidacion } from '../lib/saldos.js';
 import { resolverEsquemaMora, calcularMora } from '../lib/punitorios.js';
 
 /**
@@ -19,8 +19,8 @@ import { resolverEsquemaMora, calcularMora } from '../lib/punitorios.js';
  * así devengado / cobrado / por cobrar / en mora son del MISMO mes y cuadran entre sí.
  * Candados de "cobrado": CONCILIADO + condonado:false + modoCobranza:'INMOBILIARIA'
  * (los tres que evitan inflar la plata con condonaciones o con cobros directos al dueño).
- * Moneda: se calcula sobre ARS (la default); si hay contratos en otra moneda se avisa con
- * `hayOtrasMonedas` en vez de sumar peras con manzanas.
+ * Moneda: se calcula sobre ARS (la default); si hay contratos O movimientos de caja en otra
+ * moneda se avisa con `hayOtrasMonedas` en vez de sumar peras con manzanas.
  */
 
 // 'YYYY-MM' → rango [desde, hasta) en hora Argentina (UTC-3, corte T03:00Z), igual que
@@ -75,7 +75,7 @@ async function financieroPorPeriodo(
 
   const inmo = await prisma.inmobiliaria.findUnique({
     where: { id: inmobiliariaId },
-    select: { moraTipoDefault: true, moraValorDefault: true },
+    select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
   });
 
   const liqs = await prisma.liquidacion.findMany({
@@ -93,7 +93,7 @@ async function financieroPorPeriodo(
       fechaVencimiento: true,
       fechaPago: true,
       montoPunitorioManual: true,
-      contrato: { select: { moraTipo: true, moraValor: true, tasaPunitorioDiaria: true } },
+      contrato: { select: { moraTipo: true, moraValor: true, tasaPunitorioDiaria: true, moneda: true } },
     },
   });
 
@@ -118,13 +118,16 @@ async function financieroPorPeriodo(
     if (acc) acc.cobrado += monto;
   }
 
+  // T-57: lo que entró EN FECHA reduce el capital sobre el que corre la mora.
+  const pagadoAlVenc = await pagadoAlVencimientoPorLiquidacion(liqs);
+
   for (const l of liqs) {
     const acc = base.get(l.periodo);
     if (!acc) continue;
     acc.devengado += Number(l.montoTotal);
     const esquema = resolverEsquemaMora(l.contrato, inmo);
     const punit = calcularMora(
-      Number(l.montoTotal),
+      { total: Number(l.montoTotal), pagadoAlVencimiento: pagadoAlVenc.get(l.id) ?? 0 },
       esquema,
       l.fechaVencimiento,
       l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : now,
@@ -152,7 +155,12 @@ export async function metricasRoutes(app: FastifyInstance) {
     const nowAR = new Date(Date.now() - 3 * 3600 * 1000);
     const mesActual = nowAR.toISOString().slice(0, 7);
     const q = z
-      .object({ mes: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'mes debe ser YYYY-MM').optional() })
+      .object({
+        mes: z
+          .string()
+          .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'mes debe ser YYYY-MM')
+          .optional(),
+      })
       .parse(request.query ?? {});
     const mes = q.mes ?? mesActual;
     const now = new Date();
@@ -168,37 +176,76 @@ export async function metricasRoutes(app: FastifyInstance) {
     });
 
     // 2) Operativo (independiente de moneda).
-    const [contratosActivos, altasMes, reclamosAbiertos, reclamosResueltos, cajaAgg, hayOtrasMonedas] =
-      await Promise.all([
-        prisma.contrato.count({ where: { inmobiliariaId: u.inmobiliariaId, estado: 'ACTIVO' } }),
-        prisma.contrato.count({
-          where: {
-            inmobiliariaId: u.inmobiliariaId,
-            estado: { not: 'BORRADOR' },
-            fechaInicio: { gte: desde, lt: hasta },
-          },
-        }),
-        prisma.reclamo.count({
-          where: { inmobiliariaId: u.inmobiliariaId, createdAt: { gte: desde, lt: hasta } },
-        }),
-        prisma.reclamo.count({
-          where: {
-            inmobiliariaId: u.inmobiliariaId,
-            estado: { in: ['RESUELTO', 'CERRADO'] },
-            resueltoAt: { gte: desde, lt: hasta },
-          },
-        }),
-        // Caja del mes por MovimientoCaja.fecha (el flujo real que carga la inmo).
-        prisma.movimientoCaja.groupBy({
-          by: ['tipo'],
-          where: { inmobiliariaId: u.inmobiliariaId, fecha: { gte: desde, lt: hasta } },
-          _sum: { monto: true },
-        }),
-        // ¿Hay contratos activos en otra moneda? (para avisar que el tablero es en ARS)
-        prisma.contrato.count({
-          where: { inmobiliariaId: u.inmobiliariaId, estado: 'ACTIVO', moneda: { not: 'ARS' } },
-        }),
-      ]);
+    const [
+      contratosActivos,
+      altasMes,
+      reclamosAbiertos,
+      reclamosResueltos,
+      cajaAgg,
+      contratosOtraMoneda,
+      movimientosOtraMoneda,
+    ] = await Promise.all([
+      prisma.contrato.count({ where: { inmobiliariaId: u.inmobiliariaId, estado: 'ACTIVO' } }),
+      prisma.contrato.count({
+        where: {
+          inmobiliariaId: u.inmobiliariaId,
+          estado: { not: 'BORRADOR' },
+          fechaInicio: { gte: desde, lt: hasta },
+        },
+      }),
+      // "ABIERTOS" ES UN ESTADO, NO UNA VENTANA. Esto contaba los reclamos CREADOS en el mes,
+      // sin filtrar por estado, bajo un rótulo que dice "Reclamos abiertos". Tres consecuencias:
+      //
+      //   · los RECHAZADOS sumaban a "abiertos";
+      //   · un reclamo creado Y resuelto en el mes sumaba a las DOS tarjetas —ésta y
+      //     `reclamosResueltos`, que sí filtra por estado—, y las dos se leen como excluyentes;
+      //   · y un reclamo abierto de hace tres meses, que es el que hay que ir a resolver, no
+      //     aparecía en ninguna.
+      //
+      // Sin ventana de fecha a propósito: "abiertos" es una foto de HOY. Queda al lado de
+      // "resueltos", que sí es del período, y eso está bien: backlog abierto contra resueltos
+      // del mes son dos preguntas distintas y las dos sirven.
+      prisma.reclamo.count({
+        where: { inmobiliariaId: u.inmobiliariaId, estado: { in: ['ABIERTO', 'EN_CURSO'] } },
+      }),
+      prisma.reclamo.count({
+        where: {
+          inmobiliariaId: u.inmobiliariaId,
+          estado: { in: ['RESUELTO', 'CERRADO'] },
+          resueltoAt: { gte: desde, lt: hasta },
+        },
+      }),
+      // Caja del mes por MovimientoCaja.fecha (el flujo real que carga la inmo).
+      // SÓLO ARS, como todo el resto de este endpoint (el `where` de arriba ya lo hace y
+      // la respuesta se rotula `moneda: 'ARS'`). Sin este filtro, un gasto de US$800 se
+      // sumaba al neto de caja como si fueran $800: el número salía en la unidad
+      // equivocada y nada lo delataba. Es el mismo bug que `cuentas.ts` ya cerró
+      // agrupando por moneda; este quedó como el último outlier.
+      prisma.movimientoCaja.groupBy({
+        by: ['tipo'],
+        where: {
+          inmobiliariaId: u.inmobiliariaId,
+          fecha: { gte: desde, lt: hasta },
+          moneda: 'ARS',
+        },
+        _sum: { monto: true },
+      }),
+      // ¿Hay algo en otra moneda? (para avisar que el tablero es en ARS)
+      prisma.contrato.count({
+        where: { inmobiliariaId: u.inmobiliariaId, estado: 'ACTIVO', moneda: { not: 'ARS' } },
+      }),
+      // También los movimientos de caja del mes, no sólo los contratos. Contando sólo
+      // contratos, una inmobiliaria con todo en pesos y un gasto suelto en dólares no
+      // veía ningún aviso — y ahora ese gasto queda FUERA del neto por el filtro de
+      // arriba. Excluir en silencio es tan engañoso como sumar mal.
+      prisma.movimientoCaja.count({
+        where: {
+          inmobiliariaId: u.inmobiliariaId,
+          fecha: { gte: desde, lt: hasta },
+          moneda: { not: 'ARS' },
+        },
+      }),
+    ]);
 
     const ingresosCaja = r2(
       Number(cajaAgg.find((c) => c.tipo === 'INGRESO_EXTRA')?._sum.monto ?? 0),
@@ -208,14 +255,15 @@ export async function metricasRoutes(app: FastifyInstance) {
     return {
       mes,
       moneda: 'ARS',
-      hayOtrasMonedas: hayOtrasMonedas > 0,
+      hayOtrasMonedas: contratosOtraMoneda > 0 || movimientosOtraMoneda > 0,
       financiero: {
         devengado: delMes.devengado,
         cobrado: delMes.cobrado,
         porCobrar: delMes.porCobrar,
         enMora: delMes.enMora,
         // % de lo devengado que ya se cobró (0 si no hubo devengado).
-        cobrabilidadPct: delMes.devengado > 0 ? Math.round((delMes.cobrado / delMes.devengado) * 100) : 0,
+        cobrabilidadPct:
+          delMes.devengado > 0 ? Math.round((delMes.cobrado / delMes.devengado) * 100) : 0,
       },
       operativo: {
         contratosActivos,

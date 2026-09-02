@@ -1,10 +1,15 @@
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import { PREFIJO_REVERSION_INTERNA } from '../lib/reversion-interna.js';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { rolTienePermiso } from '@llave/shared';
 import { resolverEsquemaMora } from '../lib/punitorios.js';
 import { prisma } from '../db.js';
 import { urlEsDelTenant } from './uploads.js';
+import { dineroPositivo } from '../lib/monto.js';
+import { puedeAdjuntar } from '../lib/acceso-archivos.js';
+import { CAMPOS_VISITA_INQUILINO } from '../lib/visita-campos.js';
 import {
   exigirContratoActivo,
   requireAuth,
@@ -34,7 +39,7 @@ import {
  * `Anulado tras conciliar: <motivo>` — misma convención que plata.ts
  * (/pagos/anular y el mapeo neutro de /mis-liquidaciones).
  */
-const PREFIJO_ANULADO = 'Anulado tras conciliar:';
+
 
 /**
  * Predicado Prisma reutilizable: pagos RECHAZADOS que SÍ cuentan como rechazo
@@ -49,7 +54,7 @@ const PREFIJO_ANULADO = 'Anulado tras conciliar:';
  */
 const PAGO_RECHAZADO_REAL: Prisma.PagoWhereInput = {
   estado: 'RECHAZADO',
-  NOT: { observacion: { startsWith: PREFIJO_ANULADO } },
+  NOT: { observacion: { startsWith: PREFIJO_REVERSION_INTERNA } },
 };
 
 type NivelHistorial = 'EXCELENTE' | 'BUENO' | 'REGULAR' | 'NUEVO';
@@ -141,300 +146,32 @@ function calcularNivel(historial: HistorialCertificado): { nivel: NivelHistorial
 }
 
 /**
- * Hash determinístico XXXX-XXXX-XXXX (port del mock). Basado SOLO en datos
- * inmutables (DNI + contrato + inmobiliaria) para que el link compartido a
- * otra inmobiliaria siga vivo aunque el historial crezca.
+ * Código del certificado: XXXX-XXXX-XXXX, ALEATORIO y opaco.
+ *
+ * ANTES ERA DERIVABLE. Se calculaba con FNV-1a + djb2 sobre
+ * `DNI | contratoId | nombreDeLaInmobiliaria`, sin sal y sin secreto: dos funciones de hash
+ * de 32 bits publicadas, truncadas a 12 caracteres. Cualquiera con esos tres datos —y el
+ * nombre de la inmobiliaria es público— reproducía el código de otra persona en diez líneas.
+ * Y como era determinístico, `revocadoAt` no servía de nada: regenerar daba el MISMO código.
+ *
+ * Este código está pensado para que lo tipee un tercero (el propietario o la inmobiliaria a
+ * la que el inquilino le muestra el certificado), así que el alfabeto excluye los caracteres
+ * que se confunden al leer a mano: I/1, O/0, S/5, Z/2. Quedan 32 símbolos × 12 = **60 bits**.
+ *
+ * `randomBytes` y no `Math.random()`: el código es lo único que va a proteger la página
+ * pública de verificación el día que exista, y ahí un PRNG predecible es una llave maestra.
+ * Es el mismo patrón que el link mágico de visita (`operacion.ts`, `randomBytes(24)`).
  */
-function hashCertificado(input: string): string {
-  let h = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  let h2 = 5381;
-  for (let i = 0; i < input.length; i++) {
-    h2 = (h2 * 33) ^ input.charCodeAt(i);
-  }
-  const combined = ((h >>> 0).toString(36) + (h2 >>> 0).toString(36))
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-    .padEnd(12, '0')
-    .slice(0, 12);
-  return `${combined.slice(0, 4)}-${combined.slice(4, 8)}-${combined.slice(8, 12)}`;
-}
-
-/* ============================================================
- * Screening simulado coherente — la identidad del informe es
- * EXACTAMENTE la solicitada (cuit + nombre); el resto se deriva
- * determinísticamente del CUIT para que el mismo CUIT dé siempre
- * el mismo perfil.
- * ============================================================ */
-
-/** FNV-1a → uint32, semilla determinística por CUIT. */
-function semillaNumerica(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function pick<T>(arr: readonly T[], n: number): T {
-  return arr[n % arr.length]!;
-}
-
-function slugDe(s: string): string {
-  return s
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '.')
-    .replace(/^\.+|\.+$/g, '');
-}
-
-const BANCOS = [
-  { codigo: '0007', nombre: 'Banco Galicia' },
-  { codigo: '0011', nombre: 'Banco Nación' },
-  { codigo: '0017', nombre: 'BBVA Argentina' },
-  { codigo: '0072', nombre: 'Banco Patagonia' },
-  { codigo: '0027', nombre: 'Banco Supervielle' },
-  { codigo: '0044', nombre: 'Banco Hipotecario' },
-] as const;
-
-const CALLES = [
-  { calle: 'Av. Rivadavia', localidad: 'Caballito', partido: 'CABA', codigoPostal: '1406' },
-  { calle: 'Av. Corrientes', localidad: 'Almagro', partido: 'CABA', codigoPostal: '1194' },
-  { calle: 'Humboldt', localidad: 'Palermo', partido: 'CABA', codigoPostal: '1414' },
-  { calle: 'Av. Maipú', localidad: 'Vicente López', partido: 'Vicente López', codigoPostal: '1602' },
-  { calle: 'Castro Barros', localidad: 'Boedo', partido: 'CABA', codigoPostal: '1217' },
-] as const;
-
-const EMPLEADORES = [
-  { cuit: '30-71234567-9', razonSocial: 'Globant Argentina S.A.', ciiu: '620100', actividad: 'Servicios de consultores en informática', paginaWeb: 'https://www.globant.com' },
-  { cuit: '30-50000661-3', razonSocial: 'Banco de Galicia y Buenos Aires S.A.U.', ciiu: '641920', actividad: 'Servicios bancarios', paginaWeb: 'https://www.galicia.ar' },
-  { cuit: '30-68731043-4', razonSocial: 'MercadoLibre S.R.L.', ciiu: '479900', actividad: 'Comercio electrónico', paginaWeb: 'https://www.mercadolibre.com.ar' },
-  { cuit: '30-54668997-9', razonSocial: 'Techint Compañía Técnica Internacional S.A.', ciiu: '711003', actividad: 'Servicios de ingeniería', paginaWeb: 'https://www.techint.com' },
-] as const;
-
-const NOMBRES_F = ['María Laura', 'Carolina', 'Verónica', 'Silvina', 'Andrea'] as const;
-const NOMBRES_M = ['Martín', 'Gustavo', 'Pablo', 'Diego', 'Hernán'] as const;
-const APELLIDOS_NEUTROS = ['Fernández', 'Romano', 'Gutiérrez', 'Paz', 'Aguirre'] as const;
-const VEHICULOS = [
-  { marca: 'Toyota', modelo: 'Corolla Cross XEI', anio: 2023 },
-  { marca: 'Volkswagen', modelo: 'Amarok V6', anio: 2022 },
-  { marca: 'Renault', modelo: 'Sandero 1.6', anio: 2017 },
-  { marca: 'Fiat', modelo: 'Cronos Drive', anio: 2021 },
-] as const;
-
-function ultimosPeriodos(n: number): string[] {
-  const out: string[] = [];
-  const hoy = new Date();
-  for (let i = 1; i <= n; i++) {
-    const p = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
-    out.push(`${p.getFullYear()}-${String(p.getMonth() + 1).padStart(2, '0')}`);
+export const ALFABETO_CERT = 'ABCDEFGHJKLMNPQRTUVWXY346789';
+/** Exportada para fijar en un test puro que NO toma ningún dato de la persona. */
+export function codigoCertificado(): string {
+  const bytes = randomBytes(12);
+  let out = '';
+  for (let i = 0; i < 12; i++) {
+    out += ALFABETO_CERT[bytes[i]! % ALFABETO_CERT.length];
+    if (i === 3 || i === 7) out += '-';
   }
   return out;
-}
-
-function generarInformeScreening(cuit: string, nombre: string, apellido: string) {
-  const digitos = cuit.replace(/\D/g, '');
-  const sed = semillaNumerica(digitos);
-  const telefono = (off: number) =>
-    `+54 9 11 ${String(3000 + ((sed + off * 911) % 6999)).padStart(4, '0')} ${String(1000 + ((sed * 7 + off * 137) % 8999)).padStart(4, '0')}`;
-
-  // Identidad EXACTA a lo solicitado: cuit y nombre tal cual; DNI = los 8 del medio.
-  const dniDigitos = digitos.slice(2, 10);
-  const dni = `${dniDigitos.slice(0, 2)}.${dniDigitos.slice(2, 5)}.${dniDigitos.slice(5, 8)}`;
-  const prefijo = digitos.slice(0, 2);
-  const sexo: 'F' | 'M' = prefijo === '27' ? 'F' : prefijo === '20' ? 'M' : sed % 2 === 0 ? 'M' : 'F';
-  const email = `${slugDe(`${nombre} ${apellido}`)}@gmail.com`;
-  const fechaNacimiento = new Date(Date.UTC(1962 + (sed % 38), sed % 12, 1 + (sed % 28)));
-
-  const scoreNosis = 480 + (sed % 470); // 480-949
-  const recomendacion: 'APTO' | 'APTO_CON_GARANTIA' | 'NO_APTO' =
-    scoreNosis >= 700 ? 'APTO' : scoreNosis >= 580 ? 'APTO_CON_GARANTIA' : 'NO_APTO';
-  const riesgo = recomendacion === 'APTO' ? 'bajo' : recomendacion === 'APTO_CON_GARANTIA' ? 'medio' : 'alto';
-
-  // BCRA coherente con el riesgo
-  const entidadesCount = 2 + (sed % 3);
-  const entidades = Array.from({ length: entidadesCount }, (_, i) => {
-    const banco = pick(BANCOS, sed + i);
-    return { ...banco, deuda: 120_000 + ((sed * 31 + i * 977) % 880_000) };
-  });
-  const deudaTomada = entidades.reduce((acc, e) => acc + e.deuda, 0);
-  const deudaEnMora =
-    riesgo === 'bajo' ? 0 : riesgo === 'medio' ? Math.round(deudaTomada * 0.08) : Math.round(deudaTomada * 0.35);
-  const situaciones =
-    riesgo === 'bajo'
-      ? { 1: entidadesCount }
-      : riesgo === 'medio'
-        ? { 1: Math.max(1, entidadesCount - 1), 2: 1 }
-        : { 2: 1, 3: Math.max(1, entidadesCount - 1) };
-  const bcra = { entidadesCount, deudaTomada, deudaEnMora, riesgo, situaciones, entidades, deudaUltimos24m: true };
-
-  const cheques =
-    riesgo === 'alto'
-      ? { rechazadosCount: 2 + (sed % 2), rechazadosMonto: 180_000 + (sed % 400_000), levantadosCount: 1, levantadosMonto: 90_000 + (sed % 120_000) }
-      : riesgo === 'medio'
-        ? { rechazadosCount: 1, rechazadosMonto: 60_000 + (sed % 150_000), levantadosCount: 1, levantadosMonto: 60_000 + (sed % 150_000) }
-        : { rechazadosCount: 0, rechazadosMonto: 0, levantadosCount: sed % 3, levantadosMonto: sed % 3 === 0 ? 0 : 150_000 + (sed % 250_000) };
-
-  // Familia: el grupo lleva el apellido SOLICITADO (nada de otra persona)
-  const nombreConyuge = sexo === 'M' ? pick(NOMBRES_F, sed) : pick(NOMBRES_M, sed);
-  const familia = [
-    {
-      vinculo: 'CONYUGE',
-      nombreCompleto: `${nombreConyuge} ${pick(APELLIDOS_NEUTROS, sed)}`,
-      telefonos: [{ numero: telefono(3), tipo: 'CELULAR', whatsappActivo: true }],
-      email: `${slugDe(nombreConyuge)}.${slugDe(pick(APELLIDOS_NEUTROS, sed))}@gmail.com`,
-    },
-    {
-      vinculo: 'PADRE_MADRE',
-      nombreCompleto: `${sexo === 'M' ? pick(NOMBRES_M, sed + 2) : pick(NOMBRES_F, sed + 2)} ${apellido}`,
-      telefonos: [{ numero: telefono(4), tipo: 'FIJO', whatsappActivo: false }],
-      email: null,
-    },
-    {
-      vinculo: 'HERMANO',
-      nombreCompleto: `${sexo === 'M' ? pick(NOMBRES_F, sed + 4) : pick(NOMBRES_M, sed + 4)} ${apellido}`,
-      telefonos: [],
-      email: null,
-    },
-  ];
-
-  const dom = pick(CALLES, sed);
-  const domicilio = {
-    calle: dom.calle,
-    altura: String(800 + (sed % 5600)),
-    pisoDpto: sed % 3 === 0 ? null : `${1 + (sed % 11)}°${'ABCD'.charAt(sed % 4)}`,
-    codigoPostal: dom.codigoPostal,
-    localidad: dom.localidad,
-    partido: dom.partido,
-    provincia: 'Buenos Aires',
-  };
-
-  const relacionDependencia = recomendacion !== 'NO_APTO';
-  const rangoBase = recomendacion === 'APTO' ? 5 : recomendacion === 'APTO_CON_GARANTIA' ? 4 : 2;
-  const nominaUltimos6m = ultimosPeriodos(6).map((periodo, i) => ({
-    periodo,
-    rangoIngreso: `A${rangoBase + ((sed + i) % 2)}`,
-    fechaPago: `${periodo}-0${5 + (i % 3)}`,
-  }));
-  const ingresos = {
-    categoriaArca: relacionDependencia ? 'RELACION_DEPENDENCIA' : 'MONOTRIBUTO',
-    impuestoGanancias: relacionDependencia ? 'AC' : 'NI',
-    impuestoIva: relacionDependencia ? 'NA' : 'AC',
-    integranteSocietario: false,
-    empleador: false,
-    ciiu: relacionDependencia ? pick(EMPLEADORES, sed).ciiu : '477190',
-    actividadDescripcion: relacionDependencia ? pick(EMPLEADORES, sed).actividad : 'Venta al por menor — monotributo',
-    obraSocialCodigo: relacionDependencia ? '203500' : null,
-    obraSocialNombre: relacionDependencia ? 'OSDE — Organización de Servicios Directos Empresarios' : null,
-    nominaUltimos6m: relacionDependencia ? nominaUltimos6m : [],
-  };
-
-  const emp = pick(EMPLEADORES, sed);
-  const empleador = relacionDependencia
-    ? {
-        cuit: emp.cuit,
-        razonSocial: emp.razonSocial,
-        ciiu: emp.ciiu,
-        actividad: emp.actividad,
-        telefonos: [telefono(5)],
-        email: `rrhh@${slugDe(emp.razonSocial).split('.')[0]}.com`,
-        paginaWeb: emp.paginaWeb,
-        tipoEmpresa: 'Sociedad Anónima',
-        artVigente: true,
-        bcra: { entidadesCount: 4, deudaTomada: 80_000_000 + (sed % 90_000_000), deudaEnMora: 0, riesgo: 'bajo', situaciones: { 1: 4 }, entidades: [], deudaUltimos24m: true },
-      }
-    : null;
-
-  const inmuebles =
-    recomendacion === 'APTO'
-      ? [{ partidoCatastral: `CABA ${10 + (sed % 20)}-${sed % 90}-${sed % 9}`, ubicacion: `${dom.calle} ${domicilio.altura} — ${dom.localidad}`, tipo: 'DEPARTAMENTO', fechaAdquisicion: `${2008 + (sed % 14)}-0${1 + (sed % 9)}-15` }]
-      : [];
-  const vehiculos =
-    recomendacion === 'NO_APTO'
-      ? []
-      : [{ ...pick(VEHICULOS, sed), fechaCompra: `${2017 + (sed % 7)}-0${1 + (sed % 9)}-10`, patente: `A${'BCDE'.charAt(sed % 4)}${100 + (sed % 899)}${'PQRS'.charAt(sed % 4)}${'TUVW'.charAt((sed >> 3) % 4)}` }];
-
-  const vecinos = [
-    { nombreCompleto: `${pick(NOMBRES_F, sed + 1)} ${pick(APELLIDOS_NEUTROS, sed + 1)}`, telefono: telefono(6), direccion: `${dom.calle} ${domicilio.altura} ${1 + (sed % 11)}°${'BCDA'.charAt(sed % 4)}` },
-    { nombreCompleto: 'Encargado del edificio', telefono: telefono(7), direccion: `Portería · ${dom.calle} ${domicilio.altura}` },
-  ];
-
-  const slugPersona = slugDe(`${nombre} ${apellido}`);
-  const huellaDigital = {
-    scoreCoherencia: recomendacion === 'APTO' ? 'alta' : recomendacion === 'APTO_CON_GARANTIA' ? 'media' : 'baja',
-    antiguedadAnios: 4 + (sed % 14),
-    mencionesGoogle: sed % 18,
-    emailEnSitios: sed % 25,
-    perfiles: [
-      { plataforma: 'LINKEDIN', handle: slugPersona.replace(/\./g, '-'), url: `https://linkedin.com/in/${slugPersona.replace(/\./g, '-')}`, verificado: recomendacion === 'APTO', estado: 'ACTIVO', seguidores: 200 + (sed % 2200), ultimaActividad: null, notas: relacionDependencia ? `Perfil laboral coherente con empleo declarado en ${emp.razonSocial}.` : 'Perfil con actividad comercial independiente.' },
-      { plataforma: 'INSTAGRAM', handle: `@${slugPersona}`, url: `https://instagram.com/${slugPersona}`, verificado: false, estado: sed % 4 === 0 ? 'INACTIVO' : 'ACTIVO', seguidores: 100 + (sed % 1800), ultimaActividad: null, notas: 'Cuenta personal. Sin contenido marcado.' },
-      { plataforma: 'GOOGLE', handle: null, url: `https://www.google.com/search?q=${encodeURIComponent(`${nombre} ${apellido}`)}`, verificado: false, estado: 'ACTIVO', seguidores: null, ultimaActividad: null, notas: `${sed % 18} menciones públicas encontradas.` },
-    ],
-    hallazgos:
-      recomendacion === 'APTO'
-        ? [
-            { tipo: 'positivo', texto: 'Identidad coherente cross-plataforma. Sin menciones a desalojos, juicios o conflictos contractuales previos.' },
-            { tipo: 'positivo', texto: 'Empleo declarado verificable en LinkedIn.' },
-          ]
-        : recomendacion === 'APTO_CON_GARANTIA'
-          ? [
-              { tipo: 'neutro', texto: 'Identidad consistente pero con baja presencia pública — verificación parcial.' },
-              { tipo: 'alerta', texto: 'Situación BCRA 2 en una entidad: atraso leve reciente.' },
-            ]
-          : [
-              { tipo: 'alerta', texto: `Deuda en mora por $${deudaEnMora.toLocaleString('es-AR')} y cheques rechazados en los últimos 12 meses.` },
-              { tipo: 'alerta', texto: 'Ingresos informales o no verificables — no alcanzan para acreditar capacidad de pago.' },
-            ],
-  };
-
-  const recomendacionRazon =
-    recomendacion === 'APTO'
-      ? `Score Nosis ${scoreNosis} (alto). BCRA situación 1 en ${entidadesCount} entidades, sin mora. Ingresos formales estables (rango A${rangoBase}-A${rangoBase + 1}) y patrimonio verificable. Apto sin garantía adicional.`
-      : recomendacion === 'APTO_CON_GARANTIA'
-        ? `Score Nosis ${scoreNosis} (medio). Registra situación 2 en BCRA con mora menor ($${deudaEnMora.toLocaleString('es-AR')}) y ${cheques.rechazadosCount} cheque rechazado luego levantado. Ingresos formales pero justos: se recomienda garantía adicional (garante propietario o seguro de caución).`
-        : `Score Nosis ${scoreNosis} (bajo). Deuda en mora por $${deudaEnMora.toLocaleString('es-AR')} (situación 3 en BCRA), ${cheques.rechazadosCount} cheques rechazados vigentes e ingresos no verificables. No se recomienda avanzar.`;
-
-  return {
-    cuit,
-    dni,
-    nombre,
-    apellido,
-    fechaNacimiento,
-    sexo,
-    domicilio,
-    telefonos: [
-      { numero: telefono(1), tipo: 'CELULAR', whatsappActivo: true },
-      { numero: telefono(2), tipo: 'FIJO', whatsappActivo: false },
-    ],
-    email,
-    bcra,
-    cheques,
-    familia,
-    rangoIngresoFamiliar: `A${Math.min(7, rangoBase + 1)}` as 'A1' | 'A2' | 'A3' | 'A4' | 'A5' | 'A6' | 'A7',
-    bcraFamiliar: {
-      entidadesCount: entidadesCount + 2,
-      deudaTomada: Math.round(deudaTomada * 1.6),
-      deudaEnMora: riesgo === 'bajo' ? 0 : Math.round(deudaEnMora * 0.5),
-      riesgo: riesgo === 'alto' ? 'alto' : riesgo === 'medio' ? 'medio' : 'bajo',
-      situaciones,
-      entidades: entidades.slice(0, 2),
-      deudaUltimos24m: true,
-    },
-    inmuebles,
-    vehiculos,
-    ingresos,
-    empleador,
-    vecinos,
-    huellaDigital,
-    scoreNosis,
-    recomendacion,
-    recomendacionRazon,
-  };
 }
 
 /* ============================================================
@@ -498,7 +235,17 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       include: {
         propiedad: { select: { direccion: true, ciudad: true, reglasConvivencia: true, mascotasPermitidas: true } },
         inmobiliaria: {
-          select: { nombre: true, telefono: true, moraTipoDefault: true, moraValorDefault: true },
+          // `whatsapp` va acá porque el número que el inquilino toca en la PWA salía de
+          // `telefono` — el fijo de la oficina— mientras el campo WhatsApp, que la
+          // inmobiliaria carga como obligatorio en Configuración, no lo leía NADIE. Ver abajo.
+          select: {
+            nombre: true,
+            telefono: true,
+            whatsapp: true,
+            moraTipoDefault: true,
+            moraValorDefault: true,
+            monedaDefault: true,
+          },
         },
         sociedad: { select: { cuentaCobranza: true } },
         cobraDirectoPropietario: { include: { cuentaCobranza: true } },
@@ -559,7 +306,19 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       direccion: contrato.propiedad.direccion,
       ciudad: contrato.propiedad.ciudad,
       inmobiliaria: contrato.inmobiliaria.nombre,
-      inmobiliariaTelefono: contrato.inmobiliaria.telefono ?? null,
+      // EL WHATSAPP MANDA, EL TELÉFONO ES EL RESPALDO.
+      //
+      // La PWA arma SIETE links `wa.me` con este campo, y salía de `telefono`. La inmobiliaria
+      // carga en Configuración un Teléfono ("011 4631-5870", el fijo de la oficina) y un
+      // WhatsApp ("11 5234-7891"), ve el toast de guardado, y el inquilino toca el botón verde:
+      // se abre `wa.me/541146315870`, un fijo sin WhatsApp. El chat no existe y el mensaje
+      // nunca llega. `Inmobiliaria.whatsapp` se persistía y su único lector era el GET que
+      // repinta ese mismo formulario.
+      //
+      // El fallback a `telefono` NO es de más: hay inmobiliarias que hoy tienen el celular
+      // cargado en Teléfono y el campo WhatsApp vacío. Sin el fallback, a ésas se les rompe el
+      // botón que hoy les funciona.
+      inmobiliariaTelefono: contrato.inmobiliaria.whatsapp || contrato.inmobiliaria.telefono || null,
       fechaInicio: contrato.fechaInicio.toISOString().slice(0, 10),
       fechaFin: contrato.fechaFin.toISOString().slice(0, 10),
       diaPago: contrato.diaPago,
@@ -695,9 +454,32 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
         (hastaMeses.getMonth() - contrato.fechaInicio.getMonth()),
     );
 
-    const semilla = [inquilino.dni ?? inquilino.id, contrato.id, contrato.inmobiliaria.nombre].join('|');
-    const hash = hashCertificado(semilla);
-    const urlVerificacion = `https://myalquiler.com.ar/verificar/${hash}`;
+    // El código ya NO se deriva de los datos de la persona (ver `codigoCertificado`), así que
+    // hay que LEER el que ya tenga esta persona para este contrato antes de inventar uno.
+    //
+    // Es la diferencia que trae el cambio: con un código determinístico daba igual, porque
+    // recalcularlo devolvía siempre lo mismo. Con uno aleatorio, generarlo antes de mirar
+    // rompería dos cosas — el código impreso cambiaría en cada visita, y `urlVerificacion`
+    // quedaría apuntando a un código distinto del que guarda la fila.
+    const certPrevio = await prisma.certificadoInquilino.findUnique({
+      where: { inquilinoId_contratoId: { inquilinoId: inquilino.id, contratoId: contrato.id } },
+      select: { hash: true },
+    });
+    const hash = certPrevio?.hash ?? codigoCertificado();
+    // La URL que se IMPRIME en el certificado y que va a tipear o clickear un tercero —el
+    // propietario o la inmobiliaria a la que el inquilino se lo muestra—.
+    //
+    // Estaba hardcodeada a `https://myalquiler.com.ar/...`, y **ese dominio no existe**:
+    // verificado el 20/08, no resuelve (sin respuesta), mientras `myalquiler.com` y
+    // `admin.myalquiler.com` devuelven 200. O sea que el "certificado verificable" traía
+    // impresa una dirección adonde nadie podía llegar: la única parte que lo vuelve
+    // verificable era la que no funcionaba.
+    //
+    // La ruta `/verificar/[hash]` vive en la PWA del inquilino (`apps/inquilino`), que se
+    // sirve en `app.myalquiler.com`. Se usa `APP_INQUILINO_URL`, que ya existía y que el
+    // mailer usa con el mismo default, en vez de volver a hardcodear un dominio.
+    const appInquilino = (process.env.APP_INQUILINO_URL ?? 'https://app.myalquiler.com').replace(/\/$/, '');
+    const urlVerificacion = `${appInquilino}/verificar/${hash}`;
     const validoHasta = new Date(ahora.getTime() + 30 * DIA_MS);
 
     const inquilinoData = {
@@ -711,7 +493,15 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       inmobiliaria: contrato.inmobiliaria.nombre,
       fechaInicio: contrato.fechaInicio.toISOString().slice(0, 10),
       fechaFin: contrato.fechaFin.toISOString().slice(0, 10),
-      montoMensual: Number(contrato.monto),
+      // Lo que esta persona paga por mes. Para un SOLO_EXPENSAS `contrato.monto` es 0 por
+      // diseño (el alta lo permite sólo en ese caso), así que el certificado imprimía
+      // "Alquiler mensual $0". El importe que corresponde son las expensas, y el rótulo lo
+      // decide el front con `tipoContrato`.
+      montoMensual:
+        contrato.tipoContrato === 'SOLO_EXPENSAS'
+          ? Number(contrato.montoExpensas ?? 0)
+          : Number(contrato.monto),
+      tipoContrato: contrato.tipoContrato,
       moneda: contrato.moneda,
       mesesCumplidos,
       // El certificado sigue siendo válido como HISTORIAL, pero deja explícito si el
@@ -721,7 +511,11 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     };
 
     const cert = await prisma.certificadoInquilino.upsert({
-      where: { hash },
+      // La clave del upsert es (inquilino, contrato), NO el código. Antes era `{ hash }` y
+      // funcionaba sólo porque el código era determinístico: con un código aleatorio, buscar
+      // por hash no encontraría nunca la fila previa y cada visita a /certificado crearía una
+      // fila nueva —con un código nuevo— dejando la anterior huérfana con PII adentro.
+      where: { inquilinoId_contratoId: { inquilinoId: inquilino.id, contratoId: contrato.id } },
       update: {
         inquilinoData,
         contratoActual,
@@ -763,56 +557,40 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
   });
 
   // ===== Screening (panel) =====
+  /**
+   * ⛔ APAGADO. Devuelve 501 hasta que exista una fuente real de datos crediticios.
+   *
+   * POR QUÉ: este endpoint no consultaba nada. El informe entero —score, deudas BCRA, cheques
+   * rechazados, juicios, familia, domicilio, empleador, patrimonio— salía de un PRNG FNV-1a
+   * sembrado con los dígitos del CUIT. Ese generador se borró en este mismo commit.
+   * En toda la API no hay una sola llamada a Nosis, BCRA, RENAPER, ARCA ni Veraz: los únicos
+   * `fetch()` salientes van al bug tracker.
+   *
+   * Y lo persistía con `estado: 'COMPLETO'` sobre una **persona real identificada por CUIT y
+   * nombre**, devolviendo 201 con un informe que se ve oficial.
+   *
+   * Lo único que lo contenía era que ningún front lo llama y que la pantalla está gateada en
+   * producción. Eso no es un control: el endpoint estaba vivo y autenticado, y alcanzaba con
+   * que alguien "terminara de cablear la pantalla" para que una inmobiliaria decidiera a quién
+   * le alquila mirando números inventados sobre una persona con nombre y apellido.
+   *
+   * 501 y no 404: el endpoint EXISTE y está previsto, lo que falta es la integración. Un 404
+   * mentiría en la otra dirección y haría que alguien lo reimplemente creyendo que nunca estuvo.
+   *
+   * Para reactivarlo hace falta, en este orden: contrato con el proveedor (Nosis), la clave en
+   * el entorno, el cliente HTTP real, y decidir qué se hace con las filas ya fabricadas que
+   * puedan existir en `screenings` (ver la consulta de diagnóstico de T-21-N3-N2). Mientras
+   * tanto NO queda nada del generador en el archivo: se borró entero (está en el historial de
+   * git). La forma que el proveedor tiene que llenar ya la define el modelo `Screening`.
+   */
   app.post('/screening', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'screening.ver');
     if (!u) return;
-    const body = z
-      .object({
-        cuit: z.string().regex(/^\d{2}-?\d{8}-?\d{1}$/),
-        nombre: z.string().trim().min(3),
-      })
-      .safeParse(request.body ?? {});
-    if (!body.success) {
-      return reply.code(400).send({ message: 'CUIT (formato XX-XXXXXXXX-X) y nombre completo requeridos' });
-    }
-
-    const digitos = body.data.cuit.replace(/\D/g, '');
-    const cuit = `${digitos.slice(0, 2)}-${digitos.slice(2, 10)}-${digitos.slice(10)}`;
-    const partes = body.data.nombre.replace(/\s+/g, ' ').trim().split(' ');
-    const apellido = partes.length > 1 ? partes[partes.length - 1]! : partes[0]!;
-    const nombre = partes.length > 1 ? partes.slice(0, -1).join(' ') : partes[0]!;
-
-    const informe = generarInformeScreening(cuit, nombre, apellido);
-    const screening = await prisma.screening.create({
-      data: {
-        inmobiliariaId: u.inmobiliariaId,
-        estado: 'COMPLETO',
-        cuit: informe.cuit,
-        dni: informe.dni,
-        nombre: informe.nombre,
-        apellido: informe.apellido,
-        fechaNacimiento: informe.fechaNacimiento,
-        sexo: informe.sexo,
-        domicilio: informe.domicilio,
-        telefonos: informe.telefonos,
-        email: informe.email,
-        bcra: informe.bcra,
-        cheques: informe.cheques,
-        familia: informe.familia,
-        rangoIngresoFamiliar: informe.rangoIngresoFamiliar,
-        bcraFamiliar: informe.bcraFamiliar,
-        inmuebles: informe.inmuebles,
-        vehiculos: informe.vehiculos,
-        ingresos: informe.ingresos,
-        empleador: informe.empleador ?? Prisma.JsonNull,
-        vecinos: informe.vecinos,
-        huellaDigital: informe.huellaDigital,
-        scoreNosis: informe.scoreNosis,
-        recomendacion: informe.recomendacion,
-        recomendacionRazon: informe.recomendacionRazon,
-      },
+    return reply.code(501).send({
+      message:
+        'La verificación crediticia todavía no está disponible: falta conectar la fuente de datos real. No emitimos informes que no podamos respaldar.',
+      codigo: 'SCREENING_SIN_FUENTE',
     });
-    return reply.code(201).send(screening);
   });
 
   app.get('/screenings', async (request, reply) => {
@@ -994,7 +772,7 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       .object({
         servicio: z.enum(['LUZ', 'GAS', 'AGUA', 'INTERNET', 'ABL', 'CABLE']),
         periodo: z.string().regex(/^\d{4}-\d{2}$/),
-        monto: z.number().positive().optional(),
+        monto: dineroPositivo().optional(),
         vencimiento: z.string().optional(),
         nombreArchivo: z.string().optional(),
         tipoMime: z.string().optional(),
@@ -1013,6 +791,11 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     // La boleta, si trae archivo, tiene que ser un /uploads de ESTA inmobiliaria.
     if (body.data.archivoUrl && !urlEsDelTenant(body.data.archivoUrl, inq.inmobiliariaId)) {
       return reply.code(400).send({ message: 'Archivo de boleta inválido' });
+    }
+    if (!(await puedeAdjuntar(body.data.archivoUrl, inq))) {
+      // Suyo, no sólo del tenant: sin esto la vía 2 del guard de lectura se auto-anula
+      // —alguien con la URL ajena la engancha a una fila propia y se auto-autoriza—.
+      return reply.code(403).send({ message: 'Ese archivo no es tuyo' });
     }
     // No se cargan boletas de períodos futuros.
     const [anioBol = 0, mesBol = 0] = body.data.periodo.split('-').map(Number);
@@ -1100,9 +883,13 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     // tiene obligación de pago viva y la PWA ni siquiera ofrece la cuenta para pagar.
     const ctoNotif = await prisma.contrato.findFirst({
       where: { id: contratoId, inmobiliariaId: inq.inmobiliariaId },
-      select: { estado: true },
+      // `moneda` para el aviso de ajuste: el sistema es riguroso con esto y un monto en
+      // dólares mostrado con signo de pesos ya fue bug varias veces.
+      select: { estado: true, moneda: true },
     });
     const contratoActivo = ctoNotif?.estado === 'ACTIVO';
+    const simMoneda = ctoNotif?.moneda === 'USD' ? 'US$' : '$';
+    const fmtMonedaContrato = (n: number): string => `${simMoneda} ${n.toLocaleString('es-AR')}`;
     const ahora = Date.now();
     const relativo = (d: Date | string): string => {
       const min = Math.floor((ahora - new Date(d).getTime()) / 60000);
@@ -1176,6 +963,43 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       }
     }
 
+    // 1.b) AJUSTES DE ALQUILER recientes.
+    //
+    // No existía ningún aviso de ajuste, por ningún canal: al inquilino le subían el
+    // alquiler y se enteraba cuando le llegaba la liquidación siguiente más cara
+    // (reportado el 03/08: "no me avisó que me subiste, que hubo un aumento"). Además del
+    // email que sale al aplicarlo, queda acá para el que no lee el mail.
+    //
+    // Se deriva de `AjusteAlquiler` —igual que el resto del feed, que es on-read y no
+    // guarda notificaciones—. Los DOS caminos de ajuste dejan fila en esa tabla
+    // (`POST /contratos/:id/ajustar` y `PATCH /contratos/:id/monto`), así que no importa
+    // por dónde entró el operador.
+    const hace60 = new Date(ahora - 60 * 86400000);
+    const ajustes = await prisma.ajusteAlquiler.findMany({
+      where: { contratoId, inmobiliariaId: inq.inmobiliariaId, createdAt: { gte: hace60 } },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+    });
+    for (const a of ajustes) {
+      const anterior = Number(a.montoAnterior);
+      const nuevo = Number(a.montoNuevo);
+      // Un "ajuste" que no cambió el monto no es noticia para el inquilino.
+      if (Math.abs(nuevo - anterior) < 0.01) continue;
+      const subio = nuevo > anterior;
+      out.push({
+        id: `ajuste-${a.id}`,
+        titulo: subio ? 'Se actualizó tu alquiler' : 'Se corrigió tu alquiler',
+        detalle:
+          `${fmtMonedaContrato(anterior)} → ${fmtMonedaContrato(nuevo)} desde ${a.periodoDesde}` +
+          (a.motivo ? ` · ${a.motivo}` : ''),
+        href: '/contrato',
+        cuando: relativo(a.createdAt),
+        icono: 'ajuste',
+        // Alta y no crítica: es importante que lo vea, pero no es una deuda vencida.
+        severidad: 'alta',
+      });
+    }
+
     // 2) Pagos decididos en los últimos 30 días: rechazado / confirmado.
     const hace30 = new Date(ahora - 30 * 86400000);
     const decididos = await prisma.pago.findMany({
@@ -1196,7 +1020,7 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
         // Un pago ANULADO por la inmo queda RECHAZADO con observacion interna
         // ('Anulado tras conciliar: …'): es una reversión operativa, NO un rechazo
         // de comprobante. Copy distinto y observacion NUNCA expuesta al inquilino.
-        const anulado = (p.observacion ?? '').startsWith(PREFIJO_ANULADO);
+        const anulado = (p.observacion ?? '').startsWith(PREFIJO_REVERSION_INTERNA);
         if (anulado) {
           out.push({
             id: `pago-anul-${p.id}`,
@@ -1225,7 +1049,11 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
         out.push({
           id: `pago-ok-${p.id}`,
           titulo: loInformoQuienConsulta ? 'Tu comprobante fue confirmado' : `Se confirmó el pago de ${p.periodo}`,
-          detalle: `$${Math.round(Number(p.monto)).toLocaleString('es-AR')} acreditado.`,
+          // El formateador correcto está definido en esta misma función, 160 líneas arriba, y
+          // su comentario dice textual que el signo equivocado "ya fue bug varias veces". Se usa
+          // para el aviso de ajuste y se había salteado justo acá — que es el aviso que el
+          // inquilino guarda COMO COMPROBANTE de que pagó.
+          detalle: `${fmtMonedaContrato(Math.round(Number(p.monto)))} acreditado.`,
           href: `/pago/${p.liquidacionId}`,
           cuando: p.decididoAt ? relativo(p.decididoAt) : 'reciente',
           icono: 'pago_confirmado',
@@ -1237,7 +1065,17 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     // 3) Reclamos: respondidos por la inmo / profesional asignado / a calificar.
     const reclamos = await prisma.reclamo.findMany({
       where: { contratoId },
-      include: { eventos: { orderBy: { fecha: 'asc' } }, profesional: true, visita: true, rating: true },
+      include: {
+        eventos: { orderBy: { fecha: 'asc' } },
+        profesional: true,
+        // NUNCA el token. `visita: true` le mandaba al INQUILINO el link mágico del
+        // profesional, y con él puede canjear un JWT de profesional (el canje no pide bearer)
+        // y cerrar su propio reclamo poniendo el `costoTrabajo` que quiera: 0 para no
+        // pagarlo, o un número grande si el pagador clasificado es el propietario.
+        // Acá no hay rol que valga: el inquilino no crea ni regenera ese link nunca.
+        visita: { select: CAMPOS_VISITA_INQUILINO },
+        rating: true,
+      },
     });
     const CERRADOS = ['RESUELTO', 'CERRADO', 'RECHAZADO'];
     for (const r of reclamos) {

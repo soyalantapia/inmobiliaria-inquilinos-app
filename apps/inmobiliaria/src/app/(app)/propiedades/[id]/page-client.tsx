@@ -21,6 +21,7 @@ import {
   Plus,
   ShieldCheck,
   Store,
+  UserMinus,
   UserRound,
   Users,
   Warehouse,
@@ -32,6 +33,7 @@ import { Button } from '@llave/ui/button';
 import { EditarPropiedadTrigger } from '@/components/editar-propiedad-trigger';
 import { EditarPropietarioTrigger } from '@/components/editar-propietario-trigger';
 import { EditarParticipacionesDialog } from '@/components/editar-participaciones-dialog';
+import { CargarDeudaHistoricaDialog } from '@/components/cargar-deuda-historica-dialog';
 import { EliminarPropiedadButton } from '@/components/eliminar-propiedad-button';
 import {
   CargarInquilinoTrigger,
@@ -66,9 +68,12 @@ import {
   urgenciaConfig,
 } from '@/lib/reclamos-config';
 import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatRangoVigencia } from '@/lib/format';
+import { rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
 import { apiEnabled, urlDeArchivo } from '@/lib/api/client';
 import { usePropiedad } from '@/lib/api/use-propiedad';
-import { usePropietarios } from '@/lib/api/hooks';
+import { useMe, usePropietarios } from '@/lib/api/hooks';
+import { normalizarRol } from '@/lib/rol-storage';
+import type { Rol } from '@llave/shared/permisos';
 import type { TipoPropiedad } from '@/lib/types';
 
 const tipoIcono: Record<TipoPropiedad, React.ComponentType<{ className?: string }>> = {
@@ -88,6 +93,18 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
   // declaran ANTES de los early-returns para respetar las reglas de hooks.
   const { propietarios: catalogoPropietarios } = usePropietarios();
   const [editarRepartoOpen, setEditarRepartoOpen] = useState(false);
+  const [deudaHistoricaOpen, setDeudaHistoricaOpen] = useState(false);
+  // Cargar deuda histórica CREA plata adeudada sin que nadie firme nada y sin
+  // pasar por la bandeja de aprobación. Mismo criterio que el server (403 al
+  // resto): un botón que siempre falla es peor que no tenerlo. Con /auth/me
+  // caído NO recortamos en silencio — el 403 sigue siendo la frontera real.
+  const { me, isError: meError } = useMe();
+  const rolActual: Rol = apiEnabled ? normalizarRol(me?.rol, 'LECTURA') : 'ADMIN';
+  const puedeCargarDeuda = meError || rolActual === 'ADMIN' || rolActual === 'OPERADOR';
+  // El reparto define A QUIÉN SE LE RINDE LA PLATA, y el PUT corta a CARGA (core.ts). Mismo
+  // criterio que la línea de arriba: con /auth/me caído no recortamos en silencio, porque el
+  // 403 del server sigue siendo la frontera real.
+  const puedeEditarReparto = meError || rolActual !== 'CARGA';
 
   // En build demo el mock es síncrono: si no existe el id → 404 real de Next.
   if (!deApi && noEncontrada) notFound();
@@ -165,11 +182,17 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
               )}
               <div className="flex-1 min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-2xl font-semibold leading-tight">{propiedad.direccion}</h1>
+                  <h1 className="text-2xl font-semibold leading-tight">
+                    {rotuloPrincipal(propiedad)}
+                  </h1>
                   <Badge variant={estadoCfg.variant}>{estadoCfg.label}</Badge>
                 </div>
+                {/* La calle NO se pierde: si el título pasó a ser el complejo, la
+                    dirección baja acá junto a la ciudad. Es la pantalla desde donde se
+                    manda al profesional a la propiedad. */}
                 <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
                   <MapPin className="h-3.5 w-3.5" />
+                  {rotuloSecundario(propiedad) && `${rotuloSecundario(propiedad)} · `}
                   {propiedad.ciudad}, {propiedad.provincia}
                 </p>
                 <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
@@ -204,11 +227,29 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                     cuando la feature ya funcionaba → no se podía corregir ni un
                     typo de dirección/tipo/m²/complejo. */}
                 <EditarPropiedadTrigger propiedad={propiedad} />
+                {/* Deuda de un inquilino ANTERIOR. Vive acá y no en "nuevo
+                    contrato" porque el alta normal no la admite: rechaza si la
+                    propiedad ya está alquilada, que es el caso típico del moroso
+                    de hace años. Sólo ADMIN/OPERADOR — el server devuelve 403 al
+                    resto, y un botón que siempre falla es peor que no tenerlo. */}
+                {apiEnabled && puedeCargarDeuda && (
+                  <Button variant="outline" size="sm" onClick={() => setDeudaHistoricaOpen(true)}>
+                    <UserMinus className="mr-2 h-4 w-4" />
+                    Deuda de inquilino anterior
+                  </Button>
+                )}
                 {apiEnabled && propiedad.estado === 'DISPONIBLE' && (
                   <EliminarPropiedadButton propiedadId={propiedad.id} direccion={propiedad.direccion} />
                 )}
               </div>
             </div>
+
+            <CargarDeudaHistoricaDialog
+              open={deudaHistoricaOpen}
+              onOpenChange={setDeudaHistoricaOpen}
+              propiedadId={propiedad.id}
+              direccion={propiedad.direccion}
+            />
 
             {/* Stats inline */}
             <div className="grid grid-cols-2 gap-4 border-t pt-4 sm:grid-cols-4">
@@ -556,7 +597,10 @@ export default function DetallePropiedadPage({ params }: { params: { id: string 
                           ) : (
                             <Badge variant="warning">Suma {validacion.suma}% — falta ajustar</Badge>
                           )}
-                          {apiEnabled && (
+                          {/* El reparto define A QUIEN SE LE RINDE LA PLATA, y el PUT corta a
+                              CARGA (core.ts). Sin este gate, el rol veia el boton, abria el
+                              dialogo, armaba el reparto nuevo y recien ahi comia un 403. */}
+                          {apiEnabled && puedeEditarReparto && (
                             <Button variant="outline" size="sm" onClick={() => setEditarRepartoOpen(true)}>
                               <Users className="h-3.5 w-3.5" />
                               Editar reparto
@@ -1027,7 +1071,7 @@ function emailDeNombre(nombre: string): string {
     .replace(/[^a-z0-9\s]/g, '')
     .trim()
     .split(/\s+/)
-    .join('.')}@gmail.com`;
+    .join('.')}@example.com`;
 }
 
 function DocRow({ nombre, subtitulo }: { nombre: string; subtitulo: string }) {

@@ -8,8 +8,10 @@ import { ConfirmDialog } from '@llave/ui/confirm-dialog';
 import { toast } from '@llave/ui/use-toast';
 import { MoneyInput } from '@/components/money-input';
 import { ApiError, varianteError } from '@/lib/api/client';
-import { useFinalizarContrato, useFinalizarPreview, type FinalizarPreview } from '@/lib/api/hooks';
+import { useFinalizarContrato, useFinalizarPreview, useMe, type FinalizarPreview } from '@/lib/api/hooks';
 import { formatMonto } from '@/lib/format';
+import { rolTienePermiso } from '@/lib/permisos';
+import { normalizarRol } from '@/lib/rol-storage';
 import type { Moneda } from '@/lib/types';
 
 type DecisionDeposito = 'NETEAR' | 'DEVOLVER' | 'EJECUTAR' | 'MANTENER';
@@ -30,6 +32,11 @@ const DECISIONES: { k: DecisionDeposito; label: string; ayuda: string }[] = [
  */
 export function FinalizarContratoButton({ contratoId, direccion }: { contratoId: string; direccion: string }) {
   const qc = useQueryClient();
+  const { me } = useMe();
+  // Resolver el depósito es ADMIN (`deposito.devolver`), igual que en la pantalla de
+  // depósitos en custodia. Un OPERADOR da de baja el contrato pero no decide sobre la
+  // garantía: no le ofrecemos chips que el server le va a rechazar con un 403.
+  const puedeResolverDeposito = rolTienePermiso(normalizarRol(me?.rol, 'LECTURA'), 'deposito.devolver');
   const { finalizar } = useFinalizarContrato();
   const { obtenerPreview } = useFinalizarPreview();
   const [open, setOpen] = useState(false);
@@ -76,12 +83,17 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
     }
   };
 
-  const depositoAplicado = depositoCust > 0 && (decisionDeposito === 'NETEAR' || decisionDeposito === 'EJECUTAR') ? depositoCust : 0;
+  // La decisión EFECTIVA, no la del estado: `me` puede llegar después de abrir el diálogo,
+  // así que en vez de pisar el default en un efecto (que dejaría a un Admin en MANTENER si la
+  // respuesta tardó) se deriva acá. Un solo lugar decide, y el saldo neto que ve el operador
+  // es el mismo que va a ejecutar el server.
+  const decision: DecisionDeposito = puedeResolverDeposito ? decisionDeposito : 'MANTENER';
+  const depositoAplicado = depositoCust > 0 && (decision === 'NETEAR' || decision === 'EJECUTAR') ? depositoCust : 0;
   const saldoNeto = Math.round((deudaV + penalidadNum - depositoAplicado) * 100) / 100;
   const montoDevuelto =
-    decisionDeposito === 'DEVOLVER'
+    decision === 'DEVOLVER'
       ? depositoCust
-      : decisionDeposito === 'NETEAR'
+      : decision === 'NETEAR'
         ? Math.max(0, Math.round((depositoCust - (deudaV + penalidadNum)) * 100) / 100)
         : 0; // EJECUTAR / MANTENER
 
@@ -94,8 +106,8 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
             tipo,
             motivoRescision: motivo.trim() || undefined,
             montoPenalidad: penalidadNum || undefined,
-            decisionDeposito,
-            montoDepositoDevuelto: decisionDeposito === 'MANTENER' ? undefined : montoDevuelto,
+            decisionDeposito: decision,
+            montoDepositoDevuelto: decision === 'MANTENER' ? undefined : montoDevuelto,
           }
         : { tipo };
       const { cuotasAnuladas, cargoPenalidad } = await finalizar(contratoId, opts);
@@ -210,13 +222,20 @@ export function FinalizarContratoButton({ contratoId, direccion }: { contratoId:
                 <span>Depósito en custodia</span>
                 <span className="font-medium text-foreground">{formatMonto(depositoCust, moneda)}</span>
               </span>
-              <span className="flex flex-wrap gap-1">
-                {DECISIONES.map((d) => (
-                  <button key={d.k} type="button" className={chipCls(decisionDeposito === d.k)} onClick={() => setDecisionDeposito(d.k)} title={d.ayuda}>
-                    {d.label}
-                  </button>
-                ))}
-              </span>
+              {puedeResolverDeposito ? (
+                <span className="flex flex-wrap gap-1">
+                  {DECISIONES.map((d) => (
+                    <button key={d.k} type="button" className={chipCls(decision === d.k)} onClick={() => setDecisionDeposito(d.k)} title={d.ayuda}>
+                      {d.label}
+                    </button>
+                  ))}
+                </span>
+              ) : (
+                <span className="block text-muted-foreground">
+                  Queda <strong>retenido</strong>: sólo un Admin puede devolverlo, netearlo o
+                  retenerlo. La baja se hace igual.
+                </span>
+              )}
               {montoDevuelto > 0 && (
                 <span className="block text-muted-foreground">Se le devuelve {formatMonto(montoDevuelto, moneda)}.</span>
               )}

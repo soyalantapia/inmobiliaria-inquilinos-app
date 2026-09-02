@@ -51,6 +51,7 @@ import {
 } from '@/lib/mock-data';
 import { estadoDePago } from '@/lib/conciliacion-storage';
 import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo, formatTotalPorMoneda, periodoActualFormat } from '@/lib/format';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 import { abrirReporteImprimible } from '@/lib/reportes-pdf';
 import { diasHastaVencimiento } from '@/lib/format';
 import {
@@ -240,11 +241,21 @@ export default function PagosPage() {
     () =>
       contratos
         .filter((c) => (c.estado === 'FINALIZADO' || c.estado === 'RESCINDIDO') && (c.deudaTotal ?? 0) > 0)
-        .sort((a, b) => (b.deudaTotal ?? 0) - (a.deudaTotal ?? 0)),
+        // Ordena por MONEDA y después por monto: comparando importes crudos, una deuda en
+        // dólares quedaba hundida al final de la lista detrás de cualquier deuda en pesos.
+        .sort((a, b) => (a.moneda === b.moneda ? (b.deudaTotal ?? 0) - (a.deudaTotal ?? 0) : a.moneda === 'ARS' ? -1 : 1)),
     [contratos],
   );
+  // POR MONEDA. Era un `reduce` plano de contratos de CUALQUIER moneda, impreso con signo de
+  // pesos: dos ex-inquilinos, uno que debe $1.500.000 y otro US$2.000, daban "Total $1.502.000".
+  // Cada fila de abajo ya imprime bien, con su moneda.
+  //
+  // Y el arreglo ya existía EN ESTE MISMO ARCHIVO: el PDF de morosos usa `formatTotalPorMoneda`
+  // con un comentario que lo explica —"el total sumaba dólares y pesos y lo imprimía con $… no
+  // es un redondeo, es otro número"—. La pantalla desde la que se imprime ese PDF se había
+  // quedado afuera de ese arreglo.
   const totalPorCobrarEx = useMemo(
-    () => porCobrarExInquilinos.reduce((s, c) => s + (c.deudaTotal ?? 0), 0),
+    () => formatTotalPorMoneda(porCobrarExInquilinos.map((c) => ({ monto: c.deudaTotal ?? 0, moneda: c.moneda }))),
     [porCobrarExInquilinos],
   );
 
@@ -284,11 +295,21 @@ export default function PagosPage() {
         .map((c) => {
           // Restamos lo ya conciliado del período actual (montoPagado) en CUALQUIER
           // contrato no pagado, no sólo los PARCIAL: un parcial VENCIDO reporta
-          // estadoPagoActual='VENCIDO' (no 'PARCIAL', tras el fix A2) pero igual tiene
-          // una parte cobrada. Contar el mes entero sobreestimaría la mora. montoPagado
-          // viene del API (0/ausente en demo). Clamp a ≥0 por si lo conciliado supera
-          // el canon (p.ej. la liq incluye expensas).
-          return { monto: Math.max(0, c.monto - (c.montoPagado ?? 0)), moneda: c.moneda };
+          // Lo que falta cobrar sale de `saldo`, que lo calcula el API (`conSaldo`, lib/saldos.ts) y
+          // ya viene en este mismo objeto. NO se recalcula acá, y por una razón concreta: antes esto
+          // hacía `c.monto - c.montoPagado`, y esas dos cosas NO son de la misma base. `c.monto` es
+          // el canon (sólo alquiler); `montoPagado` es lo conciliado contra la liquidación ENTERA,
+          // que vale alquiler + expensas + la mora del día.
+          //
+          // Con expensas, la resta daba negativo y el clamp la mandaba a CERO: un contrato de
+          // $500.000 + $120.000 de expensas al que le pagaron $500.000 figuraba "Parcial" en la
+          // tabla de abajo y aportaba $0 al Pendiente de arriba. Y el KPI "Cobrado" de al lado sí
+          // usa `montoPagado`, así que los dos números estaban medidos contra bases distintas y no
+          // cerraban — justo el descuadre que el comentario de ese KPI dice haber arreglado.
+          //
+          // El fallback es para el build demo, que no manda `saldo`: ahí se conserva la cuenta
+          // vieja, que sobre datos inventados sin expensas da lo mismo.
+          return { monto: c.saldo ?? Math.max(0, c.monto - (c.montoPagado ?? 0)), moneda: c.moneda };
         }),
     [cobrables],
   );
@@ -338,7 +359,7 @@ export default function PagosPage() {
       const telefono = apiEnabled ? (c.inquilinoTelefono ?? '—') : (contacto?.titular.telefono ?? '—');
       return [
         c.inquilino,
-        c.direccion,
+        rotuloEnLinea(c),
         telefono,
         contacto?.garante ? `${contacto.garante.nombre} · ${contacto.garante.telefono}` : 'Sin garante registrado',
         `${dias} día${dias === 1 ? '' : 's'}`,
@@ -479,7 +500,7 @@ export default function PagosPage() {
 
           return [
             c.inquilino,
-            c.direccion,
+            rotuloEnLinea(c),
             ownerNombre,
             contacto?.titular.telefono ?? '—',
             `${dias} día${dias === 1 ? '' : 's'}`,
@@ -602,7 +623,7 @@ export default function PagosPage() {
     const pagados = cobrables.filter((c) => c.estadoPagoActual === 'PAGADO');
     const filas: (string | number)[][] = pagados.map((c) => [
       c.inquilino,
-      c.direccion,
+      rotuloEnLinea(c),
       formatFecha(c.proximoVencimiento),
       'Transferencia',
       formatMonto(c.monto, c.moneda),
@@ -677,7 +698,7 @@ export default function PagosPage() {
                 {totalPendiente}
               </p>
               <p className="text-xs text-amber-700/70 dark:text-amber-300/70">
-                Suma de alquileres no cobrados todavía
+                Lo que falta cobrar: alquiler, expensas y mora
               </p>
             </CardContent>
           </Card>
@@ -910,7 +931,7 @@ export default function PagosPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate font-medium">{c.inquilino}</p>
-                        <p className="truncate text-xs text-muted-foreground">{c.direccion}</p>
+                        <p className="truncate text-xs text-muted-foreground">{rotuloEnLinea(c)}</p>
                       </div>
                       <Badge variant={estadoVariant[c.estadoPagoActual]} className="shrink-0">
                         {estadoLabel[c.estadoPagoActual]}
@@ -956,7 +977,7 @@ export default function PagosPage() {
                   {filtradas.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell className="font-medium">{c.inquilino}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{c.direccion}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{rotuloEnLinea(c)}</TableCell>
                       <TableCell className="text-sm">{formatFechaCorta(c.proximoVencimiento)}</TableCell>
                       <TableCell className="text-right font-medium">
                         {formatMonto(c.monto, c.moneda)}
@@ -994,7 +1015,7 @@ export default function PagosPage() {
               <div className="text-right shrink-0">
                 <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total</p>
                 <p className="text-base font-semibold tabular-nums text-amber-700">
-                  {formatMonto(totalPorCobrarEx)}
+                  {totalPorCobrarEx}
                 </p>
               </div>
             </div>

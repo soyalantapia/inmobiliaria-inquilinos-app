@@ -1,0 +1,280 @@
+# Hasta que existió este archivo, el único workflow del repo era el deploy de la demo a
+# Pages: no corría tsc, ni lint, ni un solo test. Había 725 tests escritos que sólo se
+# ejecutaban si una persona se acordaba.
+#
+# Eso se notó: en un día de trabajo en paralelo aparecieron ocho regresiones cruzadas
+# (commits 00fc8a3, 7346ca8, 4f59794), todas del mismo tipo — dos ramas tocan la misma
+# superficie, cada una compila sola, y la unión rompe algo que ninguna de las dos rompía.
+# Ese bug es invisible desde adentro de cualquiera de las dos ramas. Es justo el que una
+# compuerta ataja.
+#
+# ⚠️ LEER ESTO ANTES DE CONFIAR EN EL VERDE: hoy esto REPORTA, no FRENA.
+#
+# Verificado el 20/08: `main` no tiene branch protection y `deploy.yml` (Pages) se dispara por
+# su cuenta con el push, sin depender de este workflow. Railway lo mismo: el push a `main` ya
+# es el deploy. O sea que si estos jobs quedan en rojo, el código sale a producción igual y el
+# rojo aparece al costado, después.
+#
+# Que un job falle acá NO es lo mismo que frenar un merge. Lo único que convierte esto en una
+# compuerta de verdad es marcarlo como REQUIRED en la branch protection de `main`, con los
+# cuatro checks (`revision`, `integracion`, `build`, `ramas-sin-integrar`) — y eso se hace en
+# la configuración del repo, no acá. Es del dueño. Ver T-01-N1-N9.
+#
+# Se dice tan fuerte porque el riesgo es la confianza falsa: un verde que no frena nada se lee
+# igual que uno que sí, y este proyecto ya tuvo dos semanas y media de deploy roto justamente
+# porque nadie miraba lo que nadie estaba obligado a mirar.
+
+name: Revisión
+
+on:
+  push:
+    branches-ignore: [gh-pages]
+  pull_request:
+  workflow_dispatch:
+
+# Si se pushean tres commits seguidos, sólo interesa el último.
+concurrency:
+  group: revision-${{ github.ref }}
+  # En una RAMA sí: si se pushean tres commits seguidos, sólo interesa el veredicto del último.
+  #
+  # En `main` NO, y la diferencia importa: cada commit de `main` **se deploya a producción**, así
+  # que cada commit merece un veredicto propio. Cancelar ahí deja commits que salieron a
+  # producción sin que nadie los haya verificado nunca.
+  #
+  # No es teórico: al sumar el job `build` (3-4 min) la tasa de cancelación en `main` pasó de
+  # 3/40 a 7/40, y el que se cancelaba era SIEMPRE `build` — el más largo es el más expuesto,
+  # con pushes llegando cada pocos minutos. O sea que el job que se agregó para tapar el punto
+  # ciego de los builds era justo el que más veces no llegaba a correr.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  revision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Sin esto, apps/api no compila: media API tipa contra el cliente generado, y el
+      # cliente no está versionado.
+      - name: Generar el cliente de Prisma
+        run: pnpm --filter api exec prisma generate
+
+      # Corre en los cinco que lo tienen. Hasta hoy apps/api quedaba afuera: tenía el chequeo
+      # con el nombre "lint", así que `turbo run typecheck` lo salteaba en silencio y daba
+      # verde sin haber mirado el paquete donde vive la plata.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Los 341 tests que no necesitan una base viva (33 archivos de 85). Los demás siembran
+      # una Postgres compartida y quedan afuera a propósito — ver T-01-N1-N1.
+      #
+      # Las dos variables no apuntan a nada: EnvSchema (apps/api/src/env.ts) exige que
+      # estén para arrancar la app, y algunos de estos tests la construyen con buildApp().
+      # Ninguno se conecta. Por eso el host es 127.0.0.1:1, que no escucha: si alguna vez
+      # un test intenta hablar con la base de verdad, falla acá y no en silencio.
+      - name: Tests que no necesitan base de datos
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://nadie:nadie@127.0.0.1:1/nada
+          JWT_SECRET: esto-no-firma-nada-real-en-ci
+          NODE_ENV: test
+        run: pnpm test:sin-db
+
+      # Los tests de los tres fronts. Existen desde T-32 y hasta T-46-N2 no los corría nadie
+      # en CI: el runner estaba montado y los archivos seguían sin ejecutarse, que es el peor
+      # de los dos mundos —parecen cubiertos y no lo están—.
+      #
+      # Van por `--filter` y no por `turbo run test` a propósito: la tarea `test` de turbo
+      # incluiría a `api`, cuyo script es la suite COMPLETA y necesita una Postgres viva. Acá
+      # sólo corren los tres paquetes de front, que no tocan base.
+      - name: Tests de los fronts
+        run: pnpm test:fronts
+
+  # Aviso, no portón. Corre aparte del job de calidad a propósito: que una rama olvidada
+  # ponga en rojo el CI de alguien que está laburando en otra cosa es la forma más rápida de
+  # que el aviso se ignore. Informa y sigue.
+  #
+  # POR QUÉ EXISTE: dos veces (T-44 y T-44-N1) hubo que consolidar a mano, y las dos veces
+  # aparecieron tareas marcadas ✅ cuyo código no estaba en la rama de deploy. El resto del CI
+  # no lo puede ver: corre sobre la rama que le toca, así que una rama sana y olvidada da
+  # verde para siempre sin que su código llegue a ningún lado.
+  # Las 52 suites que necesitan una base viva. Nunca corrieron en ningún lado: la única base
+  # disponible era una remota COMPARTIDA que `seedBase` siembra destructivamente, así que
+  # correrlas le pisaba los datos a quien estuviera probando. Un service container resuelve
+  # exactamente eso — nace vacío en cada corrida, se usa y se tira.
+  #
+  # Son las que importan: bugs-de-plata, core, auth, depósitos, conciliación, rendición
+  # multi-dueño. Los tres bugs de plata que aparecieron el 19/08 se encontraron LEYENDO código.
+  #
+  # FALLA EL WORKFLOW (que no es lo mismo que frenar el merge — ver el encabezado del archivo).
+  # Arrancó con `continue-on-error` porque quedaban 4 rojas que no eran bugs del
+  # producto —suites que se pisaban entre sí—; eso se cerró en T-01-N1-N1-N1 y la suite da 52/52.
+  # Si vuelve a ponerse roja, es una regresión de verdad. Y como el push a `main` deploya
+  # producción sin escala intermedia, este job debería ser lo que hay entre un merge y la plata
+  # de la inmobiliaria — hoy NO lo es, porque nada lo hace obligatorio: ver el encabezado.
+  integracion:
+    runs-on: ubuntu-latest
+    services:
+      # postgres:16 pelado alcanza. El schema NO declara `extensions` y ninguna migración crea
+      # una: la nota de T-01-N1-N1 decía que hacía falta pgvector y estaba equivocada — venía de
+      # CLAUDE.md, que describe una extensión que el proyecto nunca usó.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: myalquiler_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generar el cliente de Prisma
+        run: pnpm --filter api exec prisma generate
+
+      # Desde CERO, no `db push`: así CI se convierte en el primer lugar donde las migraciones
+      # se prueban de verdad, antes que producción. Hoy la primera vez que corren es en el
+      # arranque del contenedor de prod (`db:deploy && node dist/index.js`), o sea el peor lugar
+      # posible para descubrir que una está mal. Medido en local: las 57 tardan ~25s.
+      - name: Migrar la base de test desde cero
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/myalquiler_test
+        run: pnpm exec prisma migrate deploy
+
+      # El guard `exigirDbDeTest` (prisma/guard-db.ts) acepta localhost, así que esta URL pasa
+      # sin tocarlo. Falla cerrado ante hosts desconocidos: si alguien apuntara esto a prod, el
+      # seed no correría. No hay que aflojarlo para que CI ande.
+      - name: Tests que necesitan base de datos
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/myalquiler_test
+          JWT_SECRET: esto-no-firma-nada-real-en-ci
+          NODE_ENV: test
+          # El ámbito de /uploads (T-72) se ejercita ACÁ en modo BLOQUEANTE, aunque en producción
+          # arranque en `log`. Es la única forma de saber si la regla de ámbito deja afuera algún
+          # flujo legítimo SIN usar a los inquilinos de Camila como canarios: estas 60 suites
+          # recorren informar pagos, adjuntar comprobantes, subir fotos de reclamo, boletas de
+          # servicio y el link mágico del profesional. Si la regla rompe algo real, se rompe acá.
+          #
+          # O sea: el default de producción es el conservador, y el que se prueba es el estricto.
+          # Al revés —probar en `log` y prender en prod— el verde no diría nada del modo que
+          # importa.
+          UPLOADS_AMBITO: 'on'
+        run: pnpm exec vitest run --config vitest.con-db.config.ts
+
+  # BUILDEA. `tsc --noEmit` no ve lo que ve `next build`: restricciones de static export,
+  # `generateStaticParams` faltante, cruces server/client, route handlers. Hasta acá la compuerta
+  # tipaba y testeaba, y no compilaba NADA — ni la API ni los tres fronts.
+  #
+  # No es teórico: el `Deploy to GitHub Pages` de `main` estuvo en rojo del 3 al 19 de agosto por
+  # un `/inquilinos/[id]` sin `generateStaticParams`, que ningún typecheck iba a agarrar. Y como
+  # el push a `main` deploya producción, un error de build recién aparece cuando el deploy ya
+  # salió: tarde.
+  #
+  # Va como job APARTE y no dentro de `revision` para que corra en paralelo y no le sume minutos
+  # al feedback rápido de typecheck + tests.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # La API tipa contra el cliente generado; sin esto no compila.
+      - name: Generar el cliente de Prisma
+        run: pnpm --filter api exec prisma generate
+
+      - name: Build de la API
+        run: pnpm --filter api build
+
+      # EL CAMINO DE PRODUCCIÓN: así buildean los Dockerfiles de Railway — `next build` pelado,
+      # sin `STATIC_EXPORT`. Es el que sirve admin.myalquiler.com y app.myalquiler.com, y hasta
+      # ahora no se verificaba en ningún lado antes del deploy.
+      #
+      # `next build` a secas y no `pnpm build`: el script de cada front antepone
+      # `check-dev-port.js`, que existe para no pisar un dev server de alguien. En CI no hay
+      # ninguno y el guard sólo agrega una forma de fallar.
+      - name: Build de los fronts (como los buildea Railway)
+        run: |
+          pnpm --filter @llave/inmobiliaria exec next build
+          pnpm --filter @llave/inquilino exec next build
+          pnpm --filter @llave/propietario exec next build
+
+      # EL CAMINO DE LA DEMO: static export, que es un modo DISTINTO y rompe por sus propias
+      # razones — es el que estuvo roto dos semanas y media. `build-static.sh` hace además el
+      # baile de renombrar los middleware, que no existen en export.
+      #
+      # Corre después y no en paralelo porque comparte los directorios `.next`.
+      - name: Build estático (como lo buildea GitHub Pages)
+        run: bash scripts/build-static.sh
+
+      # EL PORTAL DEL PROPIETARIO DENTRO DEL PANEL, que es una TERCERA combinación y la única
+      # que sirve a un dueño real.
+      #
+      # Los dos builds de arriba no la cubren: el de producción compila el portal pelado (sin
+      # basePath, modo SSR) y el de la demo lo compila con `NEXT_PUBLIC_DEMO=1` y el basePath de
+      # GitHub Pages. Lo que corre en producción es esto otro —`apps/inmobiliaria/Dockerfile`—:
+      # export estático bajo `/propietario`, apuntando al API real. Si falla, falla el deploy
+      # ENTERO del panel y Railway se queda con la imagen anterior: `/propietario` sigue
+      # devolviendo 200 con código viejo, así que un smoke test que mire el código HTTP da verde
+      # con el deploy caído.
+      #
+      # `NEXT_PUBLIC_DEMO` NO se pasa, igual que en el Dockerfile: con la API_URL puesta
+      # `demoEnabled` ya da false, pero dejarlo explícito evita que alguien lo agregue "para
+      # probar" y publique datos inventados en un dominio real.
+      - name: Build del portal como va adentro del panel
+        run: |
+          rm -rf apps/propietario/.next apps/propietario/out
+          BASE_PATH=/propietario STATIC_EXPORT=1 NEXT_PUBLIC_API_URL=https://api-production-262e.up.railway.app pnpm --filter @llave/propietario exec next build
+          # Que el export exista Y tenga las rutas: un `out/` vacío pasaría el build igual.
+          for ruta in index login/index unidades/index reclamos/index perfil/index 404; do
+            test -f "apps/propietario/out/$ruta.html" || {
+              echo "::error::falta apps/propietario/out/$ruta.html en el export del portal"
+              exit 1
+            }
+          done
+          # Y que el basePath esté horneado: sin él los assets resuelven a la raíz del panel.
+          grep -q '/propietario/_next/' apps/propietario/out/index.html || {
+            echo "::error::el export no tiene horneado el basePath /propietario"
+            exit 1
+          }
+
+  ramas-sin-integrar:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 no es opcional acá — con el checkout shallow de siempre no existe
+      # ninguna rama más que la actual y el script no tendría nada que comparar.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Ramas con trabajo fuera de la integración
+        run: node scripts/ramas-sin-integrar.mjs --remotas

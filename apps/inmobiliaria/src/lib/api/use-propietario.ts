@@ -39,12 +39,18 @@ interface ContratoActualApi {
   moneda: string;
   fechaInicio: string;
   fechaFin: string;
+  /** INMOBILIARIA | PROPIETARIO_DIRECTO. El server ya lo devuelve entero en
+   *  GET /propietarios/:id; faltaba declararlo acá para poder mirarlo. */
+  modoCobranza?: string | null;
   inquilinoTitular?: { id: string; nombre: string; apellido: string | null } | null;
 }
 
 interface PropiedadEmbebidaApi {
   id: string;
   direccion: string;
+  /** El endpoint hace include completo de la propiedad, así que `complejo` ya viajaba;
+   *  sólo faltaba declararlo para poder rotular (lib/rotulo-propiedad.ts). */
+  complejo?: string | null;
   ciudad?: string;
   provincia?: string;
   tipo?: string;
@@ -136,6 +142,7 @@ function mapContratoActual(c: ContratoActualApi, direccion: string): ContratoLis
     fechaFin: (c.fechaFin ?? '').slice(0, 10),
     proximoVencimiento: (c.fechaFin ?? '').slice(0, 10),
     estadoPagoActual: 'PENDIENTE',
+    ...(c.modoCobranza ? { modoCobranza: c.modoCobranza as ContratoListado['modoCobranza'] } : {}),
   };
 }
 
@@ -148,6 +155,7 @@ function mapDetalle(d: PropietarioDetalleApi): PropietarioDetalle {
     .map((p) => ({
       id: p.id,
       direccion: p.direccion,
+      complejo: p.complejo ?? null,
       ciudad: p.ciudad ?? '',
       provincia: p.provincia ?? '',
       tipo: coerceTipo(p.tipo),
@@ -176,6 +184,14 @@ function mapDetalle(d: PropietarioDetalleApi): PropietarioDetalle {
   for (const part of participaciones) {
     const c = part.propiedad?.contratoActual;
     if (!c) continue;
+    // EL ALQUILER QUE COBRA EL DUEÑO NO SE LE RINDE: no pasa por la inmobiliaria.
+    //
+    // Estos dos números —"A rendir/mes (est.)" e "Ingreso anual est."— son lo que la ficha le
+    // promete al operador que le va a depositar. Sumar acá un contrato PROPIETARIO_DIRECTO es
+    // prometer plata que la inmobiliaria nunca toca: el inquilino le transfiere al dueño
+    // directo. Es el mismo `continue` que el listado ya tenía (hooks.ts) y que a esta
+    // pantalla nunca llegó.
+    if (c.modoCobranza === 'PROPIETARIO_DIRECTO') continue;
     const canon = Number(c.monto) || 0;
     if (canon <= 0) continue;
     monedas.add(c.moneda);

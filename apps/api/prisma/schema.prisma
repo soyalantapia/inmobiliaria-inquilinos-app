@@ -32,6 +32,11 @@ datasource db {
 
 enum Rol {
   ADMIN
+  // Puesto de mostrador: confirma/rechaza los pagos que informan los inquilinos, carga
+  // cobros en efectivo y mueve la caja. Pedido explícito de la administradora
+  // (prueba del 03/08): antes conciliar era de OPERADOR, o sea que cualquiera del día
+  // a día daba plata por cobrada. Ver packages/shared/src/permisos.ts.
+  CAJA
   OPERADOR
   CARGA
   LECTURA
@@ -212,6 +217,9 @@ enum EstadoScreening {
 enum TipoEventoContrato {
   CREADO
   AJUSTE_APLICADO
+  // Valor propio: antes la renovación reusaba AJUSTE_APLICADO porque no había otro,
+  // y en el timeline una renovación y un ajuste de canon se veían iguales.
+  RENOVACION
   PAGO_RECIBIDO
   PAGO_VENCIDO
   RECLAMO_CREADO
@@ -324,12 +332,43 @@ enum TipoEventoAuditoria {
   PROFESIONAL_ASIGNADO
   EQUIPO_INVITADO
   EQUIPO_REMOVIDO
+  // Los dos caminos que DAN poder, que eran los únicos mudos del recurso: volver a sumar a
+  // alguien que había sido dado de baja (la reactivación del POST, que es la ÚNICA
+  // reincorporación que existe en el producto) y cambiarle el rol a alguien que ya está.
+  // No se reusa EQUIPO_INVITADO porque por esos caminos no sale ninguna invitación.
+  EQUIPO_REINCORPORADO
+  EQUIPO_ROL_CAMBIADO
   FACTURA_ARCA_EMITIDA
   PROPIETARIO_CONFIRMO_RECIBO
   PROPIETARIO_RENDIDO
+  // Anular es deshacer plata que un tercero —el propietario— YA VIO en su portal: se le cae un
+  // depósito de la pantalla y el total del año le baja solo. Por eso la anulación deja rastro
+  // con motivo obligatorio.
+  //
+  // Desde la baja lógica (`Rendicion.anuladaAt`) la fila ya no se borra: se marca, se le
+  // borran los ledgers para que la plata vuelva a contar como sin rendir, y queda tachada en el
+  // portal del dueño y en el historial del panel. Este evento sigue siendo lo que dice QUIÉN la
+  // anuló, cuándo y por qué.
+  PROPIETARIO_RENDICION_ANULADA
   MODO_COBRANZA_CAMBIADO
+  // A QUÉ CUENTA VA LA PLATA: el CBU/alias del dueño, la cuenta de cobranza directa que ve
+  // el inquilino, o el email que es la credencial de entrada a su portal. Los tres se podían
+  // reescribir sin dejar autor, y la cuenta de cobranza directa es el campo que decide adónde
+  // transfiere el inquilino: es el que menos puede quedar sin rastro.
+  PROPIETARIO_CUENTA_CAMBIADA
   MORA_EDITADA
+  // La baja de un contrato (fin de plazo o rescisión) libera la propiedad, anula las cuotas
+  // futuras, puede crear la penalidad y puede resolver el depósito. Todo eso era anónimo:
+  // el contrato quedaba RESCINDIDO y no había forma de saber quién apretó el botón.
+  CONTRATO_DADO_DE_BAJA
   MOVIMIENTO_CONSORCIO_ELIMINADO
+  // Conmutador de usuarios (T-25). Son la defensa REAL del feature: un PIN de 5 dígitos
+  // tipeado en un mostrador no es un secreto fuerte, pero cada cambio y cada intento
+  // rechazado quedan acá y el ADMIN los ve en /auditoria.
+  SESION_CONMUTADA
+  CONMUTACION_RECHAZADA
+  PIN_DESBLOQUEADO
+  PIN_ELIMINADO
 }
 
 enum GrupoCapacidad {
@@ -613,63 +652,65 @@ enum NivelHistorial {
 // =============================================================================
 
 model Inmobiliaria {
-  id                    String   @id @default(cuid())
-  nombre                String
-  cuit                  String
-  email                 String
-  telefono              String
-  matricula             String
-  direccionCalle        String
-  direccionAltura       String
-  direccionPiso         String   @default("")
-  direccionCiudad       String
-  direccionProvincia    String
-  direccionCp           String
-  notasFiscales         String   @default("")
+  id                             String   @id @default(cuid())
+  nombre                         String
+  cuit                           String
+  email                          String
+  telefono                       String
+  matricula                      String
+  direccionCalle                 String
+  direccionAltura                String
+  direccionPiso                  String   @default("")
+  direccionCiudad                String
+  direccionProvincia             String
+  direccionCp                    String
+  notasFiscales                  String   @default("")
   // Identidad y contacto público del perfil (Mi inmobiliaria). Todos opcionales
   // (@default("")) → aditivos, no rompen la fila existente. condicionIva/iibb son
   // informativos del perfil; la condición fiscal que MANDA para facturar vive en
   // Sociedad.condicionFiscal (no se toca acá).
-  whatsapp              String   @default("")
-  sitioWeb              String   @default("")
-  instagram             String   @default("")
-  facebook              String   @default("")
-  horariosAtencion      String   @default("")
-  condicionIva          String   @default("")
-  iibb                  String   @default("")
+  whatsapp                       String   @default("")
+  sitioWeb                       String   @default("")
+  instagram                      String   @default("")
+  facebook                       String   @default("")
+  horariosAtencion               String   @default("")
+  condicionIva                   String   @default("")
+  iibb                           String   @default("")
   // Config de "Mercado y país de operación" (tab Mercado de /configuracion).
   // Persiste por inmobiliaria; el wizard de contratos usa indiceDefaultContrato
   // y monedaDefault como valores por defecto de un contrato nuevo.
-  paisCodigo            String   @default("AR")
-  monedaDefault         String   @default("ARS")
-  indiceDefaultContrato String   @default("ICL")
+  paisCodigo                     String   @default("AR")
+  monedaDefault                  String   @default("ARS")
+  indiceDefaultContrato          String   @default("ICL")
   // Mora por defecto del tenant: la heredan los contratos sin moraTipo propio.
   // Cada inmobiliaria se mueve distinto (pedido piloto): configurable en Cobranza.
-  moraTipoDefault       TipoMora @default(SIN_MORA)
-  moraValorDefault      Float?
+  moraTipoDefault                TipoMora @default(SIN_MORA)
+  moraValorDefault               Float?
   // Rescisión anticipada (configurable, cambia con la desregulación): preaviso en meses y
   // penalidad en cánones de alquiler. Default AR ~2 meses de preaviso y 1.5 cánones de multa.
-  preavisoRescisionMesesDefault  Int   @default(2)
-  penalidadRescisionMesesDefault Float @default(1.5)
-  esPiloto              Boolean  @default(true)
+  preavisoRescisionMesesDefault  Int      @default(2)
+  penalidadRescisionMesesDefault Float    @default(1.5)
+  esPiloto                       Boolean  @default(true)
   /**
    * Si está en true, los contratos cargados por quien NO tiene `contrato.aprobar`
    * quedan BORRADOR pendientes de aprobación en vez de activarse solos.
    * Default false: prenderlo es una decisión explícita de cada inmobiliaria.
    */
-  contratosRequierenAprobacion Boolean @default(false)
-  codigoReferido        String   @unique
-  mesesGratisGanados    Int      @default(0)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  contratosRequierenAprobacion   Boolean  @default(false)
+  codigoReferido                 String   @unique
+  mesesGratisGanados             Int      @default(0)
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
 
   usuarios                   Usuario[]
+  destinatariosAviso         DestinatarioAviso[]
   sociedades                 Sociedad[]
   propietarios               Propietario[]
   arcaConfigs                ArcaConfig[]
   cuentasCobranzaDirecta     CuentaCobranzaDirecta[]
   propiedades                Propiedad[]
   participaciones            ParticipacionPropietario[]
+  cambiosParticipacion       CambioParticipacion[]
   contratos                  Contrato[]
   contratoDrafts             ContratoDraft[]
   inquilinos                 Inquilino[]
@@ -730,6 +771,7 @@ model Inmobiliaria {
   documentos                 Documento[]
   slotsDocumento             SlotDocumento[]
   certificados               CertificadoInquilino[]
+  archivosSubidos            ArchivoSubido[]
 
   @@map("inmobiliarias")
 }
@@ -770,6 +812,7 @@ model Usuario {
   reportesPiloto        ReportePiloto[]
   pagosDecididos        Pago[]             @relation("PagosDecididos")
   codigosOtp            CodigoOtpUsuario[]
+  rendicionesAnuladas   Rendicion[]        @relation("rendicionesAnuladas")
 
   @@unique([inmobiliariaId, email])
   @@index([inmobiliariaId])
@@ -864,6 +907,58 @@ model CodigoOtpUsuario {
 
   @@index([usuarioId])
   @@map("codigos_otp_usuario")
+}
+
+/// OTP de login del PORTAL DEL PROPIETARIO. Tercer gemelo de CodigoOtp, keyed a
+/// `propietarioId`: el propietario no tiene contraseña, entra con email + código.
+/// Se separa por modelo (y no una tabla genérica con un `tipo`) para conservar la FK
+/// real: un código huérfano que apunte a un id de otra tabla no es representable.
+/// A qué casilla va cada TIPO de aviso automático de la inmobiliaria.
+///
+/// POR QUÉ: hasta ahora todos los avisos iban a `Inmobiliaria.email`, una sola casilla. Camila
+/// administra 220 propiedades: *"me va a llegar un mail por cada reclamo… y todos van a mi misma
+/// casilla, no a la de la chica que los maneja. Habría que poder decir a quién le llega cada
+/// cosa."* Su bandeja se llena de avisos que no va a accionar, y quien tiene que accionarlos no
+/// se entera.
+///
+/// FALLBACK: la ausencia de fila significa "usá `Inmobiliaria.email`", que es el comportamiento
+/// de siempre. Por eso no hay `activo` ni default sembrado: no configurar nada deja todo como
+/// estaba, y borrar la fila vuelve atrás.
+model DestinatarioAviso {
+  id             String        @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria  @relation(fields: [inmobiliariaId], references: [id])
+  tipo           TipoAvisoInmo
+  email          String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([inmobiliariaId, tipo])
+  @@map("destinatarios_aviso")
+}
+
+/// Tipos de aviso automático que recibe la INMOBILIARIA (no el inquilino ni el propietario).
+///
+/// Arranca con uno solo a propósito: `RECLAMO_NUEVO` es, hoy, el único aviso por mail que el
+/// sistema le manda a la inmobiliaria (`avisos-reclamo.ts`). Listar acá tipos que todavía no
+/// mandan nada sería ofrecer una configuración que no hace nada — el mismo patrón de promesa
+/// vacía que este proyecto viene sacando de todas las pantallas. Cuando se agregue un aviso
+/// nuevo, se agrega su valor acá.
+enum TipoAvisoInmo {
+  RECLAMO_NUEVO
+}
+
+model CodigoOtpPropietario {
+  id            String      @id @default(cuid())
+  propietarioId String
+  propietario   Propietario @relation(fields: [propietarioId], references: [id])
+  codeHash      String
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([propietarioId])
+  @@map("codigos_otp_propietario")
 }
 
 model ReportePiloto {
@@ -1126,6 +1221,37 @@ model Propietario {
   cbuAlias       String? // null => alerta 'sin CBU no podemos rendir'
   comisionPct    Float        @default(8)
   notas          String?
+  // Baja lógica, misma convención que Sociedad.activa y Usuario.activo. NO se
+  // borra la fila: un propietario dado de baja conserva su historial de
+  // rendiciones, que es plata que ya se movió. Lo que corta es el acceso al
+  // portal — requirePropietario lo revalida en cada request, que es la única
+  // revocación real que tiene un token de 7 días sin denylist.
+  activo         Boolean      @default(true)
+  /**
+   * La última vez que entró al portal. `null` = nunca entró.
+   * Hoy no hay forma de contestar "¿algún dueño usó esto alguna vez?". El único rastro es
+   * `CodigoOtpPropietario.usedAt`, y es ambiguo: se escribe tanto al consumir un código como
+   * al invalidar los anteriores. Sirve para tres cosas concretas: saber si el portal se usa,
+   * que la inmobiliaria vea en la ficha si a ese dueño le llegó el acceso, y tener con qué
+   * contestar cuando alguien pregunte quién entró y cuándo.
+   * Se escribe en el OTP verify, best-effort: si falla, el dueño entra igual. Un rastro que
+   * rompe el login es peor que no tener rastro.
+   */
+  /// T-23-N2-N1 · Cuándo se probó que este email es de esta persona.
+  ///
+  /// `Propietario.email` es LA LLAVE DE ENTRADA al portal: el OTP se manda ahí. Pero lo tipea
+  /// el staff a mano y hasta acá nadie lo verificaba nunca — con un typo, el código de acceso a
+  /// una cartera ajena viaja a la casilla equivocada, y no hay forma de saber a cuántos les pasó.
+  ///
+  /// No hace falta un circuito de confirmación aparte: **completar el OTP YA prueba control de
+  /// la casilla**. Se marca ahí, que es gratis y es la misma prueba que pediría un doble opt-in.
+  ///
+  /// 🔴 NO BLOQUEA A NADIE, a propósito. Qué se hace con los propietarios que nunca entraron
+  /// —dejarlos afuera del portal es lo seguro y deja al día 1 sin la cartera existente— es una
+  /// decisión del dueño. Esto la habilita: primero se mide, después se decide. Mismo camino que
+  /// tomó el candado de archivos (`UPLOADS_AMBITO`), que salió observando antes de bloquear.
+  emailVerificadoAt     DateTime?
+  ultimoAccesoAt DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1135,6 +1261,7 @@ model Propietario {
   participaciones          ParticipacionPropietario[]
   rendiciones              Rendicion[]
   contratosCobranzaDirecta Contrato[]                 @relation("CobranzaDirecta")
+  codigosOtp               CodigoOtpPropietario[]
 
   @@index([inmobiliariaId])
   @@map("propietarios")
@@ -1178,19 +1305,19 @@ model CuentaCobranzaDirecta {
 }
 
 model Propiedad {
-  id               String          @id @default(cuid())
-  inmobiliariaId   String
-  inmobiliaria     Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
-  direccion        String
-  ciudad           String
-  provincia        String
-  tipo             TipoPropiedad
-  ambientes        Int?
-  m2               Float?
-  fotoUrl          String?
+  id                 String          @id @default(cuid())
+  inmobiliariaId     String
+  inmobiliaria       Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
+  direccion          String
+  ciudad             String
+  provincia          String
+  tipo               TipoPropiedad
+  ambientes          Int?
+  m2                 Float?
+  fotoUrl            String?
   // Reglas básicas de convivencia visibles para el inquilino en su PWA (mudanza,
   // ruidos, uso de espacios comunes, etc.). Texto libre; reduce consultas. null = sin cargar.
-  reglasConvivencia String?
+  reglasConvivencia  String?
   // ¿Se permiten mascotas en esta unidad? Es un atributo del INMUEBLE (no del
   // contrato): antes se preguntaba en cada alta de contrato y había que
   // recargarlo si se armaba un contrato nuevo sobre la misma propiedad, o
@@ -1202,16 +1329,16 @@ model Propiedad {
   // (identificar rápido varios inquilinos del mismo complejo con mora/reclamos).
   // Es un rótulo simple, distinto del módulo Consorcio (expensas/UFs). Si la
   // propiedad está ligada a un Consorcio real, se muestra consorcio.nombre; si no, este texto.
-  complejo         String?
-  estado           EstadoPropiedad @default(EN_EDICION)
-  contratoActualId String?         @unique // null si DISPONIBLE
-  contratoActual   Contrato?       @relation("ContratoActual", fields: [contratoActualId], references: [id])
-  sociedadId       String? // null => sociedad principal (fallback)
-  sociedad         Sociedad?       @relation(fields: [sociedadId], references: [id])
-  consorcioId      String? // FK que reemplaza el match heurístico por dirección
-  consorcio        Consorcio?      @relation(fields: [consorcioId], references: [id])
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  complejo           String?
+  estado             EstadoPropiedad @default(EN_EDICION)
+  contratoActualId   String?         @unique // null si DISPONIBLE
+  contratoActual     Contrato?       @relation("ContratoActual", fields: [contratoActualId], references: [id])
+  sociedadId         String? // null => sociedad principal (fallback)
+  sociedad           Sociedad?       @relation(fields: [sociedadId], references: [id])
+  consorcioId        String? // FK que reemplaza el match heurístico por dirección
+  consorcio          Consorcio?      @relation(fields: [consorcioId], references: [id])
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
   contratos         Contrato[]                 @relation("PropiedadContratos")
   participaciones   ParticipacionPropietario[]
@@ -1229,6 +1356,47 @@ model Propiedad {
 
 // Cotitularidad: Σ porcentaje por propiedad = 100 ± 0.5 (valida el API).
 // Sin filas explícitas => reparto igualitario.
+/// Cada vez que cambia el reparto de una propiedad, una fila. APPEND-ONLY: nunca se edita ni
+/// se borra.
+///
+/// POR QUÉ: hoy no existe ningún rastro de cuándo alguien pasó a ser dueño de una unidad —
+/// `ParticipacionPropietario` sólo guarda la foto de HOY, sin `desde`/`hasta`. Sin ese dato, el
+/// portal del propietario no puede recortar lo que muestra a "desde que sos dueño", y un
+/// comprador ve el historial completo del inquilino anterior (T-23-N3).
+///
+/// POR QUÉ NO `EventoAuditoria`: ese log es **best-effort declarado** (`lib/auditoria.ts`:
+/// try/catch que se traga su propio error, y corre DESPUÉS del commit). Un recorte que protege
+/// datos de un tercero no puede colgar de algo que puede no escribirse. Esta tabla se escribe
+/// DENTRO de la misma transacción que el reparto: si no se registra, el reparto tampoco cambia.
+///
+/// SEMÁNTICA DE LOS NULOS:
+///   `porcentajeAnterior` null = **entró** (no tenía participación antes)
+///   `porcentajeNuevo`    null = **salió** (dejó de tener participación)
+///
+/// TABLA VACÍA = "toda participación existente se considera vigente desde siempre". El pasado
+/// no tiene dato y no se inventa: sólo se registra de acá en adelante.
+model CambioParticipacion {
+  id                 String       @id @default(cuid())
+  inmobiliariaId     String
+  inmobiliaria       Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  /// Sin FK, igual que `autorId` y que `AlquilerRendido.propiedadId`: el rastro tiene que
+  /// SOBREVIVIR al borrado de la propiedad o del propietario, no bloquearlo. Con una FK
+  /// RESTRICT, borrar una propiedad que alguna vez cambió de reparto tiraba 500 (el
+  /// `$transaction` del DELETE no limpia esta tabla, ni debería); con CASCADE, el historial
+  /// moría con ella — que es justo lo que no puede perderse.
+  propiedadId        String
+  propietarioId      String
+  porcentajeAnterior Float?
+  porcentajeNuevo    Float?
+  aplicadoAt         DateTime     @default(now())
+  /// Quién lo hizo. Sin FK a propósito: si el usuario se borra, el rastro no se puede perder.
+  autorId            String?
+
+  @@index([inmobiliariaId])
+  @@index([propiedadId, propietarioId, aplicadoAt])
+  @@map("cambios_participacion")
+}
+
 model ParticipacionPropietario {
   inmobiliariaId String
   inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
@@ -1306,12 +1474,12 @@ model Contrato {
   cobraDirectoPropietario   Propietario?   @relation("CobranzaDirecta", fields: [cobraDirectoPropietarioId], references: [id])
 
   // Workflow de carga/aprobación (rol CARGA => BORRADOR + pendienteAprobacion)
-  cargadoPor          String?
-  cargadoRol          Rol?
-  cargadoAt           DateTime?
-  pendienteAprobacion Boolean   @default(false)
-  aprobadoPor         String?
-  aprobadoAt          DateTime?
+  cargadoPor                   String?
+  cargadoRol                   Rol?
+  cargadoAt                    DateTime?
+  pendienteAprobacion          Boolean   @default(false)
+  aprobadoPor                  String?
+  aprobadoAt                   DateTime?
   /**
    * Estado inicial declarado en el alta (períodos ya vencidos: pagado / parcial /
    * adeuda), guardado mientras el contrato es BORRADOR. Se aplica al APROBARLO,
@@ -1505,7 +1673,10 @@ model CargoContrato {
   @@index([inmobiliariaId])
   @@index([contratoId])
   @@map("cargos_contrato")
+  /// Los movimientos de caja que nacieron de cobrar este cargo (T-28-N1-N1).
+  movimientos    MovimientoCaja[]
 }
+
 
 // Ajuste del monto del alquiler (manual-asistido): el operador confirma el nuevo canon y
 // desde qué período aplica. Registra el historial (antes/después) y actualiza las cuotas
@@ -1657,49 +1828,61 @@ model Liquidacion {
 // AccionConciliacion COLAPSA acá: estado + observacion + decididoPor/decididoAt
 // (normaliza los typos decidiSAt/decidiSPor). N pagos por liquidación (parciales).
 model Pago {
-  id                  String              @id @default(cuid())
-  inmobiliariaId      String
-  inmobiliaria        Inmobiliaria        @relation(fields: [inmobiliariaId], references: [id])
-  contratoId          String
-  contrato            Contrato            @relation(fields: [contratoId], references: [id])
-  liquidacionId       String
-  liquidacion         Liquidacion         @relation(fields: [liquidacionId], references: [id])
-  periodo             String // 'YYYY-MM'
+  id                        String              @id @default(cuid())
+  inmobiliariaId            String
+  inmobiliaria              Inmobiliaria        @relation(fields: [inmobiliariaId], references: [id])
+  contratoId                String
+  contrato                  Contrato            @relation(fields: [contratoId], references: [id])
+  liquidacionId             String
+  liquidacion               Liquidacion         @relation(fields: [liquidacionId], references: [id])
+  periodo                   String // 'YYYY-MM'
   // SIN default a propósito: cuatro de los seis caminos que crean pagos heredaban
   // TOTAL sin decidir nada y etiquetaban como completo un cobro parcial (el front
   // usa este campo para marcar "· pago parcial" en el comprobante del inquilino).
   // Requerido, el compilador no deja que un camino nuevo se lo saltee.
-  tipo                TipoPago
+  tipo                      TipoPago
   // CONDONACIÓN: la inmo perdonó la deuda. Cancela el saldo del inquilino igual que un
   // cobro (por eso sigue siendo un Pago CONCILIADO y cuenta en montoPagado/saldo), pero
   // NO es un ingreso: se excluye del cierre de caja y de lo que se le rinde al propietario.
   // Antes condonar creaba un pago idéntico a un cobro real → inflaba caja, comisión y le
   // transfería al dueño plata que nunca entró.
-  condonado           Boolean             @default(false)
-  monto               Decimal             @db.Decimal(14, 2)
-  montoLiqTotal       Decimal?            @db.Decimal(14, 2) // snapshot del total al informar
-  metodo              MetodoPagoInformado
-  nroOperacion        String?
-  fechaTransferencia  DateTime
-  informadoAt         DateTime            @default(now()) // enviadoAt del lado inquilino
-  comprobanteUrl      String? // object storage (mata dataUrl)
-  comprobanteFileName String?
-  comprobanteMime     String?
-  comprobanteSize     Int?
-  notaInquilino       String?
-  extraccionIA        Json?
-  estado              EstadoConciliacion  @default(INFORMADO)
-  observacion         String? // obligatoria al RECHAZAR (valida API)
-  decididoPorId       String?
-  decididoPor         Usuario?            @relation("PagosDecididos", fields: [decididoPorId], references: [id])
-  decididoAt          DateTime?
+  condonado                 Boolean             @default(false)
+  // MIGRACIÓN DE CARTERA: la plata NO pasó por la inmobiliaria. El alta de un contrato "en
+  // curso" registra hasta 120 períodos pasados como pagados (`estado-inicial-contrato.ts`)
+  // para que el saldo del inquilino arranque bien — pero eso lo cobró la inmobiliaria antes
+  // de usar el sistema, y ya se lo liquidó al dueño por fuera. Sin esta marca, `POST
+  // /rendiciones` la trata como cobro rendible y le puede transferir al propietario plata
+  // que ya tiene, y el portal se la reclama como "cobrado y todavía sin rendirte" en un
+  // número que no baja por ningún camino.
+  //
+  // Mismo criterio que `condonado`, y por el mismo motivo: cancela deuda del inquilino sin
+  // ser un ingreso. Es una columna y no un filtro por `observacion` porque esa observación
+  // es un texto libre que alguien puede editar o traducir.
+  migradoDeCartera          Boolean             @default(false)
+  monto                     Decimal             @db.Decimal(14, 2)
+  montoLiqTotal             Decimal?            @db.Decimal(14, 2) // snapshot del total al informar
+  metodo                    MetodoPagoInformado
+  nroOperacion              String?
+  fechaTransferencia        DateTime
+  informadoAt               DateTime            @default(now()) // enviadoAt del lado inquilino
+  comprobanteUrl            String? // object storage (mata dataUrl)
+  comprobanteFileName       String?
+  comprobanteMime           String?
+  comprobanteSize           Int?
+  notaInquilino             String?
+  extraccionIA              Json?
+  estado                    EstadoConciliacion  @default(INFORMADO)
+  observacion               String? // obligatoria al RECHAZAR (valida API)
+  decididoPorId             String?
+  decididoPor               Usuario?            @relation("PagosDecididos", fields: [decididoPorId], references: [id])
+  decididoAt                DateTime?
   // Autor del informe (co-inquilinos): quién de los miembros del contrato informó
   // este pago. Nullable (los cobros manuales/bancarios nacen sin autor inquilino).
   // Sirve para atribuir en notificaciones y en la lista "Pagos informados".
   informadoPorInquilinoId   String?
   informadoPorCoInquilinoId String?
   // Créditos que originaron este pago vía conciliación desde extracto bancario (0 o 1).
-  creditoDetectado    CreditoDetectado?
+  creditoDetectado          CreditoDetectado?
 
   @@index([inmobiliariaId, estado])
   @@index([contratoId])
@@ -1785,10 +1968,46 @@ model MovimientoCaja {
   id                    String             @id @default(cuid())
   inmobiliariaId        String
   inmobiliaria          Inmobiliaria       @relation(fields: [inmobiliariaId], references: [id])
-  propiedadId           String
-  propiedad             Propiedad          @relation(fields: [propiedadId], references: [id])
+  // NULL = gasto/ingreso PROPIO de la inmobiliaria, no imputable a ninguna propiedad
+  // (alquiler de la oficina, sueldos, un adelanto entre cajas). Pedido en la prueba del
+  // 03/08: "sí o sí tengo que elegir una propiedad" / "poder mover una caja igual sin
+  // que tenga que depender de una propiedad".
+  //
+  // CONSECUENCIA DE PLATA, deliberada: la rendición filtra los gastos por
+  // `propiedadId IN propIdsConIngreso` (plata.ts), así que un movimiento sin propiedad
+  // NUNCA se le descuenta a un propietario. Es correcto: es un gasto de la
+  // inmobiliaria, no de la propiedad de nadie. Sí entra al cierre de caja del día.
+  propiedadId           String?
+  /// `onDelete: Restrict` EXPLÍCITO, y no es cosmético.
+  ///
+  /// La migración inicial creó esta FK con `ON DELETE RESTRICT`, pero el schema no lo declaraba
+  /// — y para una relación opcional el default de Prisma es `SetNull`. O sea que había DERIVA
+  /// silenciosa entre el schema y la base, y la primera migración que tocara esta tabla la iba a
+  /// "arreglar" sola, cambiando el borrado sin que nadie lo pidiera.
+  ///
+  /// No es cosmético porque toca plata: la rendición filtra los gastos por
+  /// `propiedadId IN propIdsConIngreso`, así que un movimiento al que se le anule la propiedad
+  /// **deja de descontársele a su propietario**, en silencio. Se declara la conducta que la base
+  /// ya tenía.
+  propiedad             Propiedad?         @relation(fields: [propiedadId], references: [id], onDelete: Restrict)
   contratoId            String?
   contrato              Contrato?          @relation(fields: [contratoId], references: [id])
+  /// T-28-N1-N1 · De qué cargo del inquilino salió este INGRESO_EXTRA.
+  ///
+  /// Antes el vínculo era el TEXTO: `descobrar` buscaba el movimiento por descripción + monto +
+  /// moneda + contrato y se quedaba con el más reciente. Con dos cargos gemelos —mismo concepto,
+  /// mismo importe, cosa habitual en expensas o en una reparación repetida— podía borrar el que
+  /// no era. Mientras ninguno se rindió no se nota, porque los dos ingresos son fungibles; dejan
+  /// de serlo apenas UNO se rinde: ahí tienen historias distintas y las cuentas dejan de cerrar.
+  ///
+  /// `onDelete: SetNull` y no `Restrict`: `imputar-reclamo.ts` borra los cargos no saldados al
+  /// reimputar, y una FK que frena ese borrado es el mismo bug que este repo ya pagó con la FK de
+  /// `Persona` y con la del OTP. Perder el puntero es aceptable; frenar una operación legítima no.
+  ///
+  /// Nullable a propósito: los movimientos anteriores a esta migración no lo tienen, y
+  /// `descobrar` mantiene el camino viejo como respaldo para ellos.
+  cargoId               String?
+  cargo                 CargoContrato?     @relation(fields: [cargoId], references: [id], onDelete: SetNull)
   tipo                  TipoMovimientoCaja
   categoria             CategoriaGasto
   // Cuenta de caja (de dónde sale / a dónde entra la plata): MP Gaspar, efectivo,
@@ -1828,16 +2047,16 @@ model MovimientoCaja {
 // los números de cuenta, si tengo que usar otro sistema estamos en el horno". Solo el
 // admin las define (la cajera no las toca).
 model CuentaCaja {
-  id             String           @id @default(cuid())
+  id             String          @id @default(cuid())
   inmobiliariaId String
-  inmobiliaria   Inmobiliaria     @relation(fields: [inmobiliariaId], references: [id])
+  inmobiliaria   Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
   nombre         String
-  direccion      DireccionCuenta  @default(AMBAS)
+  direccion      DireccionCuenta @default(AMBAS)
   // Soft-delete: una cuenta con movimientos no se borra (rompería el historial), se
   // archiva. `activa=false` la saca del selector de carga pero conserva sus movimientos.
-  activa         Boolean          @default(true)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  activa         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   movimientos MovimientoCaja[]
 
@@ -1864,7 +2083,16 @@ model CierreCaja {
   @@map("cierres_caja")
 }
 
-// montoNeto = montoBruto - comisionMonto - totalGastos
+// montoNeto = montoBruto - comisionMonto - totalGastos + totalIngresos
+//
+// Los INGRESOS EXTRA faltaban en esta línea, y no son un detalle: son la plata que la
+// inmobiliaria le suma al dueño (un reintegro, un cobro que le corresponde), así que la
+// fórmula de acá daba MENOS que lo que el código transfiere. Ver `plata.ts`, paso NETO.
+//
+// NO HAY `@@unique([propietarioId, periodo])`: se dropeó el 01/07/2026 porque un período se
+// rinde en varias tandas a medida que entran los pagos parciales, y además va una rendición
+// por moneda. El anti-doble son otras tres cosas: el advisory lock por (dueño, período), la
+// aritmética contra `AlquilerRendido`, y el guard pre-ledger de `POST /rendiciones`.
 model Rendicion {
   id             String          @id @default(cuid())
   inmobiliariaId String
@@ -1879,6 +2107,10 @@ model Rendicion {
   // Ingresos extra de caja (INGRESO_EXTRA) del período que SUMAN al dueño.
   totalIngresos  Decimal         @default(0) @db.Decimal(14, 2)
   montoNeto      Decimal         @db.Decimal(14, 2)
+  // La moneda en la que se rindió. El handler ya la calcula (`monedaRendicion`) y rechaza con
+  // 409 si el propietario tiene cobros en varias, pero no la guardaba: aguas abajo nadie podía
+  // saberla, y el portal del propietario mostraba los dólares con signo de pesos.
+  moneda         Moneda          @default(ARS)
   rendidoAt      DateTime        @default(now())
   metodo         MetodoRendicion
   notas          String?
@@ -1891,6 +2123,29 @@ model Rendicion {
   // SIN @@unique(propietarioId, periodo): rendición INCREMENTAL — un período se
   // puede rendir varias veces a medida que entran pagos parciales. El anti-doble se
   // hace por lo YA rendido de cada liquidación (AlquilerRendido), no por período.
+  /**
+   * /**
+   * ANULADA, no borrada.
+   * Anular es la única operación del sistema que destruía un registro de plata — y encima el
+   * único que un TERCERO ya vio: al propietario se le desaparecía del portal la tarjeta "te
+   * depositamos $X", el total del año le bajaba solo y la plata le volvía a figurar como sin
+   * rendir, sin una línea que lo explicara. Si llamaba, la inmobiliaria tampoco tenía con qué
+   * contestarle.
+   * SE BORRAN LAS LÍNEAS (AlquilerRendido/GastoRendido/IngresoRendido) Y SE CONSERVA LA
+   * CABECERA. Es a propósito: 20 lugares del código leen esos ledgers para saber qué se
+   * rindió, y filtrar "y que su rendición no esté anulada" en los 20 es garantizar que un día
+   * se olvide uno — y ese olvido corrompe plata en silencio. Borrándolas, ninguno cambia.
+   * La cabecera guarda montoBruto, comisionPct, montoNeto y moneda, que es lo que hace falta
+   * para mostrarle al dueño qué se anuló.
+   */
+  anuladaAt       DateTime?
+  anuladaPorId    String?
+  anuladaPor      Usuario?  @relation("rendicionesAnuladas", fields: [anuladaPorId], references: [id])
+  /**
+   * Obligatorio al anular: sin motivo, el rastro dice qué pasó pero no por qué.
+   */
+  motivoAnulacion String?
+
   @@index([inmobiliariaId, periodo])
   @@index([propietarioId, periodo])
   @@map("rendiciones")
@@ -2176,28 +2431,28 @@ model ReclamoEvento {
 }
 
 model Profesional {
-  id             String               @id @default(cuid())
-  inmobiliariaId String
-  inmobiliaria   Inmobiliaria         @relation(fields: [inmobiliariaId], references: [id])
-  nombre         String
-  categoria      CategoriaProfesional
-  zona           String
-  telefono       String
-  email          String?
-  rating         Float                @default(0) // seed; ponderado se calcula con RatingReclamo
-  cantTrabajos   Int                  @default(0)
-  ultimoTrabajo  DateTime?
-  verificado     Boolean              @default(false)
-  notas          String?
-  activo         Boolean              @default(true)
+  id               String               @id @default(cuid())
+  inmobiliariaId   String
+  inmobiliaria     Inmobiliaria         @relation(fields: [inmobiliariaId], references: [id])
+  nombre           String
+  categoria        CategoriaProfesional
+  zona             String
+  telefono         String
+  email            String?
+  rating           Float                @default(0) // seed; ponderado se calcula con RatingReclamo
+  cantTrabajos     Int                  @default(0)
+  ultimoTrabajo    DateTime?
+  verificado       Boolean              @default(false)
+  notas            String?
+  activo           Boolean              @default(true)
   // Ecosistema: `publico` = esta inmo comparte este profesional con la red.
   // `profesionalRedId` linkea esta ficha privada a la identidad global (por teléfono)
   // sobre la que se agrega la reputación cross-tenant.
-  publico          Boolean         @default(false)
+  publico          Boolean              @default(false)
   profesionalRedId String?
-  profesionalRed   ProfesionalRed? @relation(fields: [profesionalRedId], references: [id])
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  profesionalRed   ProfesionalRed?      @relation(fields: [profesionalRedId], references: [id])
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   reclamos Reclamo[]
   visitas  VisitaProfesional[]
@@ -2613,23 +2868,23 @@ model BoletaServicio {
 
 // Upsert por (propiedad, tipo).
 model ServicioPublico {
-  id                     String       @id @default(cuid())
+  id                     String          @id @default(cuid())
   inmobiliariaId         String
-  inmobiliaria           Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  inmobiliaria           Inmobiliaria    @relation(fields: [inmobiliariaId], references: [id])
   propiedadId            String
-  propiedad              Propiedad    @relation(fields: [propiedadId], references: [id])
+  propiedad              Propiedad       @relation(fields: [propiedadId], references: [id])
   tipo                   TipoServicio
   distribuidora          String
   nis                    String
   numeroMedidor          String?
   titular                String?
   observaciones          String?
-  consumoPromedioMensual Decimal?     @db.Decimal(14, 2)
+  consumoPromedioMensual Decimal?        @db.Decimal(14, 2)
   // Quién paga este servicio: el INQUILINO (default, sube la boleta), la INMOBILIARIA,
   // el PROPIETARIO o va por EXPENSAS. Si NO lo paga el inquilino, su app lo muestra
   // como informativo (sin pedirle subir boleta) → evita consultas y confusión.
   pagador                PagadorServicio @default(INQUILINO)
-  actualizadoAt          DateTime     @updatedAt
+  actualizadoAt          DateTime        @updatedAt
 
   @@unique([propiedadId, tipo])
   @@index([inmobiliariaId])
@@ -2702,6 +2957,59 @@ model Documento {
 // 'Reemplazo del garante': hash HMAC-SHA256 firmado con clave privada de
 // My Alquiler sobre SOLO datos inmutables (dni|contratoId|inmobiliaria).
 // Verificación pública /verificar/[hash]: firma + no-revocación. Validez 30 días.
+/// Quién escribió cada archivo del Volume. SISTEMA = lo escribió un flujo del backend sin que
+/// nadie apretara "subir" (hoy: el extracto bancario original que archiva `guardarBufferSubido`).
+enum AutorArchivo {
+  USUARIO
+  INQUILINO
+  CO_INQUILINO
+  PROFESIONAL
+  SISTEMA
+}
+
+/// Registro de DUEÑO de cada archivo del Volume de Railway.
+///
+/// POR QUÉ EXISTE. `GET /uploads/:tenant/:name` autorizaba SÓLO por tenant: cualquier inquilino,
+/// co-inquilino o profesional con link mágico que conociera el nombre leía CUALQUIER archivo de
+/// esa inmobiliaria —el comprobante del 3°B, el DNI de otro contrato, el recibo de sueldo de un
+/// garante ajeno, el extracto bancario de la administradora—. Lo único que lo tapaba es que el
+/// nombre es un `randomUUID()`: eso es oscuridad, no autorización. La URL viaja en el `<img src>`,
+/// queda en el historial del browser y se reenvía por WhatsApp como cualquier link.
+///
+/// La causa raíz era que NO EXISTÍA ningún registro de quién subió qué: de los 85 modelos del
+/// schema, ninguno lo guardaba (`registrarSubida` sólo suma bytes a un Map en memoria). Esta
+/// tabla es ese registro.
+///
+/// ⚠️ NACE VACÍA Y NO SE SIEMBRA, y es la decisión más importante del cambio. El reflejo sería
+/// backfillear el dueño de lo histórico leyendo las 16 columnas que referencian URLs. NO se
+/// hace: esas columnas guardan un VÍNCULO (este archivo es el comprobante de este pago), no un
+/// dueño. Derivar "dueño" de ahí es adivinar, y adivinar mal significa que el día del deploy un
+/// inquilino real deja de ver un documento que hoy ve — peor que el agujero que se viene a
+/// cerrar. Lo histórico lo resuelve la SEGUNDA VÍA del guard, que consulta esas mismas filas en
+/// vivo y acotadas al contrato de quien pide. La info que un backfill congelaría, el guard la
+/// lee fresca.
+model ArchivoSubido {
+  id             String       @id @default(cuid())
+  inmobiliariaId String
+  inmobiliaria   Inmobiliaria @relation(fields: [inmobiliariaId], references: [id])
+  /// La URL servida EXACTAMENTE como la devuelve el POST y como la guardan las 16 columnas de
+  /// archivo: `/uploads/<tenant>/<uuid>.<ext>`. Única: un archivo tiene un solo dueño.
+  url            String       @unique
+  subidoPorKind  AutorArchivo
+  /// El id del actor DENTRO de su kind: userId / inquilinoId / coInquilinoId / visitaId.
+  /// Para el profesional se guarda el `visitaId` y no el `profesionalId` a propósito: su
+  /// identidad ES la visita (el link mágico no tiene cuenta). Nullable para SISTEMA.
+  subidoPorId    String?
+  /// Rastro para forensia: 'POST /uploads' | 'resumen-bancario'. Texto libre a propósito: un
+  /// enum obligaría a migrar cada vez que aparece un flujo nuevo, y esto no decide nada.
+  origen         String       @default("")
+  createdAt      DateTime     @default(now())
+
+  @@index([inmobiliariaId])
+  @@index([subidoPorId])
+  @@map("archivos_subidos")
+}
+
 model CertificadoInquilino {
   id              String         @id @default(cuid())
   inmobiliariaId  String
@@ -2721,6 +3029,12 @@ model CertificadoInquilino {
   urlVerificacion String
   revocadoAt      DateTime?
 
+  // La clave ESTABLE del certificado: una persona tiene UN certificado por contrato. Antes el
+  // upsert iba por `hash`, y funcionaba sólo porque el hash era determinístico sobre
+  // (DNI, contrato, inmobiliaria). Al pasar a un código aleatorio (T-71) eso deja de servir:
+  // sin esta clave, cada visita a /certificado crearía una fila nueva y dejaría la anterior
+  // huérfana, con PII adentro y sin nada que la borre.
+  @@unique([inquilinoId, contratoId])
   @@index([inmobiliariaId])
   @@index([inquilinoId])
   @@index([contratoId])

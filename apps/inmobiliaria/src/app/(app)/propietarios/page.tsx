@@ -40,6 +40,8 @@ import {
   type Rendicion,
 } from '@/lib/rendiciones-storage';
 import { formatMonto } from '@/lib/format';
+import { faltaRendirle as faltaRendirleA, tieneMezclaDeMonedas } from '@/lib/falta-rendirle';
+import { usePuede } from '@/lib/use-puede';
 
 // Filtros aplicables vía query param (?filtro=sin-cbu / sin-rendir).
 // Usado por los cards del dashboard "Para resolver hoy" para que el
@@ -68,7 +70,15 @@ function apiRendicionALocal(r: RendicionApi): Rendicion {
     // no daba el "A transferirte", sin ninguna línea que explicara la diferencia.
     totalIngresos: r.totalIngresos != null ? Number(r.totalIngresos) : undefined,
     montoNeto: Number(r.montoNeto),
-    rendidoAt: r.createdAt ?? `${r.periodo}-01`,
+    // LA MONEDA. El mapper la tiraba —el campo existe en las dos puntas— y sin ella
+    // `mensajeRendicion` caía a su fallback `prop.monedaMensual ?? 'ARS'`: una rendición en
+    // dólares le llegaba al dueño por WhatsApp con signo de pesos, y en Argentina "$ 1.104" se
+    // lee mil ciento cuatro pesos. El dueño esperaba mil veces menos plata.
+    //
+    // El fallback de `mensajeRendicion` existe para las filas del modo demo, que no tienen
+    // moneda. En producción no tenía por qué llegar nunca a usarse.
+    moneda: r.moneda ?? 'ARS',
+    rendidoAt: r.rendidoAt,
     metodo: r.metodo,
     notas: r.notas,
   };
@@ -82,8 +92,18 @@ export default function PropietariosPage() {
   const [rendiendoA, setRendiendoA] = useState<Propietario | null>(null);
   const [verHistorial, setVerHistorial] = useState<Propietario | null>(null);
   const [rendicionesMap, setRendicionesMap] = useState<Record<string, Rendicion | null>>({});
+  /**
+   * Cuántas rendiciones tiene cada dueño ESTE período.
+   *
+   * Casi siempre es 1, pero puede ser más: la rendición es incremental —cada tanda de parciales
+   * cobrados genera la suya— y además va una por moneda cuando el dueño cobra en pesos y en
+   * dólares. El mapa de arriba se queda con UNA, así que cuando hay varias hay que decirlo: si
+   * no, el comprobante de WhatsApp sale con el monto de una sola y el dueño lo lee como el
+   * total del mes.
+   */
+  const [cuantasRendiciones, setCuantasRendiciones] = useState<Record<string, number>>({});
 
-  const { propietarios, cargando } = usePropietarios();
+  const { propietarios, cargando, error: errorDatos } = usePropietarios();
   // En prod el estado "rendido" sale del server (GET /rendiciones); en demo, de
   // localStorage. Antes SOLO leía localStorage → en prod todo aparecía "por
   // rendir" y el historial en $0, y "rendido" se perdía al refrescar.
@@ -93,16 +113,25 @@ export default function PropietariosPage() {
 
   const refrescarRendiciones = () => {
     const map: Record<string, Rendicion | null> = {};
+    const cuantas: Record<string, number> = {};
     if (apiEnabled) {
       for (const r of rendicionesApi) {
-        if (r.periodo === periodo) map[r.propietarioId] = apiRendicionALocal(r);
+        if (r.periodo !== periodo) continue;
+        cuantas[r.propietarioId] = (cuantas[r.propietarioId] ?? 0) + 1;
+        // La PRIMERA que llega de cada dueño, que es la más reciente: el server ordena por
+        // `periodo desc, rendidoAt desc`. Antes se pisaba en cada vuelta y quedaba la última
+        // de la lista, sin ningún criterio — y de ahí salen el monto del WhatsApp y el
+        // `rendicionId` del botón Deshacer.
+        if (!map[r.propietarioId]) map[r.propietarioId] = apiRendicionALocal(r);
       }
     } else {
       propietarios.forEach((p) => {
         map[p.id] = obtenerRendicion(p.id, periodo);
+        cuantas[p.id] = map[p.id] ? 1 : 0;
       });
     }
     setRendicionesMap(map);
+    setCuantasRendiciones(cuantas);
   };
 
   // `propietarios` es una ref NUEVA cada render (usePropietarios mapea el dato
@@ -127,14 +156,20 @@ export default function PropietariosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Ata el predicado puro al mapa de rendiciones de esta pantalla. */
+  const faltaRendirle = (p: Propietario) => faltaRendirleA(p, !!rendicionesMap[p.id]);
+  // Rendir y anular una rendición son `rendicion.confirmar`, que la matriz da SÓLO a ADMIN. La
+  // pantalla la abre `propiedades.ver`, que incluye a LECTURA: se le ofrecía la acción de plata
+  // más grande del mes a un rol descrito como "ve todo sin modificar nada", y el 403 llegaba
+  // recién después de elegir método y revisar los gastos que se descuentan.
+  const puedeRendir = usePuede('rendicion.confirmar');
+
   const filtrados = useMemo(() => {
     const term = q.trim().toLowerCase();
     let base = propietarios as readonly Propietario[];
     if (filtroExtra === 'SIN_CBU') base = base.filter((p) => !p.cbuAlias);
     if (filtroExtra === 'SIN_RENDIR') {
-      base = base.filter(
-        (p) => !rendicionesMap[p.id] && p.totalRecibirMes > 0,
-      );
+      base = base.filter(faltaRendirle);
     }
     if (!term) return base;
     // El CUIT se compara en DÍGITOS de los dos lados: en la base conviven
@@ -148,7 +183,7 @@ export default function PropietariosPage() {
         (termDigitos.length > 0 && normalizarCuit(p.cuit).includes(termDigitos)) ||
         p.email.toLowerCase().includes(term),
     );
-  }, [propietarios, q, filtroExtra, rendicionesMap]);
+  }, [propietarios, q, filtroExtra, rendicionesMap, faltaRendirle]);
 
   const totalPropiedades = propietarios.reduce((acc, p) => acc + p.propiedadesIds.length, 0);
   // Por moneda: un dueño con contratos en dólares sumaba su neto a un total rotulado
@@ -163,9 +198,7 @@ export default function PropietariosPage() {
     return [...acc.entries()].sort((a, b) => (a[0] === 'ARS' ? -1 : b[0] === 'ARS' ? 1 : 0));
   })();
   const sinCbu = propietarios.filter((p) => !p.cbuAlias).length;
-  const porRendir = propietarios.filter(
-    (p) => !rendicionesMap[p.id] && p.totalRecibirMes > 0,
-  ).length;
+  const porRendir = propietarios.filter(faltaRendirle).length;
 
   return (
     <>
@@ -211,9 +244,15 @@ export default function PropietariosPage() {
                 {porRendir}
               </p>
               <p className="text-xs text-muted-foreground">
-                {porRendir > 0
-                  ? `Tenés ${porRendir} propietario${porRendir === 1 ? '' : 's'} esperando`
-                  : 'Todos rendidos este mes 🎉'}
+                {/* CON ERROR NO SE AFIRMA NADA. Este número sale de las liquidaciones, y si esa
+                    consulta falló —o devolvió 403, que es lo que le pasa SIEMPRE al rol CARGA—
+                    queda en 0 y el cartel felicitaba al operador por una cartera que no pudo
+                    mirar. "0" y "no sé" no son lo mismo cuando se trata de plata sin rendir. */}
+                {errorDatos
+                  ? 'No pudimos consultar la cobranza'
+                  : porRendir > 0
+                    ? `Tenés ${porRendir} propietario${porRendir === 1 ? '' : 's'} esperando`
+                    : 'Todos rendidos este mes 🎉'}
               </p>
             </CardContent>
           </Card>
@@ -230,7 +269,11 @@ export default function PropietariosPage() {
                 {sinCbu}
               </p>
               <p className="text-xs text-muted-foreground">
-                {sinCbu > 0 ? 'Pediles los datos antes de rendir' : 'Todos tienen CBU cargado'}
+                {errorDatos
+                  ? 'No pudimos consultar'
+                  : sinCbu > 0
+                    ? 'Pediles los datos antes de rendir'
+                    : 'Todos tienen CBU cargado'}
               </p>
             </CardContent>
           </Card>
@@ -260,6 +303,26 @@ export default function PropietariosPage() {
               <p className="font-medium text-foreground">Cargando propietarios…</p>
             </CardContent>
           </Card>
+        ) : errorDatos && propietarios.length === 0 ? (
+          /* EL ERROR VA ANTES QUE LA LISTA VACÍA. Con la consulta caída, "Todavía no cargaste
+             propietarios" es una afirmación falsa sobre la cartera de alguien que sí la tiene
+             cargada — y encima lo manda a cargarla de nuevo. */
+          <Card className="border-destructive/40">
+            <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
+              <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
+              <p className="font-medium text-foreground">No pudimos traer tus propietarios</p>
+              <p className="text-xs">
+                No es que no tengas: no pudimos consultarlos. Probá de nuevo en un momento.
+              </p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Reintentar
+              </button>
+            </CardContent>
+          </Card>
         ) : filtrados.length === 0 ? (
           <Card>
             <CardContent className="space-y-2 p-10 text-center text-muted-foreground">
@@ -279,7 +342,16 @@ export default function PropietariosPage() {
             {filtrados.map((p, i) => {
               const tel = p.telefono.replace(/[^\d]/g, '');
               const rendido = rendicionesMap[p.id];
-              const necesitaRendir = !rendido && p.totalRecibirMes > 0;
+              const variasEsteMes = (cuantasRendiciones[p.id] ?? 0) > 1;
+              // `monedasMes` distingue las DOS cosas que `monedaMensual === null` mezclaba:
+              // "no cobró nada" (0 monedas) y "cobró en dos" (2). El hook pone los totales en 0
+              // cuando hay mezcla —a propósito, para no mostrar una suma cruda de pesos con
+              // dólares— y esta pantalla leía ese cero defensivo como "no hay nada que rendir".
+              // Resultado: badge "Al día", botón gris y fuera del contador, en la misma tarjeta
+              // que le decía al operador "rendí cada moneda por separado". No estaba trabado:
+              // estaba invisible, y lo único imposible era EMPEZAR.
+              const mezclaDeMonedas = tieneMezclaDeMonedas(p);
+              const necesitaRendir = faltaRendirle(p);
               // Mensaje de WhatsApp contextual: rendición si ya se rindió, pedido
               // de CBU si no tiene, sino aviso de cobranza pronta.
               const mensajeWA = rendido
@@ -325,6 +397,17 @@ export default function PropietariosPage() {
                           <p className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
                             CUIT {formatearCuit(p.cuit)}
                           </p>
+                          {/* SI ENTRÓ AL PORTAL, que es la pregunta "¿le llegó el acceso?".
+                              Sólo se dice cuando NO entró: el caso normal no necesita un
+                              renglón, y el que importa es a quién hay que reenviarle el link.
+                              `undefined` (backend viejo) no dice nada: afirmar que nunca entró
+                              sin saberlo haría que Camila persiga a alguien que sí usa el
+                              portal. */}
+                          {p.ultimoAccesoAt === null && (
+                            <p className="whitespace-nowrap text-xs text-muted-foreground">
+                              Nunca entró al portal
+                            </p>
+                          )}
                         </div>
                         {/* I2-05: este badge comunica ESTADO de rendición.
                             Antes el tercer caso mostraba la cantidad de
@@ -339,7 +422,7 @@ export default function PropietariosPage() {
                               <CheckCircle2 className="h-3 w-3" />
                               Rendido
                             </Badge>
-                            {apiEnabled && (
+                            {apiEnabled && puedeRendir && (
                               <AnularRendicionButton
                                 rendicionId={rendido.id}
                                 nombre={`${p.nombre} ${p.apellido ?? ''}`.trim()}
@@ -390,21 +473,46 @@ export default function PropietariosPage() {
                           {rendido ? 'Rendido este mes' : 'A rendir este mes'}
                         </p>
                         <p className="text-lg font-semibold">
-                          {p.monedaMensual === null
+                          {/* El "—" es SÓLO para la mezcla, donde no existe UN número que
+                              signifique algo. Sin cobros el número sí existe y es $0: mostrar
+                              un guión ahí obligaba al operador a averiguar si era "cero" o
+                              "no sé". */}
+                          {mezclaDeMonedas
                             ? '—'
                             : formatMonto(rendido?.montoNeto ?? p.totalRecibirMes, p.monedaMensual ?? 'ARS')}
                         </p>
-                        {p.monedaMensual === null && (
+                        {mezclaDeMonedas && (
                           // Cobros en dos monedas: no existe UN número que signifique algo.
                           // Antes se mostraba la suma cruda con símbolo de pesos y el operador
                           // decidía sobre eso; el server recién lo frenaba al confirmar.
+                          //
+                          // Y antes este cartel salía TAMBIÉN sin ningún cobro —mismo `null`—,
+                          // así que con el rol CARGA (403 en /liquidaciones) aparecía en TODAS
+                          // las tarjetas, siempre: un semáforo que está rojo siempre deja de
+                          // avisar.
                           <p className="text-[10px] text-muted-foreground">
                             Cobros en pesos y dólares · rendí cada moneda por separado
                           </p>
                         )}
+                        {/* VARIAS RENDICIONES ESTE MES. La rendición es incremental —una por
+                            cada tanda de parciales cobrados— y además va una por moneda. Los
+                            números de esta tarjeta y el comprobante de WhatsApp son de UNA
+                            sola: la más reciente. Sin este renglón, el operador le manda al
+                            dueño un monto parcial como si fuera el total del mes. */}
+                        {variasEsteMes && (
+                          <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                            {cuantasRendiciones[p.id]} rendiciones este mes · abajo se muestra la última
+                          </p>
+                        )}
                         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                           Comisión {p.comisionPct}% · Bruto{' '}
-                          {formatMonto(rendido?.montoBruto ?? p.totalCobradoMes)}
+                          {/* La moneda de la rendición si ya se rindió; si no, la del mes en
+                              curso del dueño. Sin el segundo argumento un bruto en dólares se
+                              imprimía con signo de pesos, en la misma tarjeta que arriba avisa
+                              que hay cobros en las dos monedas. */}
+                          {rendido
+                            ? formatMonto(rendido.montoBruto, rendido.moneda)
+                            : formatMonto(p.totalCobradoMes, p.monedaMensual ?? undefined)}
                         </p>
                       </div>
                     </button>
@@ -443,6 +551,7 @@ export default function PropietariosPage() {
                           WhatsApp
                         </Button>
                       )}
+                      {puedeRendir && (
                       <Button
                         size="sm"
                         onClick={() => setRendiendoA(p)}
@@ -452,6 +561,7 @@ export default function PropietariosPage() {
                         <Wallet className="h-3.5 w-3.5" />
                         {rendido ? 'Rendido ✓' : 'Rendir'}
                       </Button>
+                      )}
                       <Button size="sm" variant="ghost" asChild aria-label="Contratos">
                         <Link href={`/contratos?propietario=${p.id}`}>
                           <FileText className="h-3.5 w-3.5" />

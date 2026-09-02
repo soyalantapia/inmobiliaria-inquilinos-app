@@ -74,9 +74,11 @@ export default function DetalleReclamoPage() {
     reclamo: reclamoFuente,
     contacto: contactoApi,
     asignar: asignarApi,
+    tomar: tomarApi,
     resolver: resolverApi,
     clasificar: clasificarApi,
     rechazar: rechazarApi,
+    reabrir: reabrirApi,
     responder: responderApi,
   } = useReclamo(params?.id);
   const { visita } = useVisitaReclamo(params?.id);
@@ -95,6 +97,11 @@ export default function DetalleReclamoPage() {
   // Guard de re-entrancia SÍNCRONO contra el doble-click: setDialogoCargando es un
   // state setter (async) y no bloquea la 2da invocación en el mismo tick.
   const confirmandoRef = useRef(false);
+  // Reapertura para corregir un cierre (T-63-N1). Estado propio y no el de `dialogo`: es
+  // una acción del reclamo YA cerrado, o sea el único caso donde el resto del panel de
+  // acciones no se muestra.
+  const [motivoReapertura, setMotivoReapertura] = useState('');
+  const [reabriendo, setReabriendo] = useState(false);
   const [enviandoMsg, setEnviandoMsg] = useState(false);
   const scrollEndRef = useRef<HTMLDivElement>(null);
 
@@ -133,8 +140,8 @@ export default function DetalleReclamoPage() {
     reclamo.estado === 'CERRADO' ||
     reclamo.estado === 'RECHAZADO';
 
-  // Asignar operador interno y "tomar/poner en curso" no tienen endpoint en el
-  // API → solo operan en build demo (store). En prod quedan deshabilitados.
+  // Asignar OPERADOR INTERNO sigue sin endpoint → sólo build demo. "Tomar" ahora sí tiene
+  // (POST /reclamos/:id/tomar, T-17-N2) y funciona en los dos modos.
   const handleAsignar = (operador: string) => {
     if (apiEnabled) return;
     const updated = asignarOperador(reclamo.id, operador, OPERADOR_ACTUAL);
@@ -144,8 +151,22 @@ export default function DetalleReclamoPage() {
     }
   };
 
-  const handleTomar = () => {
-    if (apiEnabled) return;
+  const handleTomar = async () => {
+    if (apiEnabled) {
+      try {
+        await tomarApi();
+        toast({ title: 'Marcado en curso', description: 'El inquilino lo ve al instante.' });
+      } catch {
+        // El server devuelve 409 si alguien lo resolvió o rechazó mientras tanto: no es un
+        // fallo del sistema, es que el reclamo ya no está donde lo dejaste.
+        toast({
+          title: 'No se pudo tomar el reclamo',
+          description: 'Puede que ya lo hayan cerrado. Recargá para ver cómo quedó.',
+          variant: 'destructive',
+        });
+      }
+      return;
+    }
     const updated = cambiarEstado(reclamo.id, 'EN_CURSO', OPERADOR_ACTUAL);
     if (updated) {
       setReclamo(updated);
@@ -475,8 +496,14 @@ export default function DetalleReclamoPage() {
                       </label>
                     )
                   )}
+                  {/* T-49 — Decía "lo recibe en la app y por WhatsApp". Las dos mitades eran
+                      falsas: `POST /reclamos/:id/responder` sólo persiste el mensaje (no manda
+                      mail ni push), y WhatsApp no está integrado en ninguna parte del repo.
+                      Camila: "yo le contesto, me quedo tranquila, y a los cuatro días me
+                      reclama que no le respondí. Ese cartel me hace quedar mal a mí". */}
                   <p className="text-[11px] text-muted-foreground">
-                    El inquilino lo recibe en la app y por WhatsApp.
+                    Queda en el reclamo: el inquilino lo ve cuando entra a la app. No le llega
+                    aviso todavía — si es urgente, escribile.
                   </p>
                 </CardContent>
               </Card>
@@ -488,6 +515,60 @@ export default function DetalleReclamoPage() {
             {/* Progreso del trabajo (link mágico del profesional) */}
             {reclamo.profesionalAsignadoId && (
               <ProgresoVisitaCard reclamoId={reclamo.id} />
+            )}
+
+            {cerrado && apiEnabled && (
+              <Card>
+                <CardContent className="space-y-3 p-5">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    Corregir este cierre
+                  </h3>
+                  {/* POR QUÉ ESTÁ ACÁ. Cuando el reclamo lo cierra el profesional por link
+                      mágico, el monto que declaró se imputa como plata real —cargo al
+                      inquilino, gasto al propietario o descuento del depósito—. Si tipeó mal,
+                      hasta T-63-N1 no había forma de arreglarlo desde el panel. */}
+                  <p className="text-xs text-muted-foreground">
+                    Reabrilo si el monto o quién paga quedaron mal. Vuelve a quedar en curso y
+                    podés resolverlo de nuevo con los datos corregidos.
+                  </p>
+                  <Textarea
+                    value={motivoReapertura}
+                    onChange={(e) => setMotivoReapertura(e.target.value)}
+                    placeholder="Por qué se reabre (ej: el plomero cargó un cero de más)"
+                    rows={2}
+                  />
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={reabriendo || motivoReapertura.trim().length < 5}
+                    onClick={async () => {
+                      if (reabriendo) return;
+                      setReabriendo(true);
+                      try {
+                        await reabrirApi(motivoReapertura.trim());
+                        setMotivoReapertura('');
+                        toast({
+                          title: 'Reclamo reabierto',
+                          description: 'Ahora podés corregir el monto y quién paga, y volver a resolverlo.',
+                        });
+                      } catch {
+                        // El API frena si esa plata ya se movió (rendida al propietario o
+                        // cobrada al inquilino). No se traga el error: hay que deshacer eso
+                        // primero, y el mensaje del server lo explica.
+                        toast({
+                          title: 'No se pudo reabrir',
+                          description: 'Puede que ya lo haya reabierto otra persona. Recargá para ver cómo quedó.',
+                          variant: 'destructive',
+                        });
+                      } finally {
+                        setReabriendo(false);
+                      }
+                    }}
+                  >
+                    {reabriendo ? 'Reabriendo…' : 'Reabrir para corregir'}
+                  </Button>
+                </CardContent>
+              </Card>
             )}
 
             {!cerrado && (
@@ -537,8 +618,18 @@ export default function DetalleReclamoPage() {
                   )}
 
                   <div className="space-y-2">
-                    {!apiEnabled && reclamo.estado === 'ABIERTO' && (
-                      <Button className="w-full" onClick={handleTomar} disabled={!reclamo.asignadoA}>
+                    {/* Ya no es sólo demo: EN_CURSO era inalcanzable desde la inmobiliaria —el
+                        único que lo escribía era el inquilino al reabrir un reclamo ya resuelto—
+                        así que Camila se enteraba por mail y después lo veía seguir figurando
+                        ABIERTO aunque alguien lo estuviera atendiendo.
+                        En prod NO exige operador asignado: asignar a alguien y ponerse a
+                        trabajarlo son dos cosas distintas. */}
+                    {reclamo.estado === 'ABIERTO' && (
+                      <Button
+                        className="w-full"
+                        onClick={handleTomar}
+                        disabled={!apiEnabled && !reclamo.asignadoA}
+                      >
                         <Clock className="h-4 w-4" />
                         Tomar y poner en curso
                       </Button>

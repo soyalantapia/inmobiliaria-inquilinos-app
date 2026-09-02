@@ -24,6 +24,19 @@ RUN pnpm install --frozen-lockfile
 COPY packages packages
 COPY scripts scripts
 COPY apps/inquilino apps/inquilino
+# El commit que se está buildeando, para el <meta name="build-commit"> del layout. Railway
+# expone RAILWAY_GIT_COMMIT_SHA en los deploys que salen del repo conectado; si falta, el
+# layout cae a 'desconocido' en vez de mentir. Va después del COPY para no invalidar la capa
+# de pnpm install (mismo criterio que los ARG del panel).
+# Sonar: el HOST, sin default. Si no se pasa, el layout no emite el script — que es lo
+# que queremos: el valor viejo apuntaba a Railway y sobrevivio al ban horneado en el HTML.
+ARG NEXT_PUBLIC_SONAR_URL
+ENV NEXT_PUBLIC_SONAR_URL=$NEXT_PUBLIC_SONAR_URL
+ARG RAILWAY_GIT_COMMIT_SHA
+# Render expone RENDER_GIT_COMMIT; Railway, RAILWAY_GIT_COMMIT_SHA. Se declaran los dos y
+# gana el que venga, para que el <meta build-commit> diga la verdad en las dos plataformas.
+ARG RENDER_GIT_COMMIT
+ENV NEXT_PUBLIC_COMMIT=${RAILWAY_GIT_COMMIT_SHA:-$RENDER_GIT_COMMIT}
 RUN pnpm --filter @llave/inquilino exec next build
 
 FROM base AS runtime

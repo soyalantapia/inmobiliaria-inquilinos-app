@@ -81,6 +81,8 @@ export interface Consorcio {
   /** Unidades funcionales del edificio. */
   unidades: UnidadFuncional[];
   movimientos: MovimientoConsorcio[];
+  /** `false` si la respuesta NO trajo los movimientos (el listado no los manda, sólo el detalle). */
+  movimientosCargados?: boolean;
   asambleas: AsambleaConsorcio[];
   /** Fecha de incorporación a la administración. */
   desde: string;
@@ -417,18 +419,45 @@ export function morosidadConsorcio(c: Consorcio): {
   };
 }
 
-export function balanceConsorcio(c: Consorcio): {
+/**
+ * El balance del PERÍODO — que es lo que los tres rótulos dicen y antes no era.
+ *
+ * DOS DEFECTOS, UNO EN CADA PANTALLA, con la misma causa de fondo: un número que se muestra sin
+ * poder calcularlo.
+ *
+ *   · EN EL DETALLE recorría TODOS los movimientos, sin filtrar por período, bajo rótulos que
+ *     dicen "Ingresos del mes", "Egresos del mes" y "Saldo del mes". Un edificio administrado
+ *     hace tres años mostraba el acumulado histórico como si fuera el mes.
+ *   · EN EL LISTADO, `GET /consorcios` **no manda los movimientos** —es una decisión declarada:
+ *     "sin movimientos/asambleas, que sólo viajan en el detalle"— y el mapper los normalizaba
+ *     con `?? []`, borrando la diferencia entre "no hay" y "no me los mandaron". El balance daba
+ *     0 y `formatMonto(0)` devuelve "$ 0", no un guion: la lista decía **$ 0 siempre**, para
+ *     cualquier edificio, mientras el detalle del MISMO edificio decía 2.840.000.
+ *
+ * `disponible` es la mitad que faltaba: "cero" y "no sé" son cosas distintas, y la pantalla que
+ * las confunde le miente al operador con la misma cara con la que le dice la verdad.
+ */
+export function balanceConsorcio(
+  c: Consorcio,
+  periodo?: string,
+): {
   ingresos: number;
   egresos: number;
   saldoMes: number;
+  /** `false` cuando el endpoint no mandó los movimientos: no hay con qué calcular. */
+  disponible: boolean;
 } {
+  const disponible = c.movimientosCargados !== false;
   let ingresos = 0;
   let egresos = 0;
   for (const m of c.movimientos) {
+    // Sin `periodo` se comporta como antes (todos los movimientos), para no romper a un
+    // llamador que todavía no lo pase.
+    if (periodo && m.fecha.slice(0, 7) !== periodo) continue;
     if (m.monto >= 0) ingresos += m.monto;
     else egresos += Math.abs(m.monto);
   }
-  return { ingresos, egresos, saldoMes: ingresos - egresos };
+  return { ingresos, egresos, saldoMes: ingresos - egresos, disponible };
 }
 
 export const ESTADO_UF_LABEL: Record<EstadoUF, string> = {
@@ -437,6 +466,36 @@ export const ESTADO_UF_LABEL: Record<EstadoUF, string> = {
   VENCIDO: 'Vencido',
   CON_PLAN_PAGO: 'Plan de pago',
 };
+
+/**
+ * El estado que se MUESTRA de una unidad, que no es siempre el que está guardado.
+ *
+ * `UnidadFuncional.estado` se carga a mano y hasta acá no había ningún control para elegirlo:
+ * toda unidad creada en producción nace con el default `AL_DIA` de Prisma y ahí se queda. El
+ * resultado en pantalla era una fila contradiciéndose sola — el saldo en ámbar diciendo
+ * $50.000 y el badge verde al lado diciendo "Al día".
+ *
+ * Regla: **el saldo manda sobre el rótulo.** Si hay deuda cargada, la unidad no está al día,
+ * diga lo que diga el enum. Los otros tres valores se respetan tal cual: `CON_PLAN_PAGO` es
+ * información que el saldo no puede dar, y es justamente por eso que el diálogo ahora deja
+ * elegirlo.
+ *
+ * (El arreglo de fondo —derivar `estado` de las liquidaciones reales, del lado del server— es
+ * otra conversación, atada a la Fase 2 de expensas: ver `work-agent/T-22-RELEVAMIENTO-CONSORCIO.md`,
+ * donde este campo figura como una de las "dos verdades del mismo hecho".)
+ */
+export function estadoUfVisible(u: { estado: EstadoUF; saldoDeudor: number }): EstadoUF {
+  if (u.estado === 'AL_DIA' && u.saldoDeudor > 0) return 'VENCIDO';
+  // Y la contradicción al revés, que abrió el selector: alguien marca VENCIDO a mano, la
+  // unidad después paga y el saldo queda en 0. La fila mostraba «—» en el saldo y un badge
+  // ROJO «Vencido» al lado. Es la misma mentira en el otro sentido, y ahora es alcanzable
+  // porque el estado se puede elegir: antes ningún estado de mora existía en producción.
+  //
+  // Sin deuda no hay mora que mostrar. `CON_PLAN_PAGO` entra en la misma bolsa: un plan de
+  // pago sin saldo es un plan que ya se cumplió.
+  if (u.estado !== 'AL_DIA' && u.saldoDeudor <= 0) return 'AL_DIA';
+  return u.estado;
+}
 
 export const ESTADO_UF_COLOR: Record<EstadoUF, string> = {
   AL_DIA: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',

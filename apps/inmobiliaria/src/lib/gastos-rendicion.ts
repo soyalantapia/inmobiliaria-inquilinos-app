@@ -69,6 +69,9 @@ function gastoDesdeCaja(
   propietarioId: string,
 ): GastoAtribuido | null {
   if (mov.tipo !== 'GASTO') return null;
+  // Sin propiedad es un gasto de la propia inmobiliaria: no se le rinde a ningún dueño
+  // (mismo criterio que POST /rendiciones en el backend).
+  if (!mov.propiedadId) return null;
   const part = participacionDe(propietarioId, mov.propiedadId);
   if (part === 0) return null;
   const prop = propiedadesMock.find((p) => p.id === mov.propiedadId);

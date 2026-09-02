@@ -1,3 +1,30 @@
+> # ⛔ OJO: TODO LO DE ABAJO ES DE RAILWAY, Y RAILWAY YA NO EXISTE
+>
+> El 28/08/2026 Railway restringió la cuenta entera. **Desde el 29/08 producción corre en
+> Render.** Los nombres de servicio, las URLs, los comandos `railway …` y el «`git push` ES el
+> deploy» que se leen más abajo **son todos falsos hoy**.
+>
+> Esto está arriba de todo a propósito: el que lee este documento está de guardia, con algo
+> roto, leyendo bajo presión. Lo primero que necesita es no perder veinte minutos en una
+> plataforma que no le va a contestar.
+>
+> | qué | dónde, hoy |
+> |---|---|
+> | API | [`myalq-api`](https://dashboard.render.com/web/srv-da99tce7bikc738o2o20) · `https://myalq-api.onrender.com` |
+> | Panel | [`myalq-panel`](https://dashboard.render.com/web/srv-da99ut142hec73f7tltg) · `https://myalq-panel.onrender.com` |
+> | PWA del inquilino | [`myalq-inquilino`](https://dashboard.render.com/web/srv-da99utgn74is73fckvog) · `https://myalq-inquilino.onrender.com` |
+> | Base | `myalq-db` (Postgres 16) |
+>
+> - **Salud:** `curl -s https://myalq-api.onrender.com/health` → trae `version` con el SHA que
+>   se está sirviendo.
+> - **Deploy:** `autoDeploy` está en **no** en los tres servicios. Mergear a `main` NO despliega;
+>   se dispara a mano desde el dashboard de cada uno.
+> - **Vuelta atrás:** dashboard del servicio → *Deploys* → *Rollback*. Ojo: la API aplica las
+>   migraciones al arrancar, así que volver el código **no vuelve el esquema**.
+> - **Logs:** dashboard del servicio → *Logs*. No hay `railway logs`.
+>
+> El expediente de la migración vive fuera del repo, en `deenex-infra` (`MYALQ.md`).
+
 # Runbook — Operaciones / on-call
 
 Qué hacer cuando algo se rompe en producción. App de plata en prod → seguí los pasos,
@@ -128,14 +155,51 @@ del owner (regla dura).
 
 ## Deploy (referencia rápida)
 
+> ### 🚨 `git push origin main` **ES** EL DEPLOY
+>
+> Los tres servicios están conectados al repo. Un push los dispara a los tres, y el backend
+> arranca con `prisma migrate deploy`, así que **se lleva las migraciones pendientes con él**.
+> No hay paso manual ni confirmación intermedia.
+>
+> Este documento decía lo contrario —"push a `main` no auto-deploya, los servicios no están
+> conectados a GitHub"— y era falso. Se comprobó el 20/08: un push llevó 208 commits y trece
+> migraciones a producción, dos de ellas irreversibles. **Si estás de guardia leyendo esto
+> bajo presión, esa frase te iba a hacer pushear tranquilo.**
+>
+> Todo lo que haya que revisar —migraciones que escriben datos, evidencia que se destruye,
+> secretos— se revisa ANTES del push.
+
+`railway up` sirve sólo para forzar un deploy sin tocar el repo:
+
 ```bash
 railway up --service myalquiler-back --detach        # solo lo que tocaste
 railway up --service myalquiler-front --detach
 railway up --service myalquiler-inquilino --detach
 ```
-Push a `main` **no** auto-deploya (los servicios no están conectados a GitHub). Después
-de deployar: diagnóstico rápido + (si tocaste un endpoint) E2E mínimo. Detalle en
+
+Después de deployar: diagnóstico rápido + (si tocaste un endpoint) E2E mínimo. Detalle en
 [`../work-agent/02-DEPLOY.md`](../work-agent/02-DEPLOY.md).
+
+### El portal del propietario no tiene servicio propio
+
+Vive **adentro del panel**, en `https://admin.myalquiler.com/propietario`, como export
+estático que se genera durante el build de `myalquiler-front`. Consecuencias para el que
+está de guardia:
+
+- No aparece en la lista de servicios de Railway. Buscarlo ahí y no encontrarlo **no**
+  significa que esté caído.
+- **No tiene rollback propio.** Volver atrás el portal es volver atrás el panel entero.
+- Si su build falla, falla el deploy del panel completo y Railway se queda con la imagen
+  anterior: `/propietario` sigue respondiendo **200 con código viejo**, mientras la API del
+  mismo push ya deployó con sus migraciones. Un smoke test que sólo mire el código HTTP da
+  verde con el deploy caído.
+
+```bash
+curl -s -o /dev/null -w "%{http_code}
+" https://admin.myalquiler.com/propietario
+# Y para saber QUÉ versión está sirviendo, que es lo que el 200 no dice:
+curl -s https://admin.myalquiler.com/propietario | grep -o 'build-commit[^>]*'
+```
 
 ## Escalado / contacto
 

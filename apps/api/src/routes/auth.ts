@@ -14,8 +14,10 @@ import {
 } from '@llave/shared';
 import { prisma } from '../db.js';
 import { requireAuth, requirePersona, requireUsuario } from '../auth/guards.js';
-import { verificarPinUsuario } from '../auth/pin.js';
+import { verificarPinConmutador, pinEsTrivial } from '../auth/pin-conmutador.js';
 import { enviarOtp, enviarBienvenidaInmobiliaria } from '../mailer.js';
+import { registrarEvento } from '../lib/auditoria.js';
+import { esperarPisoDeRechazo } from '../lib/piso-de-rechazo.js';
 
 const TOKEN_TTL = '15d';
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -30,7 +32,7 @@ const OTP_TTL_MS = 10 * 60 * 1000;
 const codeEnLog = (code: string): { code?: string } =>
   process.env.NODE_ENV === 'production' ? {} : { code };
 /** Email del inquilino demo (Mariela). El front entra con ?demo=1. */
-const DEMO_INQUILINO_EMAIL = 'mariela.sosa@gmail.com';
+const DEMO_INQUILINO_EMAIL = 'mariela.sosa@example.com';
 
 /**
  * Fin del acceso gratis pre-lanzamiento. Todas las cuentas auto-registradas
@@ -103,6 +105,9 @@ async function alquileresDeEmail(email: string) {
   }));
 }
 
+/** El único mensaje de rechazo del OTP: no distingue "no existe" de "código equivocado". */
+const RECHAZO_OTP = 'Código inválido o vencido';
+
 export async function authRoutes(app: FastifyInstance) {
   // --- Panel inmobiliaria: email + password ---
   // Login por contraseña: misma clase de ataque (fuerza bruta sobre un secreto).
@@ -127,7 +132,15 @@ export async function authRoutes(app: FastifyInstance) {
   // --- Auto-onboarding: una inmobiliaria crea su cuenta sola ---
   // Crea Inmobiliaria (piloto pre-lanzamiento) + Usuario ADMIN + Trial gratis,
   // todo en una transacción, y devuelve el token igual que /auth/login.
-  app.post('/auth/registro', async (request, reply) => {
+  //
+  // Era la única ruta pública de este archivo sin tope propio: caía en el global de 300/min
+  // por IP. Cada hit deja tres filas nuevas (inmobiliaria + usuario ADMIN + trial)
+  // y dispara un mail a la dirección que mandó quien llama, así que una sola IP podía sembrar
+  // ~432.000 tenants por día y usar el alta como cañón de mails contra terceros. El chequeo de
+  // email único de acá abajo no lo frena: impide reusar UN email, no crear mil con mil emails.
+  // Mismo tope que /auth/usuario/otp/request y por la misma razón que dice su comentario
+  // (bombardeo de mails); sobra de largo para un alta real, que se hace UNA vez.
+  app.post('/auth/registro', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = RegistroSchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ message: 'Datos de registro incompletos o inválidos' });
     const { inmobiliaria, admin } = body.data;
@@ -351,6 +364,15 @@ export async function authRoutes(app: FastifyInstance) {
     }
     if (!usuario) return reply.code(401).send({ message: 'Código inválido o vencido' });
 
+    // Entrar por OTP DESTRABA el PIN. Es la salida self-service del lockout del conmutador y la
+    // única que no depende de que el ADMIN esté en la oficina: probar que tenés el mail es una
+    // prueba de identidad más fuerte que el PIN, así que un bloqueo por errarle cinco veces no
+    // tiene por qué sobrevivir a un login legítimo.
+    await prisma.usuario.update({
+      where: { id: usuario.id },
+      data: { pinIntentosFallidos: 0, pinBloqueadoHasta: null },
+    });
+
     const payload: JwtUsuario = {
       kind: 'usuario',
       userId: usuario.id,
@@ -373,33 +395,54 @@ export async function authRoutes(app: FastifyInstance) {
     // findFirst arbitrario (que podía loguear contra el tenant equivocado).
     const emailLc = body.data.email.toLowerCase();
     const inquilinos = await prisma.inquilino.findMany({ where: { email: emailLc }, select: { id: true } });
-    // Respuesta idéntica exista o no (no enumerar emails)
-    if (inquilinos.length === 0) return { ok: true };
 
+    // T-53-N1 — El bcrypt va SIEMPRE, exista o no el email, y por eso el `return` temprano de
+    // la rama "no existe" quedó ABAJO. La respuesta ya era idéntica en los dos casos, pero el
+    // TIEMPO no: sin código que hashear, la rama del email inexistente contestaba en unos pocos
+    // milisegundos y la otra en cientos. Eso alcanza para enumerar quién es inquilino de esta
+    // inmobiliaria. Calcularlo igual y tirarlo empareja el costo. Mismo criterio, mismas
+    // palabras, que en `/auth/propietario/otp/request`.
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const codeHash = bcrypt.hashSync(code, 8);
-    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-    // Igual que en el OTP del panel: pedir un código nuevo invalida el anterior. Sin esto
-    // se acumulaban códigos válidos y cada pedido aumentaba la chance de acertar por
-    // fuerza bruta (además de alargar el loop de bcrypt del verify).
-    await prisma.codigoOtp.updateMany({
-      where: { inquilinoId: { in: inquilinos.map((i) => i.id) }, usedAt: null },
-      data: { usedAt: new Date() },
-    });
-    await prisma.codigoOtp.createMany({
-      data: inquilinos.map((i) => ({ inquilinoId: i.id, codeHash, expiresAt })),
-    });
-    // Envío por SMTP si está configurado (SMTP_HOST/USER/PASS); si no, fallback
-    // a loguear el código (dev/prueba). No filtramos el resultado al cliente.
-    const destino = emailLc;
-    try {
-      const enviado = await enviarOtp(destino, code);
-      if (!enviado) app.log.info({ email: destino, ...codeEnLog(code) }, 'OTP generado (SMTP no configurado)');
-      else app.log.info({ email: destino }, 'OTP enviado por email');
-    } catch (err) {
-      // No romper el login si el SMTP falla.
-      app.log.error({ email: destino, ...codeEnLog(code), err: (err as Error).message }, 'OTP: fallo el envío SMTP');
+
+    if (inquilinos.length > 0) {
+      const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+      // TODO EL TRABAJO DE ESTA RAMA VA FUERA DEL CAMINO DEL REQUEST.
+      //
+      // Es el mismo razonamiento que sacó el envío del email, llevado hasta el final. El
+      // emparejamiento que hace el bcrypt de arriba sólo sirve si el RESTO del request es
+      // igual en las dos ramas, y no lo era: la del email que EXISTE awaiteaba dos escrituras
+      // más. Contra la base remota cada query son ~450 ms, así que el email real tardaba
+      // cerca de un segundo más que el inexistente y el `{ ok: true }` idéntico dejaba de
+      // tapar nada.
+      //
+      // EL ORDEN SE CONSERVA: primero las escrituras, después el envío. El mail no puede
+      // salir antes de que el código exista, así que no hay carrera con el `verify`.
+      //
+      // Mismo criterio, mismas palabras, que en `/auth/propietario/otp/request`.
+      void (async () => {
+        // Igual que en el OTP del panel: pedir un código nuevo invalida el anterior. Sin esto
+        // se acumulaban códigos válidos y cada pedido aumentaba la chance de acertar por
+        // fuerza bruta (además de alargar el loop de bcrypt del verify).
+        await prisma.codigoOtp.updateMany({
+          where: { inquilinoId: { in: inquilinos.map((i) => i.id) }, usedAt: null },
+          data: { usedAt: new Date() },
+        });
+        await prisma.codigoOtp.createMany({
+          data: inquilinos.map((i) => ({ inquilinoId: i.id, codeHash, expiresAt })),
+        });
+        const enviado = await enviarOtp(emailLc, code);
+        if (!enviado) app.log.info({ email: emailLc, ...codeEnLog(code) }, 'OTP generado (SMTP no configurado)');
+        else app.log.info({ email: emailLc }, 'OTP enviado por email');
+      })().catch((err: unknown) => {
+        app.log.error(
+          { email: emailLc, ...codeEnLog(code), err: (err as Error).message },
+          'OTP: falló la emisión del código',
+        );
+      });
     }
+
+    // Respuesta idéntica exista o no (no enumerar emails), y ahora también en tiempo.
     return { ok: true };
   });
 
@@ -407,7 +450,9 @@ export async function authRoutes(app: FastifyInstance) {
   // el techo del tráfico normal.
   app.post('/auth/otp/verify', { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = OtpVerifySchema.safeParse(request.body);
+    // El 400 NO se empareja: es un payload mal formado, no dice nada de ningún email.
     if (!body.success) return reply.code(400).send({ message: 'Email y código de 6 dígitos requeridos' });
+    const desdeVerify = process.hrtime.bigint();
 
     // El OTP prueba que quien entra controla el email. La identidad concreta (a
     // qué alquiler entra) se elige DESPUÉS: una persona puede tener varios
@@ -416,8 +461,20 @@ export async function authRoutes(app: FastifyInstance) {
     // emite el token del contrato elegido. Así "una persona, un login, varios
     // alquileres" sin atar la sesión a una sola inmobiliaria.
     const emailLc = body.data.email.toLowerCase();
+    // UN SOLO MENSAJE Y UN SOLO TIEMPO PARA LOS DOS RECHAZOS.
+    //
+    // Acá el email inexistente devolvía «Código inválido» y el email de un inquilino con el
+    // código equivocado devolvía «Código inválido o vencido». Dos strings distintos: el
+    // endpoint decía, en el texto, si un email pertenece a un inquilino de la plataforma.
+    //
+    // Y el reloj decía lo mismo: el camino del email inexistente vuelve acá, sin la segunda
+    // query ni los `bcrypt.compareSync`. Es el mismo par —mensaje y tiempo— que el portal del
+    // propietario ya había cerrado; el login del inquilino se pasó por alto.
     const inquilinos = await prisma.inquilino.findMany({ where: { email: emailLc }, select: { id: true } });
-    if (inquilinos.length === 0) return reply.code(401).send({ message: 'Código inválido' });
+    if (inquilinos.length === 0) {
+      await esperarPisoDeRechazo(desdeVerify);
+      return reply.code(401).send({ message: RECHAZO_OTP });
+    }
 
     let verificado = false;
     if (app.env.DEMO_MODE && body.data.code === '000000' && process.env.NODE_ENV !== 'production') {
@@ -438,7 +495,10 @@ export async function authRoutes(app: FastifyInstance) {
         });
       }
     }
-    if (!verificado) return reply.code(401).send({ message: 'Código inválido o vencido' });
+    if (!verificado) {
+      await esperarPisoDeRechazo(desdeVerify);
+      return reply.code(401).send({ message: RECHAZO_OTP });
+    }
 
     const personaToken = app.jwt.sign(
       { kind: 'persona', email: emailLc } satisfies JwtPersona,
@@ -583,7 +643,27 @@ export async function authRoutes(app: FastifyInstance) {
 
   // --- Demo: sesión de Mariela con un click (?demo=1) ---
   app.post('/auth/demo', async (_request, reply) => {
-    if (!app.env.DEMO_MODE) return reply.code(404).send({ message: 'No disponible' });
+    // DOS candados, no uno. `DEMO_MODE` solo no alcanza: es una env var, y si alguna vez se
+    // filtra a la env de producción este endpoint emite una sesión de un inquilino REAL sin
+    // pedir ninguna prueba de identidad — ni OTP, ni contraseña, ni nada.
+    //
+    // La auditoría pre-lanzamiento ya había decidido esto: el commit `e06956e2` (20/06) dice
+    // textual en su mensaje «M-1: demo backdoor excluye NODE_ENV=production (auth.ts)». Aplicó
+    // el guard a los dos `/otp/verify` (:337 y :446) y se salteó ESTE, 250 líneas más abajo en
+    // el mismo archivo. Era un olvido, no una decisión.
+    //
+    // Va por `app.env` y no por `process.env` —que es lo que usan los dos de arriba— para que
+    // se pueda ejercitar desde `buildApp({ NODE_ENV: 'production' })`. Sin eso el estado
+    // apagado no lo cubre ningún test, que es exactamente cómo se llegó hasta acá.
+    if (!app.env.DEMO_MODE || app.env.NODE_ENV === 'production')
+      return reply.code(404).send({ message: 'No disponible' });
+    // El otro salteo de esa misma auditoría: este `findFirst` no tiene scope de tenant. El
+    // commit citado reemplazó el patrón por `findMany` en el OTP, con el comentario «la
+    // identidad sale del OTP que matchea — nunca de un findFirst arbitrario (que podía loguear
+    // contra el tenant equivocado)». Acá quedó. No se scopea porque el request no trae ningún
+    // tenant del que colgarse; lo que lo vuelve inofensivo es el guard de arriba, que hace el
+    // endpoint inalcanzable en producción. Si algún día se relaja ese guard, esto vuelve a ser
+    // un problema.
     const inquilino = await prisma.inquilino.findFirst({ where: { email: DEMO_INQUILINO_EMAIL } });
     if (!inquilino) return reply.code(500).send({ message: 'Seed demo faltante' });
     const payload: JwtInquilino = {
@@ -623,9 +703,11 @@ export async function authRoutes(app: FastifyInstance) {
         imageUrl: u.imageUrl ?? null,
         inmobiliaria: u.inmobiliaria.nombre,
         esPiloto: u.inmobiliaria.esPiloto,
-        // PIN ELIMINADO de la plataforma: ninguna acción lo requiere. Devolvemos false
-        // fijo para que el panel no muestre estado ni prompts de PIN en ningún lado.
-        tienePin: false,
+        // Ninguna ACCIÓN pide PIN —eso sigue igual, `verificarPinUsuario` aprueba siempre— pero
+        // desde T-25 el PIN sí existe para una cosa: cambiar de usuario en la máquina del
+        // mostrador. Por eso vuelve a ser un dato real y no un `false` fijo: la Configuración
+        // necesita saber si ya lo definiste, y el conmutador si podés ser destino.
+        tienePin: !!u.pinHash,
         // Perfil fiscal incompleto si el auto-onboarding dejó cuit/dirección vacíos.
         perfilFiscalCompleto: !!(u.inmobiliaria.cuit && u.inmobiliaria.direccionCalle),
         trial: trial
@@ -657,32 +739,266 @@ export async function authRoutes(app: FastifyInstance) {
   // backend nunca lo recibía, así que una cuenta nueva (registro self-service)
   // no podía validar pagos, rendir ni aprobar (verificarPin → 403). Cada
   // usuario configura su propio PIN; si ya tiene uno, exige el PIN actual.
-  app.post('/auth/pin', async (request, reply) => {
+  /**
+   * Definir o cambiar el PIN PROPIO. Nadie puede setear el de otro: un ADMIN que pudiera
+   * escribir el PIN ajeno podría convertirse en la cajera sin dejar un rastro distinguible.
+   * Lo único que un ADMIN puede hacer sobre el PIN de otro es BORRARLO o DESBLOQUEARLO.
+   *
+   * Rate limit propio: hasta T-25 éste era el ÚNICO endpoint de `/auth/*` registrado sin
+   * `config`, mientras los otros cinco sí lo tenían. Con el PIN convertido en credencial del
+   * conmutador, dejarlo sin tope era el agujero más barato de explotar.
+   */
+  app.post('/auth/pin', { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const usuario = await requireUsuario(request, reply);
     if (!usuario) return;
     const body = z
       .object({
-        pinNuevo: z.string().regex(/^\d{4,6}$/, 'El PIN debe tener 4 a 6 dígitos'),
+        // CINCO dígitos, no "4 a 6". Camila lo describió así ("un usuario y contraseña que son
+        // cinco dígitos") y un largo fijo permite que la UI sea cinco casillas. No rompe a
+        // nadie: la migración de T-35 dejó todos los `pinHash` en NULL, así que no hay ningún
+        // PIN viejo de otro largo que quede inutilizable.
+        pinNuevo: z.string().regex(/^\d{5}$/, 'El PIN son 5 dígitos'),
         pinActual: z.string().optional(),
       })
       .safeParse(request.body ?? {});
     if (!body.success) {
       return reply.code(400).send({ message: body.error.issues[0]?.message ?? 'PIN inválido' });
     }
+    if (pinEsTrivial(body.data.pinNuevo)) {
+      return reply.code(400).send({
+        message: 'Ese PIN es muy fácil de adivinar. Evitá los dígitos repetidos y las secuencias.',
+      });
+    }
     const u = await prisma.usuario.findUnique({ where: { id: usuario.userId } });
     if (!u) return reply.code(401).send({ message: 'Usuario inexistente' });
-    // Si ya hay PIN, hay que probar que sos vos (PIN actual correcto) antes de
-    // cambiarlo. Vía verificarPinUsuario para heredar el lockout anti-fuerza-bruta:
-    // antes era un bcrypt.compareSync pelado → cambiar de PIN era un oráculo sin
-    // límite de intentos para adivinar el PIN actual con una sesión abierta.
+    // Si ya hay PIN, hay que probar que sos vos antes de cambiarlo.
+    //
+    // Acá había un agujero silencioso: esto llamaba a `verificarPinUsuario`, con un comentario
+    // que decía que así "heredaba el lockout anti-fuerza-bruta". No heredaba nada —esa función
+    // devuelve `{ok:true}` siempre—, así que `pinActual` no se verificaba en absoluto. Ahora va
+    // por `verificarPinConmutador`, que sí compara y sí cuenta los fallos.
     if (u.pinHash) {
-      const r = await verificarPinUsuario(u.id, body.data.pinActual);
+      const r = await verificarPinConmutador(u.id, body.data.pinActual);
       if (!r.ok) return reply.code(r.code).send({ message: r.message });
     }
     await prisma.usuario.update({
       where: { id: u.id },
-      data: { pinHash: bcrypt.hashSync(body.data.pinNuevo, 10) },
+      // Definir un PIN nuevo limpia el estado de bloqueo: si te bloqueaste y entraste por OTP a
+      // redefinirlo, no tiene sentido que sigas trabado.
+      data: { pinHash: bcrypt.hashSync(body.data.pinNuevo, 10), pinIntentosFallidos: 0, pinBloqueadoHasta: null },
     });
     return { ok: true, tienePin: true };
+  });
+
+  /**
+   * A quién puedo cambiarme. Usuarios ACTIVOS del mismo tenant, menos yo.
+   *
+   * NO devuelve el email a propósito: el email es el input del login por OTP, y exponer la lista
+   * completa de emails del tenant a cualquier rol convierte esta pantalla en un enumerador.
+   * Con el nombre y el rol alcanza para elegir a quién pasarle la máquina.
+   */
+  app.get('/auth/usuario/conmutables', async (request, reply) => {
+    const u = await requireUsuario(request, reply);
+    if (!u) return;
+    const usuarios = await prisma.usuario.findMany({
+      where: { inmobiliariaId: u.inmobiliariaId, activo: true, id: { not: u.userId } },
+      select: { id: true, nombre: true, apellido: true, rol: true, pinHash: true, pinBloqueadoHasta: true, imageUrl: true },
+      orderBy: [{ nombre: 'asc' }],
+    });
+    const ahora = Date.now();
+    const esAdmin = u.rol === 'ADMIN';
+    return {
+      actual: { id: u.userId, rol: u.rol },
+      usuarios: usuarios.map((x) => ({
+        id: x.id,
+        nombre: `${x.nombre} ${x.apellido}`.trim(),
+        rol: x.rol,
+        imageUrl: x.imageUrl ?? null,
+        tienePin: !!x.pinHash,
+        // El estado "bloqueado" sí se muestra a todos (si no, el que intenta no entiende por qué
+        // le rebota), pero la HORA exacta sólo al ADMIN: a un tercero le diría cuándo volver a
+        // probar, que es justo lo que un atacante quiere saber.
+        bloqueado: !!(x.pinBloqueadoHasta && x.pinBloqueadoHasta.getTime() > ahora),
+        bloqueadoHasta: esAdmin ? x.pinBloqueadoHasta : null,
+      })),
+    };
+  });
+
+  /**
+   * EL CONMUTADOR. Cambia de persona en un dispositivo YA autenticado.
+   *
+   * `requireUsuario` PRIMERO, y eso es la mitad del diseño: el PIN **nunca** es un login desde
+   * cero. Sin una sesión válida del mismo tenant esto devuelve 401 y no hay nada que adivinar.
+   *
+   * ⚠️ NUNCA 401 POR PIN INCORRECTO. `manejarSesionVencida` del panel
+   * (`lib/api/client.ts`) dispara ante CUALQUIER 401 con token presente: borra la sesión y manda
+   * a `/login?expirada=1`. Un 401 acá desloguearía al operador por errarle al PIN — lo contrario
+   * de lo que esta función viene a resolver. Por eso 403 / 423 / 409 / 404, y el 401 queda
+   * reservado para "no hay sesión".
+   */
+  app.post(
+    '/auth/usuario/conmutar',
+    { config: { rateLimit: { max: 60, timeWindow: '15 minutes' } } },
+    async (request, reply) => {
+      const u = await requireUsuario(request, reply);
+      if (!u) return;
+      const body = z
+        .object({ usuarioId: z.string().min(1), pin: z.string().regex(/^\d{5}$/) })
+        .safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ message: 'Datos inválidos' });
+      if (body.data.usuarioId === u.userId) {
+        return reply.code(400).send({ message: 'Ya estás usando ese usuario.' });
+      }
+      // Mismo tenant + activo. Un id de otra inmobiliaria da 404, indistinguible de inexistente:
+      // no confirmamos la existencia de usuarios ajenos.
+      const destino = await prisma.usuario.findFirst({
+        where: { id: body.data.usuarioId, inmobiliariaId: u.inmobiliariaId, activo: true },
+        select: { id: true, nombre: true, apellido: true, rol: true, inmobiliariaId: true },
+      });
+      if (!destino) return reply.code(404).send({ message: 'Usuario inexistente' });
+
+      const r = await verificarPinConmutador(destino.id, body.data.pin);
+      if (!r.ok) {
+        await registrarEvento({
+          inmobiliariaId: u.inmobiliariaId,
+          tipo: 'CONMUTACION_RECHAZADA',
+          autorId: u.userId,
+          rolAutor: u.rol,
+          entidadId: destino.id,
+          entidadDescripcion: `${destino.nombre} ${destino.apellido}`.trim(),
+        });
+        // LA HORA DEL BLOQUEO, SÓLO AL ADMIN — el mismo criterio que su endpoint hermano.
+        //
+        // `send(r)` mandaba el objeto entero, y en el 423 eso incluye `bloqueadoHasta`: el
+        // PIN de OTRA persona. `GET /auth/usuario/conmutables` esconde ese dato a propósito,
+        // con el motivo escrito: «a un tercero le diría cuándo volver a probar, que es justo
+        // lo que un atacante quiere saber». Acá salía igual, a cualquier rol.
+        //
+        // (El `send(r)` de `/auth/pantalla/desbloquear` NO es este caso: ahí se verifica el
+        // PIN PROPIO, y saber cuándo se desbloquea el de uno mismo es la respuesta correcta.)
+        const esAdminConmutador = u.rol === 'ADMIN';
+        return reply.code(r.code).send({
+          ...r,
+          ...('bloqueadoHasta' in r && !esAdminConmutador ? { bloqueadoHasta: null } : {}),
+        });
+      }
+
+      const payload: JwtUsuario = {
+        kind: 'usuario',
+        userId: destino.id,
+        inmobiliariaId: destino.inmobiliariaId,
+        rol: destino.rol,
+      };
+      // MISMO TTL que un login normal. Bajarlo para el token conmutado suena prudente y en la
+      // práctica le compra a la cajera un correo con código cada mañana; el riesgo real —la
+      // máquina que queda sola con la sesión abierta— se ataja con el bloqueo por inactividad
+      // del panel, no acortando la sesión de todos.
+      const token = app.jwt.sign(payload, { expiresIn: TOKEN_TTL });
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'SESION_CONMUTADA',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: destino.id,
+        entidadDescripcion: `${destino.nombre} ${destino.apellido}`.trim(),
+      });
+      return {
+        token,
+        usuario: { id: destino.id, nombre: `${destino.nombre} ${destino.apellido}`.trim(), rol: destino.rol },
+      };
+    },
+  );
+
+  /**
+   * Desbloquear la PANTALLA con el PIN propio (T-25, bloqueo por inactividad).
+   *
+   * ⚠️ ESTO ES UNA CERRADURA DE PANTALLA, NO UN LÍMITE DE AUTORIZACIÓN. La sesión sigue siendo
+   * válida todo el tiempo: el overlay vive en el cliente y alguien con las devtools abiertas lo
+   * saca. Y está bien que así sea — el límite real es el rol, que `requireUsuario` resuelve
+   * contra la DB en CADA request, no este endpoint.
+   *
+   * Lo que sí resuelve es el escenario que el modelo de amenazas puso primero: la máquina que
+   * queda sola con la sesión abierta y alguien —un empleado, o el inquilino que se asomó al
+   * mostrador— se sienta y opera como Camila. Contra ESE, que es un oportunista con acceso
+   * físico y no un atacante, subir la barrera a "tenés que saber cinco dígitos" alcanza.
+   *
+   * Comparte el lockout del conmutador a propósito: si alguien está probando PINes contra la
+   * pantalla bloqueada, es exactamente el mismo ataque.
+   */
+  app.post(
+    '/auth/pantalla/desbloquear',
+    { config: { rateLimit: { max: 60, timeWindow: '15 minutes' } } },
+    async (request, reply) => {
+      const u = await requireUsuario(request, reply);
+      if (!u) return;
+      const body = z.object({ pin: z.string().regex(/^\d{5}$/) }).safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ message: 'Datos inválidos' });
+      const r = await verificarPinConmutador(u.userId, body.data.pin);
+      // Mismo criterio que el conmutador: NUNCA 401 por un PIN mal, porque el 401 dispara
+      // `manejarSesionVencida` en el panel y lo desloguearía por equivocarse.
+      if (!r.ok) return reply.code(r.code).send(r);
+      return { ok: true };
+    },
+  );
+
+  /**
+   * Destrabar a alguien que se bloqueó. CONSERVA el hash: sólo limpia los contadores.
+   *
+   * Es la salida del medio de las tres. La de menos fricción es esperar 30 minutos; la que
+   * SIEMPRE está disponible es que la persona entre por OTP a su propio mail (ver más abajo, en
+   * `/auth/usuario/otp/verify`), y no depende de que el ADMIN esté en la oficina.
+   */
+  app.post('/auth/usuario/:id/pin/desbloquear', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'equipo.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const destino = await prisma.usuario.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, nombre: true, apellido: true },
+    });
+    if (!destino) return reply.code(404).send({ message: 'Usuario inexistente' });
+    await prisma.usuario.update({
+      where: { id: destino.id },
+      data: { pinIntentosFallidos: 0, pinBloqueadoHasta: null },
+    });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PIN_DESBLOQUEADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: destino.id,
+      entidadDescripcion: `${destino.nombre} ${destino.apellido}`.trim(),
+    });
+    return { ok: true };
+  });
+
+  /**
+   * Borrar el PIN de alguien (se olvidó, o se fue de la empresa). Queda sin PIN y lo redefine
+   * desde su propia sesión.
+   *
+   * Un ADMIN puede BORRAR pero NO SETEAR — ver el docblock de `POST /auth/pin`.
+   */
+  app.delete('/auth/usuario/:id/pin', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'equipo.gestionar');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const destino = await prisma.usuario.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, nombre: true, apellido: true },
+    });
+    if (!destino) return reply.code(404).send({ message: 'Usuario inexistente' });
+    await prisma.usuario.update({
+      where: { id: destino.id },
+      data: { pinHash: null, pinIntentosFallidos: 0, pinBloqueadoHasta: null },
+    });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'PIN_ELIMINADO',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: destino.id,
+      entidadDescripcion: `${destino.nombre} ${destino.apellido}`.trim(),
+    });
+    return { ok: true };
   });
 }

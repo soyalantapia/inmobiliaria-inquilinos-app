@@ -6,7 +6,12 @@ import os from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { JwtPayloadSchema, JwtProfesionalSchema, type JwtPayload, type JwtProfesional } from '@llave/shared';
+import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { prisma } from '../db.js';
+import { resolverUploadsDir } from '../lib/donde-viven-los-archivos.js';
+import { cuotaBytes, registrarSubida, usoDelTenant } from '../lib/cuota-uploads.js';
+import { inquilinoRevocado } from '../auth/guards.js';
+import { puedeLeerArchivo, actorDeJwt } from '../lib/acceso-archivos.js';
 
 /**
  * File storage REAL sobre un Railway Volume montado en /data.
@@ -23,11 +28,15 @@ import { prisma } from '../db.js';
  * guarda en su campo la `url` que devuelve este endpoint.
  */
 
-// En prod el Volume vive en /data; en dev/test (sin volumen) caemos a un tmp escribible.
-const UPLOADS_DIR =
-  process.env.UPLOADS_DIR ?? (existsSync('/data') ? '/data/uploads' : path.join(os.tmpdir(), 'myalquiler-uploads'));
+// Dónde se escriben los archivos. La elección vive en `lib/donde-viven-los-archivos.ts`,
+// con el porqué y su test: el modo de falla es que ELIJA MAL Y NO FALLE — subir sigue
+// devolviendo 200 y todo desaparece en el próximo reinicio, sin un error en el log.
+const UPLOADS_DIR = resolverUploadsDir(process.env, existsSync, path.join(os.tmpdir(), 'myalquiler-uploads'));
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+// El tope por archivo NO se aplica acá: lo aplica `@fastify/multipart` en su registro
+// (`app.ts`, `limits: { fileSize: 10 MB, files: 1 }`), y este handler sólo detecta el
+// truncado resultante (`data.file.truncated`). Antes había acá un `MAX_BYTES` que no leía
+// nadie: dos fuentes de verdad para el mismo número, y la de este archivo era la falsa.
 
 // MIMEs aceptados → extensión con la que GUARDAMOS. La extensión sale SIEMPRE
 // de este mapa (o de EXT_PERMITIDAS abajo), NUNCA del MIME crudo: así jamás
@@ -77,6 +86,20 @@ export function resolverExtensionUpload(mime: string | undefined, filename: stri
 }
 
 /** Los 4 kinds de JWT (usuario/inquilino/co-inquilino/profesional) llevan inmobiliariaId. */
+/**
+ * Quién es el dueño del archivo que se está subiendo, en la forma que guarda `ArchivoSubido`.
+ *
+ * Para el profesional se guarda el `visitaId` y no el `profesionalId`: su identidad ES la visita
+ * —el link mágico no tiene cuenta— y si la visita se reasigna, el que entra está trabajando sobre
+ * el mismo expediente.
+ */
+function duenoDe(p: JwtPayload | JwtProfesional): { subidoPorKind: 'USUARIO' | 'INQUILINO' | 'CO_INQUILINO' | 'PROFESIONAL'; subidoPorId: string } {
+  if ('kind' in p && p.kind === 'usuario') return { subidoPorKind: 'USUARIO', subidoPorId: p.userId };
+  if ('kind' in p && p.kind === 'inquilino') return { subidoPorKind: 'INQUILINO', subidoPorId: p.inquilinoId };
+  if ('kind' in p && p.kind === 'co-inquilino') return { subidoPorKind: 'CO_INQUILINO', subidoPorId: p.coInquilinoId };
+  return { subidoPorKind: 'PROFESIONAL', subidoPorId: (p as JwtProfesional).visitaId };
+}
+
 function tenantDe(payload: JwtPayload | JwtProfesional): string | null {
   return (payload as { inmobiliariaId?: string }).inmobiliariaId ?? null;
 }
@@ -88,8 +111,10 @@ function tenantDe(payload: JwtPayload | JwtProfesional): string | null {
  * no romper la exhaustividad usuario/inquilino/co-inquilino en el resto del
  * código) — pero /uploads es el ÚNICO endpoint genérico que el profesional
  * necesita (subir fotoAntes/fotoDespues), así que acá probamos ambos schemas
- * ANTES de responder (no podemos reusar requireAuth: ya manda 401 apenas el
- * shape no matchea JwtPayloadSchema, y una reply no se puede mandar dos veces).
+ * ANTES de responder (no podemos ARRANCAR con requireAuth: ya manda 401 apenas
+ * el shape no matchea JwtPayloadSchema, y una reply no se puede mandar dos veces).
+ * Una vez que sabemos QUÉ kind es, sí se delega en los guards de guards.ts —ver
+ * abajo—: ahí ya no pueden cortar antes de la revalidación.
  */
 async function requireAuthOProfesional(
   request: FastifyRequest,
@@ -103,17 +128,41 @@ async function requireAuthOProfesional(
   }
   const asPayload = JwtPayloadSchema.safeParse(request.user);
   if (asPayload.success) {
-    // MISMA regla que requireContratoAcceso (guards.ts): el token dura días, así que NO se
-    // confía en el estado que trae — se revalida contra la DB en cada request. /uploads era
-    // la excepción: un co-inquilino al que el titular ya le sacó el acceso seguía subiendo
-    // archivos al Volume del tenant hasta que venciera su token.
+    // MISMA regla que los guards de guards.ts: el token dura 15 días (TOKEN_TTL), así que NO
+    // se confía en el estado que trae — se revalida contra la DB en cada request. Acá se
+    // revalidaba SÓLO al co-inquilino y los otros dos kinds entraban con el JWT crudo:
+    //
+    //   - un empleado dado de baja (DELETE /usuarios/:id deja `activo: false`, la fila y el
+    //     token siguen vivos) se comía el 401 de requireUsuario en TODO el panel, pero
+    //     seguía bajándose comprobantes, documentos, DNI y extractos del tenant por
+    //     GET /uploads/:t/:n —que además acepta el token por query, o sea que le alcanza con
+    //     pegar la URL en el navegador— y subiendo por POST /uploads contra la cuota de esa
+    //     inmobiliaria, durante los 15 días que le quedaran al token;
+    //   - lo mismo, más chico, para un inquilino cuya fila se borró o cuyo contrato se
+    //     reasignó a otro.
+    //
+    // Se DELEGA en los guards que ya hacen esa revalidación en vez de copiarla acá: una
+    // segunda copia se desincroniza de la original, que es exactamente cómo nació este bug
+    // (el arreglo del co-inquilino se escribió acá y no alcanzó a los otros dos kinds).
+    // Delegar es seguro aunque los guards arranquen con su propio `jwtVerify`: es idempotente
+    // —relee el header y vuelve a poblar `request.user`—. Y NO manda dos replies: la
+    // advertencia del comentario de arriba sobre requireAuth vale para llamarlo A CIEGAS, y
+    // acá ya sabemos que el shape matchea JwtPayloadSchema y qué `kind` es, así que ninguno
+    // de los dos puede cortar antes de llegar a la revalidación.
     const p = asPayload.data;
-    if (p.kind === 'co-inquilino') {
-      const co = await prisma.coInquilino.findUnique({ where: { id: p.coInquilinoId } });
-      if (!co || co.estado !== 'ACEPTADO' || co.inmobiliariaId !== p.inmobiliariaId) {
-        await reply.code(401).send({ message: 'Tu acceso fue revocado' });
-        return null;
-      }
+    // requireUsuario devuelve el rol y el inmobiliariaId VIGENTES de la tabla, no los del
+    // token: además de cortar al dado de baja, evita que `tenantDe` elija la carpeta del
+    // Volume por el tenant congelado en el JWT si al usuario lo movieron de inmobiliaria.
+    if (p.kind === 'usuario') return requireUsuario(request, reply);
+    // El titular NO pasa por exigirContratoActivo, y eso es a propósito (ver guards.ts): un
+    // ex-inquilino tiene que poder seguir bajando sus comprobantes viejos.
+    if (p.kind === 'inquilino') return requireInquilino(request, reply);
+    // Co-inquilino: la única rama que ya revalidaba. No se delega en requireContratoAcceso
+    // porque ese guard devuelve un ContratoAcceso y acá hace falta el payload para `tenantDe`.
+    const co = await prisma.coInquilino.findUnique({ where: { id: p.coInquilinoId } });
+    if (!co || co.estado !== 'ACEPTADO' || co.inmobiliariaId !== p.inmobiliariaId) {
+      await reply.code(401).send({ message: 'Tu acceso fue revocado' });
+      return null;
     }
     return p;
   }
@@ -196,7 +245,7 @@ export async function borrarArchivoSubido(url: string, tenant: string): Promise<
  *
  * Chequea TODAS las columnas que guardan una URL de archivo. Antes cada call site escribía
  * a mano su propia lista y ninguno estaba completo: los seis miraban entre 1 y 3 tablas de
- * las 16 que existen. Un archivo referenciado por la foto de un reclamo, el PDF de un
+ * las 18 que existen. Un archivo referenciado por la foto de un reclamo, el PDF de un
  * contrato, el comprobante de un movimiento de caja o el extracto de un resumen bancario
  * daba "no está en uso" y se BORRABA DEL DISCO, dejando esa otra fila con una URL rota y a
  * la inmobiliaria sin el respaldo. Irreversible.
@@ -206,6 +255,9 @@ export async function borrarArchivoSubido(url: string, tenant: string): Promise<
  * se incluye todo, y cualquier error de la query se trata como "sí está en uso".
  *
  * Si mañana se agrega una columna de URL nueva, va acá — es el ÚNICO lugar que hay que tocar.
+ * Esa promesa estaba escrita y no se cumplía: faltaban las dos fotos de `VisitaProfesional`.
+ * Ahora la sostiene un test que LEE `schema.prisma`, enumera las columnas de URL y exige que
+ * cada una aparezca acá (`el-inventario-de-archivos-esta-completo.test.ts`).
  */
 export async function archivoSigueEnUso(url: string): Promise<boolean> {
   if (!url) return true;
@@ -224,6 +276,16 @@ export async function archivoSigueEnUso(url: string): Promise<boolean> {
       prisma.boletaServicio.count({ where: { archivoUrl: url } }),
       prisma.reclamo.count({ where: { fotoUrl: url } }),
       prisma.reclamoEvento.count({ where: { adjuntoUrl: url } }),
+      // LAS FOTOS DE LA VISITA DEL PROFESIONAL. Faltaban, y el docstring de arriba promete
+      // que acá están TODAS: son URLs de /uploads del tenant como cualquier otra (se validan
+      // con `urlEsDelTenant` y se guardan en `visitas-publicas.ts`), y el inquilino las ve
+      // renderizadas en su propia app. O sea: tiene la URL a la vista. Adjuntándola a un
+      // documento personal suyo y borrando ese documento, `borrarArchivoSiHuerfano` no
+      // encontraba ninguna referencia —`visitas_profesional` no estaba en la lista—, hacía
+      // `unlink`, y se perdía la evidencia con la que se decide quién paga la reparación.
+      // Justo lo que al inquilino le podía convenir que desapareciera.
+      prisma.visitaProfesional.count({ where: { fotoAntes: url } }),
+      prisma.visitaProfesional.count({ where: { fotoDespues: url } }),
       prisma.resumenBancario.count({ where: { archivoUrl: url } }),
       prisma.importacionCartera.count({ where: { archivoUrl: url } }),
       prisma.reportePiloto.count({ where: { url } }),
@@ -284,6 +346,26 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    // CUOTA POR INMOBILIARIA. El Volume es uno solo y lo comparten todos los tenants, así que
+    // sin esto un token vivo —el de un inquilino dura 15 días, incluso con el contrato ya
+    // terminado— podía llenarlo y dejar sin subir a TODOS. Se mide antes de escribir; el
+    // desborde máximo es un archivo (10 MB, tope del multipart), que es aceptable.
+    const cuota = cuotaBytes();
+    if (cuota > 0) {
+      const usados = await usoDelTenant(UPLOADS_DIR, tenant);
+      if (usados >= cuota) {
+        // 507 como el disco lleno —para el que sube es lo mismo: no hay dónde guardarlo— pero
+        // con `codigo` propio, porque la acción de quien atiende es distinta: acá no hay que
+        // agrandar el disco, hay que borrar lo que sobra o subirle la cuota a esta cartera.
+        return reply.code(507).send({
+          message:
+            'No pudimos guardar el archivo: esta inmobiliaria llegó al límite de espacio. ' +
+            'Avisale al equipo de My Alquiler para ampliarlo.',
+          codigo: 'CUOTA_TENANT_LLENA',
+        });
+      }
+    }
+
     const filename = `${randomUUID()}${ext}`;
     const dir = path.join(UPLOADS_DIR, tenant);
     const dest = path.join(dir, filename);
@@ -314,8 +396,28 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const tamanioBytes = (await stat(dest)).size;
+    // Se le suman al cache los bytes recién escritos, para no recorrer el directorio entero
+    // en cada subida. Ver `usoDelTenant`.
+    registrarSubida(tenant, tamanioBytes);
+    const url = `/uploads/${tenant}/${filename}`;
+    // El dueño, para que después pueda leer lo suyo. Va DESPUÉS de que el archivo ya está en
+    // disco y **sin bloquear la respuesta**: subir un comprobante hoy sólo necesita el Volume, y
+    // hacerlo depender también de una escritura a Postgres convertiría una caída de la base en
+    // "no podés informar tu pago". Si la fila no se escribe, el archivo no queda inaccesible:
+    // apenas se adjunta a algo, lo cubre la segunda vía del guard.
+    // SE ESPERA la escritura, pero un fallo NO rompe la subida. Las dos mitades importan:
+    //  · `await`, porque si no hay carrera: el cliente sube y acto seguido informa el pago con
+    //    esa URL, y `puedeAdjuntar` no encontraría todavía la fila → 403 espurio en el flujo
+    //    normal, justo el que hay que preservar.
+    //  · `.catch()`, porque subir un comprobante hoy sólo necesita el Volume; hacerlo depender
+    //    de Postgres convertiría una caída de la base en "no podés informar tu pago". Si la
+    //    fila no se escribe, el archivo no queda inaccesible: apenas se adjunta a algo, lo
+    //    cubre la segunda vía del guard.
+    await prisma.archivoSubido
+      .create({ data: { inmobiliariaId: tenant, url, ...duenoDe(payload), origen: 'POST /uploads' } })
+      .catch((e: unknown) => request.log.warn({ err: e, url }, 'no se pudo registrar el dueño del archivo'));
     return {
-      url: `/uploads/${tenant}/${filename}`,
+      url,
       nombreArchivo: data.filename ?? filename,
       tipoMime: data.mimetype,
       tamanioBytes,
@@ -342,6 +444,26 @@ export async function uploadsRoutes(app: FastifyInstance): Promise<void> {
     if (safe !== name || safe.includes('..')) {
       return reply.code(400).send({ message: 'Nombre de archivo inválido' });
     }
+
+    // ÁMBITO: además del tenant, ¿este archivo es de este actor? (ver lib/acceso-archivos.ts)
+    //
+    // Sale en TRES ESTADOS y arranca en `log` a propósito. Es un cambio de autorización sobre
+    // una inmobiliaria en uso: si alguna lectura legítima quedó fuera de las columnas del ámbito,
+    // el costo de enterarse bloqueando es que un inquilino real pierde un documento. Observando
+    // primero, el costo es una línea de log. Prender `on` es una variable de entorno, no un push.
+    const actor = await actorDeJwt(payload);
+    const modo = app.env.UPLOADS_AMBITO;
+    if (modo !== 'off' && actor && actor.kind !== 'usuario') {
+      const url = `/uploads/${tenant}/${safe}`;
+      if (!(await puedeLeerArchivo(url, actor))) {
+        request.log.warn(
+          { url, kind: actor.kind, tenant, modo },
+          'uploads-ambito: archivo fuera del ámbito del actor',
+        );
+        if (modo === 'on') return reply.code(403).send({ message: 'Sin acceso a este archivo' });
+      }
+    }
+
     const file = path.join(UPLOADS_DIR, tenant, safe);
     try {
       const s = await stat(file);

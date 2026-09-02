@@ -58,8 +58,13 @@ export function AjusteMasivoDialog({
   const { contratos } = useContratos();
   const mes = mesActual();
 
+  // Los de SOLO EXPENSAS quedan afuera: no tienen alquiler que aumentar. El server ahora los
+  // rechaza con 409, y el loop de abajo lo tolera contrato por contrato — pero ofrecerlos y
+  // pre-tildarlos para después mostrar un error es hacerle perder el tiempo a la operadora.
+  // Además era el vector principal del bug: el ajuste masivo les escribía un canon positivo y
+  // el devengo del mes siguiente les facturaba alquiler.
   const activos = useMemo(
-    () => contratos.filter((c) => c.estado === 'ACTIVO'),
+    () => contratos.filter((c) => c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS'),
     [contratos],
   );
 
@@ -67,6 +72,10 @@ export function AjusteMasivoDialog({
   const [seleccion, setSeleccion] = useState<Record<string, boolean>>({});
   const [aplicando, setAplicando] = useState(false);
   const [progreso, setProgreso] = useState<{ hechos: number; total: number } | null>(null);
+  // Inquilinos ajustados OK a los que NO les va a llegar el aviso (no tienen email
+  // cargado). Va en estado y no solo en el toast a propósito: el toast se va solo a los
+  // segundos y esta es la lista de a quién tiene que llamar la inmo. Tiene que quedar.
+  const [sinAvisoLista, setSinAvisoLista] = useState<string[]>([]);
 
   // Al abrir: pre-tildar los que ajustan este mes (o vencidos). Si ninguno vence,
   // no tildamos nada (la inmo elige a mano).
@@ -80,6 +89,7 @@ export function AjusteMasivoDialog({
       setPorcentaje('');
       setProgreso(null);
       setAplicando(false);
+      setSinAvisoLista([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activos.map((c) => c.id).join(',')]);
@@ -101,17 +111,24 @@ export function AjusteMasivoDialog({
     setProgreso({ hechos: 0, total: elegidos.length });
     const exitosos: string[] = [];
     const errores: string[] = [];
+    /** Ajustados OK pero sin email cargado → no reciben el aviso del aumento. */
+    const sinAviso: string[] = [];
     try {
       await ensureApiSession();
       for (const c of elegidos) {
         try {
-          await apiFetch(`/contratos/${c.id}/monto`, {
+          const r = await apiFetch<{ avisoInquilino?: string }>(`/contratos/${c.id}/monto`, {
             method: 'PATCH',
             body: JSON.stringify({
               monto: nuevoMonto(c.monto),
               motivo: `Ajuste masivo +${pct}%`,
             }),
           });
+          // El ajuste se aplicó, pero al inquilino no le va a llegar el aviso porque no
+          // tiene email cargado. No es un error del ajuste —por eso va aparte de
+          // `errores`— pero la inmobiliaria tiene que enterarse: si no, cree que avisó
+          // a los 20 y en realidad avisó a 17.
+          if (r?.avisoInquilino === 'sin-email') sinAviso.push(c.inquilino);
           exitosos.push(c.id);
         } catch (e) {
           errores.push(`${c.inquilino}: ${e instanceof ApiError ? e.message : 'error'}`);
@@ -134,14 +151,29 @@ export function AjusteMasivoDialog({
         qc.invalidateQueries({ queryKey: ['contrato'] }),
         qc.invalidateQueries({ queryKey: ['liquidaciones'] }),
       ]);
+      // "A N no les vamos a poder avisar" es información que la inmo necesita SIEMPRE,
+      // haya habido errores o no: son los que se van a enterar del aumento cuando les
+      // llegue la liquidación más cara. El toast da el número; los nombres van al panel
+      // del dialog, que no se borra solo.
+      setSinAvisoLista(sinAviso);
+      const avisoFaltante =
+        sinAviso.length > 0
+          ? ` Ojo: a ${sinAviso.length} ${sinAviso.length === 1 ? 'no le' : 'no les'} llega el aviso por falta de email — mirá la lista.`
+          : '';
       if (errores.length === 0) {
-        toast({ variant: 'success', title: `¡Listo! Ajustaste ${exitosos.length} contrato${exitosos.length === 1 ? '' : 's'}`, description: `Aumento del ${pct}% aplicado.` });
-        onOpenChange(false);
+        toast({
+          variant: sinAviso.length > 0 ? 'warning' : 'success',
+          title: `¡Listo! Ajustaste ${exitosos.length} contrato${exitosos.length === 1 ? '' : 's'}`,
+          description: `Aumento del ${pct}% aplicado.${avisoFaltante}`,
+        });
+        // Si hay inquilinos sin aviso NO cerramos: el panel con los nombres está en este
+        // dialog, y cerrarlo se lleva puesta la única lista de a quién hay que llamar.
+        if (sinAviso.length === 0) onOpenChange(false);
       } else {
         toast({
           variant: 'destructive',
           title: `${exitosos.length} ajustados, ${errores.length} con error`,
-          description: `Dejamos tildados solo los que fallaron para que reintentes sin re-aumentar a nadie. ${errores.slice(0, 2).join(' · ')}`,
+          description: `Dejamos tildados solo los que fallaron para que reintentes sin re-aumentar a nadie. ${errores.slice(0, 2).join(' · ')}${avisoFaltante}`,
         });
       }
     } finally {
@@ -230,6 +262,25 @@ export function AjusteMasivoDialog({
               })}
             </div>
           </div>
+
+          {/* La lista de a quién hay que avisar a mano. Persistente (no es el toast):
+              el ajuste ya se aplicó y esto es trabajo pendiente de la inmo. */}
+          {sinAvisoLista.length > 0 && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-400/40 dark:bg-amber-950 dark:text-amber-100">
+              <p className="font-medium">
+                A {sinAvisoLista.length} {sinAvisoLista.length === 1 ? 'inquilino no le' : 'inquilinos no les'} llega el aviso del aumento
+              </p>
+              <p className="mt-0.5 text-xs opacity-90">
+                El ajuste se aplicó igual. No tienen email cargado, así que se van a enterar
+                cuando les llegue la liquidación: convendría avisarles vos.
+              </p>
+              <ul className="mt-2 space-y-0.5 text-xs font-medium">
+                {sinAvisoLista.map((n, i) => (
+                  <li key={`${n}-${i}`}>· {n}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-2 pt-1">
             <span className="text-xs text-muted-foreground">

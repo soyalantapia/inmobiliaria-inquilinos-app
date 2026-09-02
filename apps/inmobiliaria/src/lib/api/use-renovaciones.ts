@@ -16,6 +16,7 @@ import {
 } from '@/lib/mock-data';
 import { diasHastaVencimiento } from '@/lib/format';
 import type { Moneda } from '@/lib/types';
+import { rotuloEnLinea } from '@/lib/rotulo-propiedad';
 
 export interface RenovacionFila {
   id: string;
@@ -43,7 +44,13 @@ interface RenovacionApi {
   monto: string | number;
   moneda: Moneda;
   tipoContrato: string;
-  propiedad: { id: string; direccion: string; ciudad: string } | null;
+  propiedad: {
+    id: string;
+    direccion: string;
+    ciudad: string;
+    complejo?: string | null;
+    consorcio?: { nombre: string } | null;
+  } | null;
   inquilinoTitular: {
     id: string;
     nombre: string;
@@ -77,7 +84,9 @@ function mapRenovacion(r: RenovacionApi): RenovacionFila {
     inquilino: r.inquilinoTitular
       ? `${r.inquilinoTitular.nombre} ${r.inquilinoTitular.apellido ?? ''}`.trim()
       : '—',
-    direccion: r.propiedad?.direccion ?? '—',
+    // Mismo rótulo que en el resto del panel: la inmobiliaria reconoce la unidad por
+    // el complejo, no por la calle. Ver lib/rotulo-propiedad.ts.
+    direccion: r.propiedad ? rotuloEnLinea(r.propiedad) : '—',
     monto: Number(r.monto),
     moneda: r.moneda,
     fechaInicio: (r.fechaInicio ?? '').slice(0, 10),
@@ -103,7 +112,7 @@ function filasMock(): RenovacionFila[] {
       return {
         id: c.id,
         inquilino: c.inquilino,
-        direccion: c.direccion,
+        direccion: rotuloEnLinea(c),
         monto: c.monto,
         moneda: c.moneda,
         fechaInicio: c.fechaInicio,

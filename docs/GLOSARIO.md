@@ -41,7 +41,7 @@ Términos del negocio inmobiliario argentino tal como aparecen en el código (`a
 
 - **Caja / movimiento de caja (`MovimientoCaja`)**: registro diario de plata que entra o sale en la oficina (`GASTO` o `INGRESO_EXTRA`), con categorías como plomería, electricidad, expensas, materiales.
 - **Cierre de caja**: `GET /caja/cierre` calcula el corte del día **al vuelo** (lo cobrado + comisión); hoy NO se persiste — el modelo `CierreCaja` existe en el schema pero todavía no se escribe. Eliminar un gasto ya cargado es acción sensible.
-- **Rendición (`Rendicion`)**: la liquidación de cuentas al propietario por período. `montoNeto = montoBruto − comisionMonto − totalGastos`. Al rendir, los gastos de caja se marcan descontados y se linkean (loop caja→rendición). "Rendir a propietario" es acción ADMIN + PIN.
+- **Rendición (`Rendicion`)**: la liquidación de cuentas al propietario por período. `montoNeto = montoBruto − comisionMonto − totalGastos + totalIngresos` (los ingresos extra de caja que le corresponden al dueño se le suman; faltaban en esta fórmula). Al rendir, los gastos de caja se marcan descontados y se linkean (loop caja→rendición). "Rendir a propietario" es acción ADMIN + PIN.
 - **Gasto rendido (`GastoRendido`)**: snapshot congelado de un gasto al momento de rendir, para que el comprobante histórico sobreviva a ediciones del origen (caja o reclamo).
 
 ### Personas y screening

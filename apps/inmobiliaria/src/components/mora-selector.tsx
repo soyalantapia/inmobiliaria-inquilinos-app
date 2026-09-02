@@ -26,6 +26,8 @@ export type MoraSeleccion = TipoMora | 'HEREDAR';
 export interface MoraHeredada {
   tipo: TipoMora;
   valor: number | null;
+  /** Moneda del DEFAULT, no la del contrato. Ver `moraEfectivaDe`. */
+  moneda: Moneda;
 }
 
 export const MORA_TIPOS: Array<{ value: TipoMora; label: string }> = [
@@ -65,6 +67,44 @@ export function calcularMora(
     default:
       return 0;
   }
+}
+
+/**
+ * EL ESQUEMA QUE VA A APLICAR DE VERDAD — el mismo cálculo que `resolverEsquemaMora` del
+ * server (`apps/api/src/lib/punitorios.ts`), que es quien manda.
+ *
+ * La regla que faltaba de este lado (T-58): un default `MONTO_FIJO` es un IMPORTE ABSOLUTO y
+ * sólo vale en su propia moneda. Un default de 5.000 cargado pensando en pesos —la pantalla
+ * que lo carga ni siquiera pedía moneda— aplicado sobre un contrato en dólares le reclama al
+ * inquilino US$ 5.000 de punitorio. Los otros esquemas son porcentajes sobre una base que ya
+ * está en la moneda del contrato: se heredan siempre.
+ *
+ * El panel reimplementaba la herencia sin esta parte, y no quedaba en un cartel equivocado: el
+ * wizard de alta prefillea con esto la mora de cada período vencido y la manda como
+ * `moraManual`. El server la persiste en `montoPunitorioManual`, y `calcularMora` arranca con
+ * `if (manual != null) return manual` — o sea que el número del front PISA el `SIN_MORA` que
+ * el propio server había resuelto. Deuda punitoria real, cobrable, y visible en la PWA del
+ * inquilino.
+ *
+ * `herenciaDescartada` es para avisarle al usuario POR QUÉ el interés quedó en cero, en vez de
+ * mostrarle un cero mudo.
+ */
+export function moraEfectivaDe(
+  seleccion: MoraSeleccion,
+  valorInput: string | number,
+  heredado: MoraHeredada | null | undefined,
+  monedaContrato: Moneda,
+): { tipo: TipoMora; valor: number; herenciaDescartada: boolean } {
+  if (seleccion !== 'HEREDAR') {
+    return { tipo: seleccion, valor: Number(valorInput) || 0, herenciaDescartada: false };
+  }
+  if (!heredado || heredado.tipo === 'SIN_MORA') {
+    return { tipo: 'SIN_MORA', valor: 0, herenciaDescartada: false };
+  }
+  if (heredado.tipo === 'MONTO_FIJO' && heredado.moneda !== monedaContrato) {
+    return { tipo: 'SIN_MORA', valor: 0, herenciaDescartada: true };
+  }
+  return { tipo: heredado.tipo, valor: heredado.valor ?? 0, herenciaDescartada: false };
 }
 
 function formatPct(valor: number | null): string {
@@ -120,11 +160,9 @@ export function MoraSelector({
 }) {
   const simbolo = moneda === 'USD' ? 'US$' : '$';
 
-  // Esquema EFECTIVO para el preview: si eligió heredar, usamos el default.
-  const efectivo: { tipo: TipoMora; valor: number } =
-    seleccion === 'HEREDAR'
-      ? { tipo: heredado?.tipo ?? 'SIN_MORA', valor: heredado?.valor ?? 0 }
-      : { tipo: seleccion, valor: Number(valor) || 0 };
+  // Esquema EFECTIVO para el preview: el MISMO que va a aplicar el server, herencia incluida.
+  // Antes el preview heredaba a ciegas y prometía un interés que el server descartaba.
+  const efectivo = moraEfectivaDe(seleccion, valor, heredado, moneda);
 
   const preview =
     efectivo.tipo !== 'SIN_MORA' && efectivo.valor > 0 && montoBase > 0
@@ -149,8 +187,10 @@ export function MoraSelector({
             <SelectContent>
               {conHeredar && (
                 <SelectItem value="HEREDAR">
+                  {/* La moneda del DEFAULT, no la del contrato: un default de US$ 5.000 leído
+                      con `moneda` decía "$ 5.000" en un contrato en pesos, que es otro número. */}
                   {heredado
-                    ? `Heredar de la inmobiliaria (${descripcionMora(heredado.tipo, heredado.valor, moneda)})`
+                    ? `Heredar de la inmobiliaria (${descripcionMora(heredado.tipo, heredado.valor, heredado.moneda)})`
                     : 'Heredar de la inmobiliaria'}
                 </SelectItem>
               )}
@@ -203,6 +243,19 @@ export function MoraSelector({
           </div>
         )}
       </div>
+
+      {/* Por qué el interés quedó en cero. Sin este cartel el usuario ve "Heredar de la
+          inmobiliaria (US$ 5.000 por mes de atraso)" elegido y un preview vacío, y la
+          conclusión razonable es que la pantalla está rota. */}
+      {efectivo.herenciaDescartada && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+          El interés por defecto es un <strong>monto fijo</strong> en{' '}
+          {heredado?.moneda === 'USD' ? 'dólares' : 'pesos'} y este contrato es en{' '}
+          {moneda === 'USD' ? 'dólares' : 'pesos'}: <strong>no se hereda</strong>, porque
+          aplicarlo 1:1 cobraría un punitorio que no es. Elegí un esquema para este contrato
+          si querés cobrar mora.
+        </p>
+      )}
 
       {preview != null && (
         <p className="text-[11px] text-muted-foreground">

@@ -36,7 +36,10 @@ export interface CertificadoInquilino {
     direccion: string;
     inmobiliaria: string;
     fechaInicio: string;
+    /** Lo que paga por mes. Para un SOLO_EXPENSAS el server ya manda acá las expensas,
+     *  no el `contrato.monto` (que vale 0 por diseño). El rótulo lo decide `tipoContrato`. */
     montoMensual: number;
+    tipoContrato?: 'ALQUILER' | 'SOLO_EXPENSAS';
     moneda: 'ARS' | 'USD';
     /** Meses cumplidos en el contrato actual. */
     mesesCumplidos: number;
@@ -174,7 +177,7 @@ export function generarCertificado(): CertificadoInquilino {
   const inquilino = {
     nombre: 'Mariela Sosa',
     dni: '38.421.567',
-    email: 'mariela.sosa@gmail.com',
+    email: 'mariela.sosa@example.com',
     telefono: '+54 9 11 4321 9876',
   };
   // parseLocal (no `new Date('YYYY-MM-DD')`, que parsea en UTC y en UTC-3 cae al
@@ -221,7 +224,11 @@ export function generarCertificado(): CertificadoInquilino {
       direccion: contratoMock.direccion,
       inmobiliaria: contratoMock.inmobiliaria,
       fechaInicio: contratoMock.fechaInicio,
-      montoMensual: contratoMock.montoActual,
+      montoMensual:
+        contratoMock.tipoContrato === 'SOLO_EXPENSAS'
+          ? (contratoMock.montoExpensas ?? 0)
+          : contratoMock.montoActual,
+      tipoContrato: contratoMock.tipoContrato,
       moneda: contratoMock.moneda,
       mesesCumplidos: Math.max(0, meses),
     },

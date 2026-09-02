@@ -108,7 +108,7 @@ const equipoInicial: Miembro[] = [
     // tiene nombres reales; usamos uno coherente con el email (martin.contador).
     // El rol "Solo lectura" ya comunica que es un externo de consulta.
     nombre: 'Martín Herrera',
-    email: 'martin.contador@gmail.com',
+    email: 'martin.contador@example.com',
     rol: 'LECTURA',
     ultimoAcceso: '2026-05-08T11:20:00-03:00',
   },
@@ -396,6 +396,11 @@ export default function ConfiguracionPage() {
                 />
                 <Field
                   label="Email administrador"
+                  // Este campo dejó de ser sólo un dato de contacto: es la casilla a la que
+                  // llegan las respuestas de los inquilinos a los mails de la inmobiliaria
+                  // (avisos de aumento, anuncios, bienvenidas). Si no se dice acá, Camila se
+                  // entera cuando le empiezan a caer respuestas donde no las esperaba.
+                  ayuda="Acá te llegan las respuestas de los inquilinos a los mails que les manda la inmobiliaria."
                   required
                   type="email"
                   autoComplete="email"
@@ -1074,6 +1079,7 @@ function Field({
   error,
   type,
   autoComplete,
+  ayuda,
 }: {
   label: string;
   value: string;
@@ -1082,9 +1088,12 @@ function Field({
   error?: string;
   type?: string;
   autoComplete?: string;
+  /** Aclaración debajo del campo, para cuando el rótulo no alcanza a decir para qué se usa. */
+  ayuda?: string;
 }) {
   const id = `cfg-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`;
   const errorId = error ? `${id}-error` : undefined;
+  const ayudaId = ayuda ? `${id}-ayuda` : undefined;
   return (
     <div className="space-y-2">
       <Label htmlFor={id} className="flex items-center gap-1">
@@ -1104,12 +1113,17 @@ function Field({
         required={required}
         aria-required={required || undefined}
         aria-invalid={error ? true : undefined}
-        aria-describedby={errorId}
+        aria-describedby={[errorId, ayudaId].filter(Boolean).join(' ') || undefined}
         className={error ? 'border-destructive focus-visible:ring-destructive' : undefined}
       />
       {error && (
         <p id={errorId} role="alert" className="text-xs text-destructive">
           {error}
+        </p>
+      )}
+      {ayuda && !error && (
+        <p id={ayudaId} className="text-xs text-muted-foreground">
+          {ayuda}
         </p>
       )}
     </div>

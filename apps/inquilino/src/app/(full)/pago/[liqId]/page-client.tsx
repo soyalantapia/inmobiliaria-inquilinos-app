@@ -22,8 +22,10 @@ import { Separator } from '@llave/ui/separator';
 import { toast } from '@llave/ui/use-toast';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
-import { abrirReciboImprimible } from '@/lib/recibo-pdf';
+import { mostrarFilaAlquiler } from '@/lib/tipo-contrato';
+import { abrirReciboImprimible, metodoParaRecibo } from '@/lib/recibo-pdf';
 import { resolverMontos } from '@/lib/punitorios';
+import { saldoDeLiquidacion } from '@/lib/saldo-liquidacion';
 import {
   leerPagoInformado,
   listarPagosDeLiq,
@@ -198,15 +200,46 @@ function DetallePagoView({
   // Saldo pendiente. En prod sale del API (montoTotal − conciliados = liq.saldo);
   // en demo, de los parciales del store local. Antes en prod siempre daba el total
   // completo, así que un parcial ya conciliado no bajaba la deuda mostrada (bug 1/3).
-  const saldo = apiEnabled
-    ? Math.max(0, liq.saldo ?? calc.totalAPagar)
-    : saldoPendiente(liqId, calc.totalAPagar);
+  // Fuente ÚNICA compartida con el home y con Recibos. Antes esta pantalla medía la
+  // parcialidad con `liq.montoPagado`, que suma sólo los CONCILIADOS: un pago informado y
+  // todavía sin validar dejaba `tieneParciales` en false y acá se mostraba el total
+  // COMPLETO, como si el inquilino no hubiera pagado nada — mientras el home ya le decía
+  // "te faltan $X". Dos pantallas, dos verdades sobre la misma deuda.
+  const det = saldoDeLiquidacion(liq, calc.totalAPagar);
+  const saldo = apiEnabled ? det.faltaPagar : saldoPendiente(liqId, calc.totalAPagar);
   const totalInformado = calc.totalAPagar - saldo;
-  // "Hay parciales / quedó al día por parciales": en prod lo derivamos de
-  // montoPagado (conciliado) en vez del historial local (vacío en prod).
-  const tieneParciales = apiEnabled ? (liq.montoPagado ?? 0) > 0 : parciales.length > 0;
+  const tieneParciales = apiEnabled
+    ? det.hayConciliado || det.hayEnRevision
+    : parciales.length > 0;
   const hayParciales = tieneParciales && saldo > 0;
-  const pagadoEnParciales = !pagado && tieneParciales && saldo === 0;
+  /**
+   * Cubierto pero SIN VALIDAR: el inquilino informó lo suficiente para llegar a saldo 0,
+   * pero la inmobiliaria todavía no lo aprobó y puede rechazarlo.
+   *
+   * Sin esto, `pagadoEnParciales` daba true y la pantalla mostraba el badge verde "Pagado"
+   * y ofrecía **descargar el comprobante** (`lib/recibo-pdf.ts`) —un respaldo impreso del
+   * pago, que el inquilino guarda y muestra— sobre plata que nadie validó, y que
+   * `POST /pagos/:id/rechazar` todavía puede tirar atrás. Con esto cae en
+   * `pendienteValidacion`, que ya tiene el copy y el CTA correctos.
+   *
+   * Va en los DOS modos a propósito. En demo el circuito es idéntico: el pago nace
+   * `INFORMADO` y nada lo concilia, así que ahí el recibo prematuro es *siempre* el caso.
+   * La primera versión llevaba `apiEnabled &&`, y el build de GitHub Pages —el que ve un
+   * prospecto— seguía mostrando el badge verde sobre un pago recién informado.
+   *
+   * En prod alcanza con que HAYA algo en revisión aunque otra parte ya esté conciliada: con
+   * $50 validados y $50 esperando, el recibo por el total seguiría siendo prematuro
+   * (`faltaPagar` resta lo que está en revisión). Cuando la inmobiliaria valide el resto,
+   * `hayEnRevision` cae solo.
+   *
+   * En demo la señal es `pendienteValidacion` y no "hay algún pago INFORMADO": el estado
+   * local puede quedar con un INFORMADO zombie que la inmobiliaria ya confirmó o rechazó, y
+   * ese no espera validación de nadie. `pendienteValidacion` ya lo filtra.
+   */
+  const cubiertoSinValidar = apiEnabled
+    ? det.hayEnRevision && det.faltaPagar === 0
+    : pendienteValidacion && saldo === 0;
+  const pagadoEnParciales = !pagado && tieneParciales && saldo === 0 && !cubiertoSinValidar;
 
   return (
     <>
@@ -289,8 +322,8 @@ function DetallePagoView({
                 Pendiente de validación
               </p>
               <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
-                Recibimos tu comprobante el {formatFecha(informado.enviadoAt)}. Te avisamos por
-                WhatsApp en 24-48 hs cuando lo confirmemos.
+                Recibimos tu comprobante el {formatFecha(informado.enviadoAt)}. Te avisamos acá
+                en la app en 24-48 hs cuando lo confirmemos.
               </p>
             </div>
           </Card>
@@ -299,10 +332,16 @@ function DetallePagoView({
         <Card className="space-y-3 p-5">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
-              {hayParciales ? 'Saldo pendiente' : 'Total a pagar'}
+              {cubiertoSinValidar ? 'Informado' : hayParciales ? 'Saldo pendiente' : 'Total a pagar'}
             </span>
             {pagado || pagadoEnParciales ? (
               <Badge variant="success">Pagado</Badge>
+            ) : cubiertoSinValidar ? (
+              // Informó por el total: no le queda nada por transferir, pero todavía no es
+              // suyo. Sin esta rama el badge caía en "Pendiente"/"Atrasado" junto al total
+              // completo — el bug opuesto, y peor: le diría que debe plata a alguien que ya
+              // la transfirió.
+              <Badge variant="warning">En revisión</Badge>
             ) : hayParciales ? (
               <Badge variant="warning">Parcial</Badge>
             ) : vencido ? (
@@ -406,7 +445,11 @@ function DetallePagoView({
             Cómo se compone
           </h2>
           <div className="space-y-3 text-sm">
-            <Row label="Alquiler" value={formatMonto(liq.montoAlquiler, liq.moneda)} />
+            {/* Ver el desglose del home: sin esto, a un contrato de solo expensas le
+                aparece "Alquiler $0". lib/tipo-contrato.ts */}
+            {mostrarFilaAlquiler(liq) && (
+              <Row label="Alquiler" value={formatMonto(liq.montoAlquiler, liq.moneda)} />
+            )}
             {liq.montoExpensas !== null && (
               <Row label="Expensas" value={formatMonto(liq.montoExpensas, liq.moneda)} />
             )}
@@ -471,7 +514,10 @@ function DetallePagoView({
                   : contratoMock.direccion,
                 monto: liq.montoTotal,
                 montoFmt: formatMonto(liq.montoTotal, liq.moneda),
-                metodo: 'Transferencia',
+                // Método REAL del cobro. Estaba hardcodeado en "Transferencia": un cobro en
+                // efectivo o por cheque salía impreso como una transferencia que nunca existió.
+                // En demo `liq.pagos` no existe → undefined → el comprobante omite la fila.
+                metodo: metodoParaRecibo(liq.pagos),
                 fechaPago: fechaIso,
                 fechaPagoFmt: formatFecha(fechaIso),
                 inmobiliaria: apiEnabled
@@ -483,6 +529,17 @@ function DetallePagoView({
             <Receipt className="h-5 w-5" />
             Descargar comprobante
           </Button>
+        ) : cubiertoSinValidar ? (
+          // NI recibo NI botón de pagar. El recibo sería prematuro (la inmobiliaria todavía
+          // puede rechazar), y un CTA de pago acá lo invitaría a transferir DOS VECES lo
+          // mismo. Lo único honesto es decirle en qué estado está.
+          <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-center">
+            <p className="text-sm font-medium">Ya informaste el total de este período</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {contrato?.inmobiliaria ?? 'La inmobiliaria'} lo está revisando. Cuando lo valide
+              vas a poder descargar el comprobante.
+            </p>
+          </div>
         ) : hayParciales ? (
           <div className="space-y-3">
             <Button asChild size="xl" className="w-full">

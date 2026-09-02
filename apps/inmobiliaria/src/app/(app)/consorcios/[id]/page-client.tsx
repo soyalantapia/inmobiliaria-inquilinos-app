@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -26,6 +26,16 @@ import { Badge } from '@llave/ui/badge';
 import { Button } from '@llave/ui/button';
 import { Card, CardContent } from '@llave/ui/card';
 import { Skeleton } from '@llave/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@llave/ui/dialog';
+import { Input } from '@llave/ui/input';
+import { Label } from '@llave/ui/label';
+import { toast } from '@llave/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import {
   Table,
@@ -44,6 +54,7 @@ import {
   ESTADO_UF_LABEL,
   balanceConsorcio,
   morosidadConsorcio,
+  estadoUfVisible,
   type UnidadFuncional,
 } from '@/lib/consorcios-storage';
 import { apiEnabled } from '@/lib/api/client';
@@ -61,7 +72,7 @@ export default function DetalleConsorcioPage() {
   const params = useParams<{ id: string }>();
   const { consorcio, cargando, isError } = useConsorcio(params?.id);
   // Mutaciones + estado de los dialogs ANTES de los early-returns (reglas de hooks).
-  const { eliminarUnidad, eliminarMovimiento, eliminarAsamblea } = useConsorcioMutaciones(params?.id);
+  const { eliminarUnidad, eliminarMovimiento, eliminarAsamblea, editarConsorcio } = useConsorcioMutaciones(params?.id);
   const [ufDialog, setUfDialog] = useState<{ open: boolean; unidad: UnidadFuncional | null }>({
     open: false,
     unidad: null,
@@ -121,7 +132,9 @@ export default function DetalleConsorcioPage() {
     );
   }
 
-  const balance = balanceConsorcio(consorcio);
+  // CON el período: los tres rótulos dicen "del mes" y hasta acá mostraban el acumulado
+  // histórico. Un edificio administrado hace tres años sumaba todo desde 2022.
+  const balance = balanceConsorcio(consorcio, consorcio.periodoActual);
   const morosidad = morosidadConsorcio(consorcio);
   const soc = sociedadById(consorcio.sociedadId);
 
@@ -196,9 +209,24 @@ export default function DetalleConsorcioPage() {
 
             {/* Stats */}
             <div className="grid grid-cols-2 gap-3 border-t pt-4 md:grid-cols-4">
+              {/* T-47 — Era sólo lectura: la expensa del mes únicamente se podía fijar AL CREAR
+                  el consorcio, y es una acción MENSUAL. El endpoint (PUT /consorcios/:id) y el
+                  hook `editarConsorcio` ya existían; lo que faltaba era llamarlos desde algún
+                  lado — el hook no lo usaba ninguna pantalla. */}
               <Stat
                 label="Expensa del mes"
-                value={formatMonto(consorcio.expensasPeriodoActual)}
+                value={
+                  <span className="inline-flex items-center gap-1.5">
+                    {formatMonto(consorcio.expensasPeriodoActual)}
+                    {apiEnabled && (
+                      <EditarExpensaMesButton
+                        periodoActual={consorcio.periodoActual ?? ''}
+                        expensaActual={consorcio.expensasPeriodoActual ?? 0}
+                        onGuardar={editarConsorcio}
+                      />
+                    )}
+                  </span>
+                }
               />
               <Stat
                 label="Ingresos del mes"
@@ -373,8 +401,10 @@ export default function DetalleConsorcioPage() {
                         {u.saldoDeudor > 0 ? formatMonto(u.saldoDeudor) : '—'}
                       </TableCell>
                       <TableCell>
-                        <Badge className={`text-[10px] ${ESTADO_UF_COLOR[u.estado]}`}>
-                          {ESTADO_UF_LABEL[u.estado]}
+                        {/* El saldo manda sobre el rótulo: la fila se contradecía sola,
+                            con el saldo en ámbar y "Al día" en verde al lado. */}
+                        <Badge className={`text-[10px] ${ESTADO_UF_COLOR[estadoUfVisible(u)]}`}>
+                          {ESTADO_UF_LABEL[estadoUfVisible(u)]}
                         </Badge>
                       </TableCell>
                       {apiEnabled && (
@@ -614,13 +644,119 @@ export default function DetalleConsorcioPage() {
   );
 }
 
+/**
+ * Cambiar la expensa del mes del consorcio (T-47).
+ *
+ * `PUT /consorcios/:id` y el hook `editarConsorcio` ya existían — el hook no lo llamaba
+ * NINGUNA pantalla, así que el valor sólo se podía fijar al crear el consorcio. Es una acción
+ * mensual: sin esto la administradora vuelve al Excel, que es lo que vino a dejar.
+ */
+function EditarExpensaMesButton({
+  periodoActual,
+  expensaActual,
+  onGuardar,
+}: {
+  periodoActual: string;
+  expensaActual: number;
+  onGuardar: (input: { periodoActual?: string; expensasPeriodoActual?: number }) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [periodo, setPeriodo] = useState('');
+  const [monto, setMonto] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setPeriodo(periodoActual);
+    setMonto(expensaActual ? String(expensaActual) : '');
+  }, [open, periodoActual, expensaActual]);
+
+  const guardar = async () => {
+    if (guardando) return;
+    const n = Number(monto);
+    if (!Number.isFinite(n) || n < 0) {
+      toast({ variant: 'destructive', title: 'El importe no es válido' });
+      return;
+    }
+    setGuardando(true);
+    try {
+      await onGuardar({ periodoActual: periodo || undefined, expensasPeriodoActual: n });
+      toast({ variant: 'success', title: 'Expensa del mes actualizada' });
+      setOpen(false);
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo guardar',
+        description: e instanceof Error ? e.message : 'Probá de nuevo.',
+      });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-muted-foreground transition-colors hover:text-foreground"
+        aria-label="Cambiar la expensa del mes"
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
+      <Dialog open={open} onOpenChange={(o) => !guardando && setOpen(o)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Expensa del mes</DialogTitle>
+            <DialogDescription>
+              Es el total que se reparte entre las unidades según su coeficiente. Cambiala cada
+              mes cuando cierre la liquidación del consorcio.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="exp-periodo">Período</Label>
+              <Input
+                id="exp-periodo"
+                type="month"
+                value={periodo}
+                onChange={(e) => setPeriodo(e.target.value)}
+                disabled={guardando}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="exp-monto">Importe total</Label>
+              <Input
+                id="exp-monto"
+                type="number"
+                min={0}
+                value={monto}
+                onChange={(e) => setMonto(e.target.value)}
+                disabled={guardando}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" disabled={guardando} onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={guardar} disabled={guardando || !monto.trim()}>
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function Stat({
   label,
   value,
   accent,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   accent?: 'emerald' | 'amber' | 'red';
 }) {
   return (

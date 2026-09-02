@@ -13,6 +13,25 @@ export class ReclamoYaRendido extends ReclamoNoReimputable {
   }
 }
 
+/**
+ * Se quiso imputar al DEPÓSITO un contrato que no tiene uno vivo.
+ *
+ * El cargo nacería incobrable por los cuatro caminos: no aparece en
+ * `/depositos/en-custodia` (filtra RETENIDO), está excluido de `/mis-cargos`,
+ * `/cargos/:id/saldar` lo rechaza y saldar-deuda lo ignora. Plata real que nadie puede
+ * cobrar nunca.
+ */
+export class ReclamoDepositoNoDisponible extends ReclamoNoReimputable {
+  constructor(sinDeposito: boolean) {
+    super(
+      sinDeposito
+        ? 'Este contrato no tiene depósito de garantía cargado: elegí si lo paga el propietario o el inquilino.'
+        : 'El depósito de este contrato ya fue resuelto: elegí si lo paga el propietario o el inquilino.',
+    );
+    this.name = 'ReclamoDepositoNoDisponible';
+  }
+}
+
 /** El inquilino ya pagó el cargo de este reclamo (`saldadoAt`). */
 export class ReclamoYaCobradoAlInquilino extends ReclamoNoReimputable {
   constructor() {
@@ -92,6 +111,28 @@ export async function imputarCostoReclamo(
   if (pagador === 'PROPIETARIO' || !pagador || costo <= 0) {
     await tx.cargoContrato.deleteMany({ where: { reclamoId, saldadoAt: null } });
     return;
+  }
+
+  // Imputar al DEPÓSITO exige que haya un depósito VIVO. Este guard existía sólo inline en
+  // `/resolver` (operacion.ts:578-590) y `/listo` no lo tenía, así que el profesional por link
+  // mágico podía crear un cargo `contraDeposito` sobre un contrato sin depósito —o con el
+  // depósito ya devuelto, neteado o ejecutado— y ese cargo nace incobrable por los cuatro
+  // caminos.
+  //
+  // Es exactamente la misma regresión que ya había pasado con el guard de `yaRendido` de acá
+  // abajo: el commit que mudó ESE al helper (242db1b9, "no sólo en /resolver") fijó la regla del
+  // choke point, y el guard de depósito se agregó inline el MISMO día (afb9efe9), sin mudarse.
+  //
+  // Va DESPUÉS de los dos early-returns de arriba a propósito: un re-cierre idéntico de un cargo
+  // ya saldado, y el caso legítimo de resolver el depósito (que salda los cargos contraDeposito),
+  // tienen que seguir pasando en 200.
+  if (pagador === 'DEPOSITO') {
+    const contrato = await tx.contrato.findUnique({
+      where: { id: contratoId },
+      select: { depositoGarantia: true, estadoDeposito: true },
+    });
+    const dg = Number(contrato?.depositoGarantia ?? 0);
+    if (dg <= 0 || contrato?.estadoDeposito !== 'RETENIDO') throw new ReclamoDepositoNoDisponible(dg <= 0);
   }
 
   // Anti-doble-cobro (choke point de /resolver y /listo): si el costo YA se le descontó al

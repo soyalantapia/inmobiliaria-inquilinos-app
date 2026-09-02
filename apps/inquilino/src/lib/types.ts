@@ -12,6 +12,15 @@ export type EstadoReclamo = 'ABIERTO' | 'EN_CURSO' | 'RESUELTO' | 'CERRADO' | 'R
 // Cada cambio de estado, asignación o mensaje queda como evento en la timeline.
 // VISITA_* son hitos del profesional asignado (se computan al vuelo desde
 // `visitas-profesional` storage al renderizar — no se persisten en eventos).
+// Copia del enum `TipoEventoReclamo` de Prisma. Se quedó corta: le faltaban CLASIFICADO y
+// PROFESIONAL_ASIGNADO, que escribe la inmobiliaria. Como el timeline hace
+// `labelForTipo[ev.tipo](ev)`, eso era `undefined(ev)` y la pantalla se caía al abrir un
+// reclamo que la inmobiliaria ya había clasificado.
+//
+// Que siga sincronizada lo verifica `apps/api/test/tipos-evento-reclamo-sincronizados.test.ts`,
+// que lee el schema y esta lista y exige que coincidan.
+//
+// (Ojo: en `lib/calendario-eventos` hay OTRO `TipoEvento` que no tiene nada que ver con esto.)
 export type TipoEvento =
   | 'CREADO'
   | 'ASIGNADO'
@@ -21,6 +30,8 @@ export type TipoEvento =
   | 'RECHAZADO'
   | 'MENSAJE_INQUILINO'
   | 'MENSAJE_INMO'
+  | 'CLASIFICADO'
+  | 'PROFESIONAL_ASIGNADO'
   | 'VISITA_CONFIRMADA'
   | 'VISITA_EN_CAMINO'
   | 'VISITA_LISTO';
@@ -49,6 +60,10 @@ export interface Reclamo {
   createdAt: string;
   resueltoAt: string | null;
   eventos: EventoReclamo[];
+  /** Quién deshizo el cierre, cuando el reclamo está reabierto. Lo resuelve el server
+   *  (`lib/reapertura-reclamo.ts`): la pantalla lo estaba infiriendo y le atribuía al
+   *  inquilino las reaperturas de la inmobiliaria. `null` en demo y cuando no se sabe. */
+  reabiertoPor?: 'INQUILINO' | 'INMOBILIARIA' | null;
   /** Profesional externo que la inmobiliaria asignó para venir a resolverlo. */
   profesionalAsignadoNombre?: string | null;
   profesionalAsignadoTelefono?: string | null;
@@ -156,6 +171,23 @@ export interface Contrato {
   depositoGarantia?: number | null;
   estadoDeposito?: 'RETENIDO' | 'DEVUELTO' | 'NETEADO' | 'EJECUTADO';
   depositoDevueltoMonto?: number | null;
+  /**
+   * Qué paga realmente esta persona.
+   *
+   * `SOLO_EXPENSAS` = ocupa la unidad pero el alquiler lo arregla el propietario por
+   * fuera; la inmobiliaria sólo administra el consorcio (Camila, 03/08 `[30:04]`). En
+   * ese caso `montoActual` vale **0** —el backend lo permite sólo para este tipo
+   * (`core.ts`, alta de contrato)— y hablarle de "alquiler" es decirle que debe algo
+   * que no debe.
+   *
+   * Opcional a propósito: un contrato viejo que no lo mande se trata como `ALQUILER`,
+   * que es el comportamiento de siempre. Usar `esSoloExpensas()` de `lib/tipo-contrato.ts`
+   * en vez de comparar el string a mano.
+   */
+  tipoContrato?: 'ALQUILER' | 'SOLO_EXPENSAS';
+  /** Expensas del contrato. Para un `SOLO_EXPENSAS` es lo ÚNICO que se paga, así que
+   *  pasa a ser el monto principal de la pantalla de contrato. */
+  montoExpensas?: number | null;
 }
 
 export interface MensajeChat {

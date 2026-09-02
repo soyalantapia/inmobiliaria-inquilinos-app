@@ -10,15 +10,32 @@ import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
 
 export type DireccionCuenta = 'ENTRADA' | 'SALIDA' | 'AMBAS';
+export type MonedaCuenta = 'ARS' | 'USD';
+
+/** Saldo de una cuenta EN UNA moneda. Una cuenta puede tener movimientos en varias. */
+export interface SaldoPorMoneda {
+  moneda: MonedaCuenta;
+  entradas: number;
+  salidas: number;
+  saldo: number;
+}
 
 export interface CuentaCaja {
   id: string;
   nombre: string;
   direccion: DireccionCuenta;
   activa: boolean;
-  entradas: number;
-  salidas: number;
-  saldo: number;
+  /**
+   * Una fila por moneda con movimientos. Reemplaza a los viejos `entradas/salidas/saldo`
+   * planos, que sumaban pesos y dólares en un mismo número y los rotulaban en pesos.
+   * Vacío = la cuenta no tiene ningún movimiento (distinto de "saldo cero").
+   */
+  porMoneda: SaldoPorMoneda[];
+}
+
+/** El saldo de la moneda pedida, o null si la cuenta no tiene movimientos en esa moneda. */
+export function saldoEnMoneda(c: CuentaCaja, moneda: MonedaCuenta): SaldoPorMoneda | null {
+  return c.porMoneda.find((p) => p.moneda === moneda) ?? null;
 }
 
 export interface MovimientoDeCuenta {
@@ -27,6 +44,7 @@ export interface MovimientoDeCuenta {
   categoria: string;
   descripcion: string;
   monto: number;
+  moneda: MonedaCuenta;
   fecha: string;
   proveedor: string | null;
   propiedad: { direccion: string } | null;

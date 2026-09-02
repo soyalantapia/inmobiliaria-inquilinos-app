@@ -7,6 +7,7 @@ import { Button } from '@llave/ui/button';
 import { Badge } from '@llave/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@llave/ui/card';
 import { ConfirmDialog } from '@llave/ui/confirm-dialog';
+import { useConmutables, desbloquearPin, borrarPin } from '@/lib/api/use-conmutador';
 import {
   Dialog,
   DialogContent,
@@ -44,6 +45,11 @@ export function EquipoCard() {
   const qc = useQueryClient();
   const { me } = useMe();
   const { equipo, cargando } = useEquipo();
+  // El estado del PIN sale del MISMO endpoint que usa el conmutador, en vez de agregarle el
+  // dato a /usuarios: una sola fuente para "quién puede ser destino" evita que las dos
+  // pantallas digan cosas distintas. Excluye al propio usuario, y está bien: tu PIN lo
+  // gestionás en la card de arriba, no acá.
+  const { usuarios: pines, refrescar: refrescarPines } = useConmutables(true);
   const [crearOpen, setCrearOpen] = useState(false);
   const [aQuitar, setAQuitar] = useState<MiembroEquipo | null>(null);
   const [procesando, setProcesando] = useState(false);
@@ -137,6 +143,7 @@ export function EquipoCard() {
               ) : (
                 <Badge variant="secondary">{ROL_LABEL[m.rol]}</Badge>
               )}
+              <EstadoPin miembro={m} esAdmin={esAdmin} onCambio={refrescarPines} />
               {esAdmin && !m.esVos && (
                 <Button variant="ghost" size="icon" aria-label={`Quitar a ${m.nombre} ${m.apellido} del equipo`} className="h-8 w-8 text-destructive" onClick={() => setAQuitar(m)} disabled={procesando}>
                   <Trash2 className="h-4 w-4" />
@@ -271,5 +278,100 @@ function CrearMiembroDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Estado del PIN de una persona, y las dos acciones que un ADMIN sí puede hacer sobre él.
+ *
+ * NO hay "definir el PIN de otro", y es a propósito: un ADMIN que pudiera escribir el PIN ajeno
+ * podría convertirse en la cajera sin dejar un rastro distinguible de un cambio legítimo. Puede
+ * BORRARLO (se olvidó, o se fue) y DESBLOQUEARLO (se equivocó cinco veces). Definirlo sólo puede
+ * su dueño, desde su propia sesión.
+ */
+function EstadoPin({
+  miembro,
+  esAdmin,
+  onCambio,
+}: {
+  miembro: MiembroEquipo;
+  esAdmin: boolean;
+  onCambio: () => void;
+}) {
+  const { usuarios } = useConmutables(true);
+  const [procesando, setProcesando] = useState(false);
+  // `esVos` no aparece en la lista del conmutador (excluye al propio usuario) y no es un hueco:
+  // tu propio PIN se gestiona en la card "PIN del mostrador", no acá.
+  if (miembro.esVos) return null;
+  const info = usuarios.find((u) => u.id === miembro.id);
+  if (!info) return null;
+
+  const accion = async (fn: () => Promise<void>, titulo: string) => {
+    if (procesando) return;
+    setProcesando(true);
+    try {
+      await fn();
+      onCambio();
+      toast({ variant: 'success', title: titulo });
+    } catch (e) {
+      toast({
+        variant: varianteError(e),
+        title: 'No se pudo',
+        description: e instanceof ApiError ? e.message : undefined,
+      });
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  if (!info.tienePin) {
+    // "Sin PIN" NO es un error ni algo que el admin pueda resolver: es que esa persona todavía no
+    // lo definió. Se dice para que se entienda por qué no aparece en el conmutador.
+    return (
+      <Badge variant="outline" className="text-[10px]" title="No puede recibir la sesión hasta que lo defina desde su cuenta">
+        Sin PIN
+      </Badge>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      {info.bloqueado ? (
+        <Badge variant="warning" className="text-[10px]">
+          PIN bloqueado
+          {info.bloqueadoHasta
+            ? ` hasta ${new Date(info.bloqueadoHasta).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`
+            : ''}
+        </Badge>
+      ) : (
+        <Badge variant="secondary" className="text-[10px]">
+          PIN activo
+        </Badge>
+      )}
+      {esAdmin && info.bloqueado && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-[11px]"
+          disabled={procesando}
+          onClick={() => accion(() => desbloquearPin(miembro.id), `${miembro.nombre} puede volver a usar su PIN`)}
+        >
+          Desbloquear
+        </Button>
+      )}
+      {esAdmin && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-[11px] text-muted-foreground"
+          disabled={procesando}
+          onClick={() =>
+            accion(() => borrarPin(miembro.id), `Se borró el PIN de ${miembro.nombre}. Lo redefine desde su cuenta.`)
+          }
+        >
+          Borrar PIN
+        </Button>
+      )}
+    </div>
   );
 }

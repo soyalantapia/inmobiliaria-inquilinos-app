@@ -34,17 +34,22 @@ export function CargarInquilinoTrigger({
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
-  // En prod no hay POST de inquilino/invitación en el API: deshabilitamos el
-  // botón con tooltip "Próximamente" en vez de abrir el wizard mock que
-  // guarda en localStorage. En demo (!apiEnabled) el flujo sigue intacto.
+  // En prod NO existe un POST de inquilino suelto: el inquilino se crea DENTRO del
+  // alta del contrato (core.ts, tx.inquilino.create). Este botón estaba deshabilitado
+  // con un "Próximamente" y era un callejón sin salida — en la prueba del 03/08 se
+  // leyó como "no me deja cargar el inquilino/contrato", cuando en realidad el camino
+  // existía y estaba en otra pantalla.
+  //
+  // Ahora lleva al alta de contrato con la propiedad ya elegida: el wizard entiende
+  // ?propiedad=<id> y arranca directo en el paso del inquilino.
   if (apiEnabled) {
     return (
       <Button
         variant={variant}
         size={size}
         className={fullWidth ? 'w-full' : ''}
-        disabled
-        title="Próximamente"
+        onClick={() => router.push(`/contratos/nuevo?propiedad=${encodeURIComponent(propiedadId)}`)}
+        title="El inquilino se carga junto con el contrato"
       >
         <UserPlus className="h-4 w-4" />
         {label}
