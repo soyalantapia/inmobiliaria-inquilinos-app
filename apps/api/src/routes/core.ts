@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { nombreUsuario } from '../lib/nombre-usuario.js';
 import { requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
 import { registrarEvento } from '../lib/auditoria.js';
@@ -352,8 +353,14 @@ export async function coreRoutes(app: FastifyInstance) {
       select: { moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
     });
     const esquema = resolverEsquemaMora(rest, inmoMora);
+    // `Contrato.cargadoPor` guarda el ID del usuario, no su nombre. El panel lo imprime tal
+    // cual adentro de frases —«Cargado por cmtj10jgm002bugz… · rechazado por el admin»—, y ya
+    // esperaba un nombre: tiene el fallback `?? 'Usuario desconocido'`. Lo que faltaba era
+    // resolverlo acá. Se resuelve en el campo que el front ya consume, para no dejar dos.
+    const cargadoPorNombre = rest.cargadoPor ? await nombreUsuario(rest.cargadoPor) : null;
     return {
       ...rest,
+      cargadoPor: cargadoPorNombre,
       moraEfectiva: { tipo: esquema.tipo, valor: esquema.valor, origen: esquema.origen },
       liquidaciones: liquidaciones.map((l) => {
         const asOf = l.estado === 'PAGADO' && l.fechaPago ? new Date(l.fechaPago) : now;

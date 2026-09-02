@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { nombreUsuario } from '../lib/nombre-usuario.js';
 import { origenDeReapertura } from '../lib/reapertura-reclamo.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
@@ -171,11 +172,6 @@ async function verificarPin(userId: string, pin: string | undefined, reply: Fast
     return false;
   }
   return true;
-}
-
-async function nombreUsuario(userId: string): Promise<string> {
-  const usuario = await prisma.usuario.findUnique({ where: { id: userId } });
-  return usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : 'Panel';
 }
 
 type Pagador = 'PROPIETARIO' | 'INQUILINO' | 'DEPOSITO';
