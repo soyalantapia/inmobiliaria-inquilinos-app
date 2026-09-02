@@ -441,3 +441,54 @@ falta suma unas pocas pantallas, cada una con su propio PR chico y su test.
 Pero es tu llamada, porque significa **cerrar cinco PRs con trabajo real adentro**. Y hay una
 que va antes que todas: **¿se construye el reenvío de un contrato rechazado?** De esa respuesta
 depende si el trabajo de #41 y #49 es una especificación o se tira.
+
+## El tablero suma pesos y dólares en el mismo número
+
+**Fecha:** 02/09/2026 · **Bloquea:** no urgente, pero el número está mal hoy para cualquier
+inmobiliaria con un contrato en dólares — que en Argentina son casi todas.
+
+### El hecho
+
+Los KPIs de plata del tablero —«Cobrado», «Por cobrar», «En mora», «A rendir a propietarios»—
+suman **todos los contratos juntos, sin mirar la moneda**. Un alquiler de USD 1.200 entra al
+mismo total que uno de $600.000, uno a uno. Lo mismo los gastos de caja, que tienen su propia
+moneda y se restan sin convertir.
+
+No es que falte una cotización: **el número no significa nada**. No es ni pesos ni dólares.
+
+### El repo ya decidió qué hacer con esto, en otro lado
+
+En el detalle por propietario, cuando hay dos monedas, el código hace esto —y está comentado—:
+
+> *«Mezcladas → 0 y sin moneda: la UI muestra "—" en vez de un total falso.»*
+
+Y la rendición **sólo toma los movimientos de SU moneda**. O sea que la regla existe y está
+aplicada donde alguien la pensó. Al tablero no llegó.
+
+### Por qué no lo arreglé solo
+
+Porque aplicar esa misma regla al tablero **cambia lo que ve la administradora todos los días**:
+el KPI principal pasaría a mostrar «—», o a partirse en dos números, para cualquier cartera con
+un contrato en dólares. Eso es una decisión de producto, no una corrección.
+
+Las tres salidas, con su costo:
+
+**A · La regla que ya existe: si hay mezcla, «—».** Consistente con el resto del sistema y
+honesta. **Costo:** una cartera con un solo contrato en dólares pierde el número del tablero
+entero, que es el que se mira primero a la mañana.
+
+**B · Dos números, uno por moneda.** «A rendir: $1.240.000 · US$ 3.400». **Costo:** hay que
+rehacer las tarjetas del tablero, y hay que decidir qué pasa con los porcentajes (la
+cobrabilidad, la ocupación).
+
+**C · Convertir a pesos con una cotización.** **Costo:** el sistema no tiene cotización de nada,
+y meterla es un componente nuevo que envejece cada día. Sería la primera vez que el producto
+inventa un número que nadie cargó.
+
+### La pregunta
+
+**¿A, B o C?** Mi lectura es **B**: es lo que la administradora ya tiene en la cabeza —lleva las
+dos monedas por separado— y no le saca información como A. Pero es la más cara de las tres.
+
+*(Lo que sí arreglé aparte, porque no dependía de esto: el KPI restaba el alquiler de la oficina
+y los sueldos de lo que hay que rendirle a los propietarios, todos los meses y para siempre.)*
