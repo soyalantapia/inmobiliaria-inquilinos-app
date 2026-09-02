@@ -380,3 +380,64 @@ Y la de al lado, que es la que cierra el círculo: **¿se construye
 `POST /contratos/:id/reenviar-aprobacion`?** Corregir un borrador rechazado ya se puede desde
 hoy (#51); volver a mandarlo a aprobación, no. Sin eso, un contrato rechazado es papel mojado
 igual, se borren o no los documentos. El PR **#49** construye las dos mitades y sigue abierto.
+
+## Los PRs de julio: qué quedó vivo del alta de contrato
+
+**Fecha:** 02/09/2026 · **Bloquea:** decidir el alcance. Nada urgente, pero cada semana que
+pasa el rebase es más caro.
+
+### Qué se hizo con los 14
+
+Antes de rebasar nada se midió, uno por uno, si el problema que cada PR dice arreglar **sigue
+existiendo en el `main` de hoy** — después de los 62 PRs que entraron. El resultado:
+
+| | |
+|---|---|
+| **Entraron** | #7 (páginas legales) · #38 (instalar la app) · #51 (corregir borrador) · #5 (landing) · #47 (semáforo del DNI, por cherry-pick en #135) |
+| **Cerrados: ya estaban arreglados** | #4 · #45 · #46 — los tres por otra mano, con otro nombre, y en mejor versión |
+| **Quedan abiertos** | #37 · #39 · #41 · #44 · #48 · #49 |
+
+De los que entraron, dos traían sorpresas: **#5** revivía una promesa que sacamos hoy («el
+ajuste por índice se aplica solo»), y **#51** violaba un guard que entró después de que se
+escribiera. Las dos se resolvieron a mano.
+
+Y del triage salieron **dos defectos vivos** que estaban enterrados en PRs demasiado grandes
+para rebasar, y se rescataron solos: la comisión tipeada con coma se guardaba multiplicada por
+diez (#138), y el rechazo borra los documentos del inquilino (arriba en este mismo archivo).
+
+### Los seis que quedan son UNA sola cosa
+
+#37, #39, #41, #44 y #48 son el **rework del alta de contrato** de julio. #48 es la rama de
+integración que junta a los demás: **5.638 líneas**, contra un `main` que se movió **~700
+commits** desde su punto de partida.
+
+Y están medio hechos **por otro lado**: mientras esas ramas esperaban, alguien resolvió la mitad
+de cada una con otro nombre. La bandeja hoy ya muestra el contrato entero (`89132c93`), la
+propiedad de caja ya es opcional, la cuenta de cobranza ya se carga sin salir del alta
+(`b00f5c19`, y mejor que en el PR).
+
+Lo que sigue faltando de cada uno es chico y no se parece a lo que el PR dice en el título:
+
+- **#37** — cuenta obligatoria, cuenta predeterminada, y bloquear la archivada. *Y un guard de
+  dos líneas en el KPI «A rendir a propietarios», que hoy resta para siempre los gastos sin
+  propiedad y suma los dólares 1 a 1.*
+- **#39** — el cartel de cancelar sigue mintiendo («vas a perder el progreso», y el borrador
+  sobrevive).
+- **#41** — el preview de plata antes de aprobar: cuántas cuotas se van a generar, cuánto se da
+  por cobrado, la deuda inicial.
+- **#44** — el detalle del contrato sigue con Aprobar/Rechazar en «Próximamente», y
+  `GET /contratos/:id` imprime el user id crudo en vez del nombre.
+- **#49** — corregir y **reenviar** un contrato rechazado.
+
+### La pregunta
+
+**¿Se rebasan, o se reescribe lo que queda contra el `main` de hoy?**
+
+Mi lectura: **reescribir**. Rebasar 5.638 líneas contra 700 commits de deriva, sobre
+`core.ts`, `plata.ts` y el wizard del alta —los tres archivos más calientes del repo— es donde
+se pierde trabajo en silencio, y hoy ya sabemos que la mitad de lo que traen ya está. Lo que
+falta suma unas pocas pantallas, cada una con su propio PR chico y su test.
+
+Pero es tu llamada, porque significa **cerrar cinco PRs con trabajo real adentro**. Y hay una
+que va antes que todas: **¿se construye el reenvío de un contrato rechazado?** De esa respuesta
+depende si el trabajo de #41 y #49 es una especificación o se tira.
