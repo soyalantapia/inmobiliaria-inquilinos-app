@@ -193,8 +193,20 @@ export async function metricasRoutes(app: FastifyInstance) {
           fechaInicio: { gte: desde, lt: hasta },
         },
       }),
+      // "ABIERTOS" ES UN ESTADO, NO UNA VENTANA. Esto contaba los reclamos CREADOS en el mes,
+      // sin filtrar por estado, bajo un rótulo que dice "Reclamos abiertos". Tres consecuencias:
+      //
+      //   · los RECHAZADOS sumaban a "abiertos";
+      //   · un reclamo creado Y resuelto en el mes sumaba a las DOS tarjetas —ésta y
+      //     `reclamosResueltos`, que sí filtra por estado—, y las dos se leen como excluyentes;
+      //   · y un reclamo abierto de hace tres meses, que es el que hay que ir a resolver, no
+      //     aparecía en ninguna.
+      //
+      // Sin ventana de fecha a propósito: "abiertos" es una foto de HOY. Queda al lado de
+      // "resueltos", que sí es del período, y eso está bien: backlog abierto contra resueltos
+      // del mes son dos preguntas distintas y las dos sirven.
       prisma.reclamo.count({
-        where: { inmobiliariaId: u.inmobiliariaId, createdAt: { gte: desde, lt: hasta } },
+        where: { inmobiliariaId: u.inmobiliariaId, estado: { in: ['ABIERTO', 'EN_CURSO'] } },
       }),
       prisma.reclamo.count({
         where: {
