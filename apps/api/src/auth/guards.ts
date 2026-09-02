@@ -12,6 +12,7 @@ import {
   type JwtUsuario,
 } from '@llave/shared';
 import { prisma } from '../db.js';
+import { linkDeVisitaVencido } from '../lib/vigencia-link-visita.js';
 
 /** Verifica el Bearer token y devuelve el payload tipado. 401 si falta/inválido. */
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<JwtPayload | null> {
@@ -243,7 +244,13 @@ export async function requireProfesionalVisita(
   const payload = parsed.data;
   const visita = await prisma.visitaProfesional.findUnique({
     where: { id: payload.visitaId },
-    select: { inmobiliariaId: true, profesionalId: true },
+    // `listoAt` y el reclamo, para revalidar la VIGENCIA del link en cada escritura.
+    select: {
+      inmobiliariaId: true,
+      profesionalId: true,
+      listoAt: true,
+      reclamo: { select: { estado: true, createdAt: true } },
+    },
   });
   if (
     !visita ||
@@ -251,6 +258,18 @@ export async function requireProfesionalVisita(
     visita.inmobiliariaId !== payload.inmobiliariaId
   ) {
     await reply.code(401).send({ message: 'Tu acceso a esta visita fue revocado' });
+    return null;
+  }
+  // LA MISMA REGLA QUE EL CANJE DEL LINK, y acá faltaba.
+  //
+  // La sesión dura tres días; las reglas de vigencia (48 h post-LISTO, reclamo cerrado o
+  // rechazado, 60 días de antigüedad) vivían SÓLO en `GET /visitas-publicas/:token`. Así que
+  // un JWT emitido antes seguía autorizando escrituras cuando el link ya contestaba 410 —
+  // incluido `POST /listo`, que cierra el reclamo, escribe `costoTrabajo` e imputa el costo
+  // contra el inquilino o el depósito. `uploads.ts` ya revalidaba para este mismo token: era
+  // el vecino que estaba bien.
+  if (linkDeVisitaVencido(visita)) {
+    await reply.code(401).send({ message: 'Este link ya venció. Pedile uno nuevo a la inmobiliaria.' });
     return null;
   }
   return { visitaId: payload.visitaId, inmobiliariaId: visita.inmobiliariaId, profesionalId: visita.profesionalId };
