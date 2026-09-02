@@ -25,6 +25,8 @@ export interface RedProfesionalItem {
 
 export interface RedProfesionalFicha extends RedProfesionalItem {
   aseguradora: string | null;
+  /** El número que hace falta para hacer el reclamo al seguro. */
+  nroPoliza: string | null;
   polizaVence: string | null;
   asignados: number;
   resueltos: number;

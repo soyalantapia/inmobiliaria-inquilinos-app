@@ -1405,6 +1405,15 @@ export async function operacionRoutes(app: FastifyInstance) {
       zona: red.zona,
       asegurado: estaAsegurado(red),
       aseguradora: red.aseguradora ?? null,
+      // EL NÚMERO DE PÓLIZA SE ACEPTABA, SE GUARDABA, Y NINGÚN GET LO DEVOLVÍA. La ficha exponía
+      // `asegurado`, `aseguradora` y `polizaVence`, y nada más — el número quedaba en la base sin
+      // ninguna pantalla que lo sacara. El delator estaba en el propio formulario: `aseguradora`
+      // y `polizaVence` se precargan de la ficha y `nroPoliza` arrancaba en `''`.
+      //
+      // El escenario: en marzo se carga "POL-2026-48721". En agosto el plomero inunda un
+      // departamento, la inmobiliaria abre la ficha para hacer el reclamo al seguro y lee
+      // "Asegurado por La Caja · vence 12/03/2027". Abre "Editar" y el campo está vacío.
+      nroPoliza: red.nroPoliza ?? null,
       polizaVence: red.polizaVence ? red.polizaVence.toISOString().slice(0, 10) : null,
       ...ficha,
       // El teléfono/email de contacto sólo si ya lo contraté (es mío); si no, null
