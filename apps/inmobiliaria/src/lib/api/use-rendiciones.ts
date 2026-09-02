@@ -17,6 +17,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiEnabled, apiFetch } from './client';
 import { ensureApiSession } from './session';
+import { useEffect, useState } from 'react';
+import { obtenerRendicion, periodoActual } from '@/lib/rendiciones-storage';
 
 // Body exacto que espera POST /rendiciones (handler en apps/api/src/routes/plata.ts).
 export interface RendirInput {
@@ -145,4 +147,40 @@ export function useRendicionesList(
   // `error` explícito: "0 rendiciones" y "no pudimos preguntar" son cosas distintas, y la
   // pantalla que las confunde le dice al operador que ya se le rindió a todo el mundo.
   return { rendiciones: q.data ?? [], cargando: q.isPending, error: q.isError };
+}
+
+
+/**
+ * A qué propietarios YA se les rindió el período en curso.
+ *
+ * Existe porque el tablero y `/propietarios` respondían distinto a la misma pregunta: el
+ * tablero no consultaba rendiciones en absoluto, así que su contador "propietarios por rendir"
+ * nunca bajaba dentro del mes, y la card linkeaba a una lista que sí las descontaba. El
+ * operador hacía click en "3 por rendir" y caía en una lista vacía.
+ *
+ * En prod el dato sale del server; en la build DEMO, de `localStorage`. Y esa lectura va en un
+ * EFECTO, no en el cuerpo: `localStorage` no existe en el render del servidor, así que leerlo
+ * derecho daría un número en el HTML prerenderizado y otro después de hidratar.
+ */
+export function useRendidosDelPeriodo(propietarioIds: readonly string[]): {
+  yaRendidos: Set<string>;
+  cargando: boolean;
+} {
+  const { rendiciones, cargando } = useRendicionesList();
+  const periodo = periodoActual();
+  const [deDemo, setDeDemo] = useState<Set<string>>(new Set());
+
+  // La key estable evita el loop: `propietarioIds` es un array nuevo en cada render.
+  const idsKey = propietarioIds.join(',');
+  useEffect(() => {
+    if (apiEnabled) return;
+    setDeDemo(new Set(propietarioIds.filter((id) => obtenerRendicion(id, periodo))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey, periodo]);
+
+  if (!apiEnabled) return { yaRendidos: deDemo, cargando: false };
+  return {
+    yaRendidos: new Set(rendiciones.filter((r) => r.periodo === periodo).map((r) => r.propietarioId)),
+    cargando,
+  };
 }

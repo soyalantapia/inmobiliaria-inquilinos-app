@@ -30,6 +30,9 @@ import { enriquecerPropiedad, type PropiedadEnriquecida } from '@/lib/propiedade
 import type { DashboardStats } from '@/lib/dashboard-helpers';
 import { parseLocal } from '@/lib/format';
 import { porcionAlquilerCobrada } from '@/lib/alquiler-cobrado';
+import { faltaRendirle } from '@/lib/falta-rendirle';
+import { cobradoRendible, plataDelContrato } from '@/lib/plata-del-contrato';
+import { useRendidosDelPeriodo } from './use-rendiciones';
 import {
   cargarMovimiento as cargarMovimientoLocal,
   eliminarMovimiento as eliminarMovimientoLocal,
@@ -1562,6 +1565,17 @@ export function useDashboard(): DashboardData {
   const { propietarios, cargando: cargOwn } = usePropietarios();
   const { liquidaciones, cargando: cargLiq } = useLiquidaciones();
   const { movimientos: movsCaja, cargando: cargCaja } = useCaja();
+  // El tablero NO consultaba rendiciones, así que "propietarios por rendir" no medía eso:
+  // medía "cuántos dueños tienen alquiler cobrado este mes", y NUNCA bajaba dentro del
+  // período por más rendiciones que se hicieran. La card linkea a
+  // `/propietarios?filtro=sin-rendir`, y esa pantalla SÍ descuenta lo rendido: el operador
+  // hacía click en "3 por rendir" y caía en una lista vacía. Dos pantallas del mismo panel
+  // contradiciéndose sobre plata.
+  //
+  // Efecto colateral que también se arregla: el empty state "Todo al día — no tenés acciones
+  // urgentes" exige `porRendir === 0`, así que en cualquier cuenta que hubiera cobrado algo
+  // ese cartel era inalcanzable PARA SIEMPRE.
+  const { yaRendidos, cargando: cargRend } = useRendidosDelPeriodo(propietarios.map((p) => p.id));
 
   // Excluye PROPIETARIO_DIRECTO igual que dashboard-helpers (demo) y /pagos: esa
   // plata va directo del inquilino al dueño, no la cobra/rinde la inmo. (El path
@@ -1576,29 +1590,22 @@ export function useDashboard(): DashboardData {
   // migración, sin Pagos), y "En mora" muestra la DEUDA TOTAL del contrato
   // (todas las cuotas vencidas + mora, `deudaTotal`), no solo la cuota del mes
   // — un moroso de 10 meses figuraba por 1 sola cuota.
+  // La regla de cuánto aporta CADA contrato vive en `lib/plata-del-contrato.ts`, con sus tests:
+  // acá era un switch inline y ahí se le escapó el caso que más importa (VENCIDO con pago
+  // parcial, que aportaba 0 a "Cobrado" y hacía bajar el número solo).
   let cobrado = 0;
   let porCobrar = 0;
+  let mora = 0;
   for (const c of activos) {
-    switch (c.estadoPagoActual) {
-      case 'PAGADO':
-        cobrado += c.montoPagado || c.monto;
-        break;
-      case 'PARCIAL':
-        cobrado += c.montoPagado ?? 0;
-        porCobrar += c.saldo ?? Math.max(0, c.monto - (c.montoPagado ?? 0));
-        break;
-      case 'PENDIENTE':
-        porCobrar += c.saldo ?? c.monto;
-        break;
-      default:
-        break; // VENCIDO va a "En mora"
-    }
+    const p = plataDelContrato(c);
+    cobrado += p.cobrado;
+    porCobrar += p.porCobrar;
+    mora += p.mora;
   }
+  // Una sola fuente para el conteo y para la lista de abajo: tener dos formas de contar "los
+  // morosos" es exactamente el defecto que este PR arregla en otro renglón.
   const moraContratos = activos.filter((c) => c.estadoPagoActual === 'VENCIDO');
-  const enMora = {
-    monto: moraContratos.reduce((a, c) => a + (c.deudaTotal ?? c.saldo ?? c.monto), 0),
-    cantidad: moraContratos.length,
-  };
+  const enMora = { monto: mora, cantidad: moraContratos.length };
   const totalActivos = cobrado + porCobrar + enMora.monto;
 
   // Comisión real (sólo en prod): cada propietario trae su comisionPct y lo que se
@@ -1615,7 +1622,9 @@ export function useDashboard(): DashboardData {
   // porque el cap la corta, y las expensas por la proporción.
   const alquilerCobrado = apiEnabled
     ? activos.reduce((acc, c) => {
-        const pagado = c.estadoPagoActual === 'PAGADO' ? (c.montoPagado || c.monto) : c.estadoPagoActual === 'PARCIAL' ? (c.montoPagado ?? 0) : 0;
+        // VENCIDO incluido, por el mismo motivo que arriba: lo cobrado antes de atrasarse sigue
+        // cobrado, y su porción de alquiler sigue siendo rendible.
+        const pagado = cobradoRendible(c);
         if (pagado <= 0) return acc;
         // La base se arma sumando componentes, así que ya viene sin mora. Mismo helper que
         // el KPI de arriba, que es donde esto estaba mal.
@@ -1639,7 +1648,22 @@ export function useDashboard(): DashboardData {
         .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion)
         .reduce((a, m) => a + m.monto, 0)
     : 0;
-  const aRendirMes = Math.max(0, Math.round(cobrado - comisionMes - gastosPendientes));
+  // LA BASE ES EL ALQUILER COBRADO, NO TODO LO QUE ENTRÓ.
+  //
+  // Salía de `cobrado`, que incluye expensas y mora. Las expensas van al consorcio y la mora es
+  // ingreso de la inmobiliaria —lo dice `packages/shared/src/prorrateo.ts`—, así que ninguna de
+  // las dos se le rinde al dueño. El propio bloque de arriba ya había arreglado esto para la
+  // COMISIÓN, con el comentario escrito, y dejó la base del "A rendir" sin tocar.
+  //
+  // El tamaño del error, en el caso feliz: alquiler 500.000 + expensas 100.000, comisión 8%, el
+  // inquilino paga todo en fecha. El tablero decía 600.000 − 48.000 = 552.000. `/propietarios`
+  // decía 500.000 × 0,92 = 460.000. Noventa y dos mil pesos de diferencia el mismo día, y el
+  // número del tablero es el que se mira primero.
+  //
+  // QUEDA UNA DIFERENCIA MENOR Y DELIBERADA: acá se restan los gastos de caja pendientes y
+  // `/propietarios` no los conoce. Es paridad con el demo (`calcularDashboardStats`) y sacarlo
+  // es otra decisión; la divergencia grande era la base.
+  const aRendirMes = Math.max(0, Math.round(alquilerCobrado - comisionMes - gastosPendientes));
 
   const totalProps = propiedades.length;
   const alquiladas = propiedades.filter((p) => p.propiedad.estado === 'ALQUILADA').length;
@@ -1671,7 +1695,9 @@ export function useDashboard(): DashboardData {
   }));
 
   const propietariosSinCbu = propietarios.filter((p) => !p.cbuAlias).length;
-  const porRendir = propietarios.filter((p) => p.totalRecibirMes > 0).length;
+  // Mismo criterio que `/propietarios`, importado del mismo lugar: `totalRecibirMes` vale 0
+  // cuando el dueño cobró en dos monedas, así que ese cero no significa "nada que rendir".
+  const porRendir = propietarios.filter((p) => faltaRendirle(p, yaRendidos.has(p.id))).length;
 
   // Próximos vencimientos: liquidaciones no pagadas que vencen dentro de 14 días.
   const hoy = new Date();
@@ -1699,7 +1725,8 @@ export function useDashboard(): DashboardData {
     proximosVencimientos,
     // Incluye propietarios y liquidaciones: el dashboard deriva comisión/a-rendir y
     // próximos vencimientos de esos datos → sin esto se mostraba antes de tenerlos.
-    cargando: cargC || cargP || cargOwn || cargLiq || cargCaja,
+    // `cargRend` va acá o el contador parpadea ALTO —sin descontar nada— antes de asentarse.
+    cargando: cargC || cargP || cargOwn || cargLiq || cargCaja || cargRend,
     error: errContratos || errProps,
     propiedadesTotal: propiedades.length,
   };
