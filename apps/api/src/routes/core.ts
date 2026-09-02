@@ -1021,6 +1021,13 @@ export async function coreRoutes(app: FastifyInstance) {
         //
         // Un `''` EXPLÍCITO sí lo borra: querer sacarle el email es legítimo.
         ...(d.email !== undefined ? { email: normalizarEmail(d.email) } : {}),
+        // T-23-N2-N1 · Si el email CAMBIA, la verificación se cae. Lo que se había probado es
+        // que la casilla vieja era suya; de la nueva no se sabe nada todavía. Dejar la marca
+        // puesta sería peor que no tenerla: diría "verificado" sobre una dirección que nadie
+        // confirmó, que es exactamente el estado que esta columna vino a hacer visible.
+        ...(d.email !== undefined && normalizarEmail(d.email) !== prop.email
+          ? { emailVerificadoAt: null }
+          : {}),
         ...(d.telefono !== undefined ? { telefono: d.telefono } : {}),
         ...(d.cbuAlias !== undefined ? { cbuAlias: d.cbuAlias || null } : {}),
         ...(d.comisionPct != null ? { comisionPct: d.comisionPct } : {}),

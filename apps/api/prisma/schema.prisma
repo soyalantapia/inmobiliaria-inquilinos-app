@@ -1227,6 +1227,20 @@ model Propietario {
    * Se escribe en el OTP verify, best-effort: si falla, el dueño entra igual. Un rastro que
    * rompe el login es peor que no tener rastro.
    */
+  /// T-23-N2-N1 · Cuándo se probó que este email es de esta persona.
+  ///
+  /// `Propietario.email` es LA LLAVE DE ENTRADA al portal: el OTP se manda ahí. Pero lo tipea
+  /// el staff a mano y hasta acá nadie lo verificaba nunca — con un typo, el código de acceso a
+  /// una cartera ajena viaja a la casilla equivocada, y no hay forma de saber a cuántos les pasó.
+  ///
+  /// No hace falta un circuito de confirmación aparte: **completar el OTP YA prueba control de
+  /// la casilla**. Se marca ahí, que es gratis y es la misma prueba que pediría un doble opt-in.
+  ///
+  /// 🔴 NO BLOQUEA A NADIE, a propósito. Qué se hace con los propietarios que nunca entraron
+  /// —dejarlos afuera del portal es lo seguro y deja al día 1 sin la cartera existente— es una
+  /// decisión del dueño. Esto la habilita: primero se mide, después se decide. Mismo camino que
+  /// tomó el candado de archivos (`UPLOADS_AMBITO`), que salió observando antes de bloquear.
+  emailVerificadoAt     DateTime?
   ultimoAccesoAt DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
