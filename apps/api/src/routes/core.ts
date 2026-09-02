@@ -2020,6 +2020,100 @@ export async function coreRoutes(app: FastifyInstance) {
     return { imageUrl: nueva };
   });
 
+  // ===== Corregir un contrato TODAVÍA EN BORRADOR =====
+  //
+  // `fechaInicio` no tenía NINGÚN camino de escritura después del alta: se
+  // escribía una sola vez en POST /contratos y ningún otro update la tocaba.
+  // `fechaFin` sólo se movía HACIA ADELANTE por /renovar. No hay PUT ni PATCH
+  // genérico de contrato, ni DELETE: una vigencia mal tipeada no tenía salida
+  // por producto, y no es cosmética — fechaInicio es el arranque del devengo.
+  // Con el inicio adelantado, el contrato nace con cuotas VENCIDAS que el
+  // inquilino nunca debió y figura moroso; atrasado, esos meses no se facturan
+  // nunca y el propietario cobra de menos.
+  //
+  // 🔴 ESTO CUBRE SÓLO EL CASO SEGURO, a propósito: el contrato en BORRADOR, que
+  // por definición todavía no devengó nada. Corregir las fechas de un contrato
+  // ACTIVO es otro problema y mucho más caro: `generarLiquidacionesContrato` usa
+  // createMany({ skipDuplicates: true }), o sea es puramente ADITIVO. Mover el
+  // inicio hacia adelante NO borra las liquidaciones sobrantes: quedan VENCIDO,
+  // siguen generando mora y pueden tener pagos CONCILIADO colgando que ya
+  // movieron caja y rendiciones al propietario. Eso es una decisión de dominio
+  // (¿qué se hace con lo ya cobrado?), no un endpoint. No lo resolvemos acá y no
+  // lo dejamos a medias: el guard de abajo es explícito.
+  //
+  // El caso que SÍ resuelve es el real de la oficina: alguien carga el contrato,
+  // queda pendiente, y quien aprueba ve la fecha equivocada. Antes la única
+  // salida era rechazarlo y cargarlo de nuevo entero.
+  app.put('/contratos/:id/borrador', async (request, reply) => {
+    const u = await requireUsuario(request, reply, 'contratos.crear');
+    if (!u) return;
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        fechaInicio: z.coerce.date().optional(),
+        fechaFin: z.coerce.date().optional(),
+        diaPago: z.number().int().min(1).max(31).optional(),
+        monto: z.number().positive().optional(),
+        montoExpensas: z.number().nonnegative().nullable().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!body.success) return reply.code(400).send({ message: 'Datos del contrato inválidos' });
+
+    const contrato = await prisma.contrato.findFirst({
+      where: { id, inmobiliariaId: u.inmobiliariaId },
+      select: { id: true, estado: true, fechaInicio: true, fechaFin: true },
+    });
+    if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    if (contrato.estado !== 'BORRADOR') {
+      return reply.code(409).send({
+        message:
+          'Este contrato ya está activo: sus cuotas ya se generaron. Para cambiarle el monto usá "Ajustar alquiler"; para la vigencia, "Renovar".',
+      });
+    }
+    // Defensa en profundidad: un BORRADOR no debería tener liquidaciones, pero si
+    // por algún camino las tuviera, cambiarle las fechas dejaría cuotas colgadas
+    // de un período que ya no existe. Preferimos negarnos antes que ensuciar.
+    const devengado = await prisma.liquidacion.count({ where: { contratoId: id } });
+    if (devengado > 0) {
+      return reply.code(409).send({
+        message: 'Este borrador ya tiene cuotas generadas: no se le pueden cambiar las fechas.',
+      });
+    }
+
+    const fechaInicio = body.data.fechaInicio ?? contrato.fechaInicio;
+    const fechaFin = body.data.fechaFin ?? contrato.fechaFin;
+    if (fechaFin <= fechaInicio) {
+      return reply.code(400).send({ message: 'La fecha de fin tiene que ser posterior a la de inicio' });
+    }
+
+    const actualizado = await prisma.contrato.update({
+      where: { id },
+      data: {
+        ...(body.data.fechaInicio ? { fechaInicio: body.data.fechaInicio } : {}),
+        ...(body.data.fechaFin ? { fechaFin: body.data.fechaFin } : {}),
+        ...(body.data.diaPago ? { diaPago: body.data.diaPago } : {}),
+        ...(body.data.monto ? { monto: body.data.monto } : {}),
+        // `montoExpensas` distingue null (borrar) de undefined (no tocar): sin eso
+        // no habría forma de sacar unas expensas cargadas por error.
+        ...(body.data.montoExpensas !== undefined ? { montoExpensas: body.data.montoExpensas } : {}),
+      },
+    });
+    await prisma.eventoContrato.create({
+      data: {
+        inmobiliariaId: u.inmobiliariaId,
+        contratoId: id,
+        tipo: 'AJUSTE_APLICADO',
+        titulo: 'Corrección del borrador antes de aprobarlo',
+        detalle: `Vigencia ${actualizado.fechaInicio.toISOString().slice(0, 10)} → ${actualizado.fechaFin
+          .toISOString()
+          .slice(0, 10)} · canon ${actualizado.monto} ${actualizado.moneda}`,
+        fecha: new Date(),
+        autor: u.userId,
+      },
+    });
+    return actualizado;
+  });
+
   // Editar el esquema de mora de un contrato existente. `tipo: null` = volver a
   // heredar el default de la inmobiliaria (limpia también la tasa legacy, que si
   // no la cascada la seguiría prefiriendo). Afecta las liquidaciones IMPAGAS
