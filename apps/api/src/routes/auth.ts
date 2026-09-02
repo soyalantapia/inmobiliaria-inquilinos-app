@@ -17,6 +17,7 @@ import { requireAuth, requirePersona, requireUsuario } from '../auth/guards.js';
 import { verificarPinConmutador, pinEsTrivial } from '../auth/pin-conmutador.js';
 import { enviarOtp, enviarBienvenidaInmobiliaria } from '../mailer.js';
 import { registrarEvento } from '../lib/auditoria.js';
+import { esperarPisoDeRechazo } from '../lib/piso-de-rechazo.js';
 
 const TOKEN_TTL = '15d';
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -31,7 +32,7 @@ const OTP_TTL_MS = 10 * 60 * 1000;
 const codeEnLog = (code: string): { code?: string } =>
   process.env.NODE_ENV === 'production' ? {} : { code };
 /** Email del inquilino demo (Mariela). El front entra con ?demo=1. */
-const DEMO_INQUILINO_EMAIL = 'mariela.sosa@gmail.com';
+const DEMO_INQUILINO_EMAIL = 'mariela.sosa@example.com';
 
 /**
  * Fin del acceso gratis pre-lanzamiento. Todas las cuentas auto-registradas
@@ -103,6 +104,9 @@ async function alquileresDeEmail(email: string) {
     estado: i.contrato?.estado ?? null,
   }));
 }
+
+/** El único mensaje de rechazo del OTP: no distingue "no existe" de "código equivocado". */
+const RECHAZO_OTP = 'Código inválido o vencido';
 
 export async function authRoutes(app: FastifyInstance) {
   // --- Panel inmobiliaria: email + password ---
@@ -446,7 +450,9 @@ export async function authRoutes(app: FastifyInstance) {
   // el techo del tráfico normal.
   app.post('/auth/otp/verify', { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = OtpVerifySchema.safeParse(request.body);
+    // El 400 NO se empareja: es un payload mal formado, no dice nada de ningún email.
     if (!body.success) return reply.code(400).send({ message: 'Email y código de 6 dígitos requeridos' });
+    const desdeVerify = process.hrtime.bigint();
 
     // El OTP prueba que quien entra controla el email. La identidad concreta (a
     // qué alquiler entra) se elige DESPUÉS: una persona puede tener varios
@@ -455,8 +461,20 @@ export async function authRoutes(app: FastifyInstance) {
     // emite el token del contrato elegido. Así "una persona, un login, varios
     // alquileres" sin atar la sesión a una sola inmobiliaria.
     const emailLc = body.data.email.toLowerCase();
+    // UN SOLO MENSAJE Y UN SOLO TIEMPO PARA LOS DOS RECHAZOS.
+    //
+    // Acá el email inexistente devolvía «Código inválido» y el email de un inquilino con el
+    // código equivocado devolvía «Código inválido o vencido». Dos strings distintos: el
+    // endpoint decía, en el texto, si un email pertenece a un inquilino de la plataforma.
+    //
+    // Y el reloj decía lo mismo: el camino del email inexistente vuelve acá, sin la segunda
+    // query ni los `bcrypt.compareSync`. Es el mismo par —mensaje y tiempo— que el portal del
+    // propietario ya había cerrado; el login del inquilino se pasó por alto.
     const inquilinos = await prisma.inquilino.findMany({ where: { email: emailLc }, select: { id: true } });
-    if (inquilinos.length === 0) return reply.code(401).send({ message: 'Código inválido' });
+    if (inquilinos.length === 0) {
+      await esperarPisoDeRechazo(desdeVerify);
+      return reply.code(401).send({ message: RECHAZO_OTP });
+    }
 
     let verificado = false;
     if (app.env.DEMO_MODE && body.data.code === '000000' && process.env.NODE_ENV !== 'production') {
@@ -477,7 +495,10 @@ export async function authRoutes(app: FastifyInstance) {
         });
       }
     }
-    if (!verificado) return reply.code(401).send({ message: 'Código inválido o vencido' });
+    if (!verificado) {
+      await esperarPisoDeRechazo(desdeVerify);
+      return reply.code(401).send({ message: RECHAZO_OTP });
+    }
 
     const personaToken = app.jwt.sign(
       { kind: 'persona', email: emailLc } satisfies JwtPersona,
@@ -846,7 +867,20 @@ export async function authRoutes(app: FastifyInstance) {
           entidadId: destino.id,
           entidadDescripcion: `${destino.nombre} ${destino.apellido}`.trim(),
         });
-        return reply.code(r.code).send(r);
+        // LA HORA DEL BLOQUEO, SÓLO AL ADMIN — el mismo criterio que su endpoint hermano.
+        //
+        // `send(r)` mandaba el objeto entero, y en el 423 eso incluye `bloqueadoHasta`: el
+        // PIN de OTRA persona. `GET /auth/usuario/conmutables` esconde ese dato a propósito,
+        // con el motivo escrito: «a un tercero le diría cuándo volver a probar, que es justo
+        // lo que un atacante quiere saber». Acá salía igual, a cualquier rol.
+        //
+        // (El `send(r)` de `/auth/pantalla/desbloquear` NO es este caso: ahí se verifica el
+        // PIN PROPIO, y saber cuándo se desbloquea el de uno mismo es la respuesta correcta.)
+        const esAdminConmutador = u.rol === 'ADMIN';
+        return reply.code(r.code).send({
+          ...r,
+          ...('bloqueadoHasta' in r && !esAdminConmutador ? { bloqueadoHasta: null } : {}),
+        });
       }
 
       const payload: JwtUsuario = {

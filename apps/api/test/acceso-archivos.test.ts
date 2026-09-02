@@ -31,6 +31,7 @@ const dbFalso = {
   inquilino: { count: vi.fn() },
   documento: { count: vi.fn() },
   visitaProfesional: { count: vi.fn() },
+  reclamoEvento: { count: vi.fn() },
 };
 vi.mock('../src/db.js', () => ({ prisma: dbFalso }));
 
@@ -47,7 +48,7 @@ const panel = { kind: 'usuario' as const, tenant: TENANT, userId: 'usr_1' };
 /** Por defecto: no hay dueño registrado y ninguna fila lo referencia. */
 function nadaEncontrado() {
   dbFalso.archivoSubido.findUnique.mockResolvedValue(null);
-  const tablas = ['pago', 'boletaServicio', 'reclamo', 'documentoContrato', 'comprobante', 'inquilino', 'documento', 'visitaProfesional'] as const;
+  const tablas = ['pago', 'boletaServicio', 'reclamo', 'documentoContrato', 'comprobante', 'inquilino', 'documento', 'visitaProfesional', 'reclamoEvento'] as const;
   for (const t of tablas) dbFalso[t].count.mockResolvedValue(0);
   dbFalso.coInquilino.findUnique.mockResolvedValue(null);
 }
@@ -119,6 +120,36 @@ describe('T-72 — vía 2: lo histórico, sin backfill', () => {
   it('el profesional ve la foto del reclamo de SU visita', async () => {
     dbFalso.visitaProfesional.count.mockResolvedValue(1);
     expect(await puedeLeerArchivo(MIO, profesional)).toBe(true);
+  });
+
+  // TERCERA AUDITORÍA · las dos columnas que la lista se había salteado. Las dos las
+  // renderiza la PWA del inquilino, en pantallas que esta misma función ya cubría a medias.
+  it('el inquilino lee el ADJUNTO DEL CHAT del reclamo, no sólo la foto del reclamo', async () => {
+    // Con el bug: false. El timeline (`reclamo-timeline.tsx`) pinta los dos uno al lado del
+    // otro, y `estaEnSuAmbito` sólo miraba `reclamo.fotoUrl`. Cuando el adjunto lo manda la
+    // inmobiliaria, la vía 1 tampoco salva: la fila de dueño queda a nombre del panel.
+    dbFalso.reclamoEvento.count.mockResolvedValue(1);
+    expect(await puedeLeerArchivo(MIO, inquilino)).toBe(true);
+    // Y con el alcance del CONTRATO, como los otros cinco: no basta con que exista en el tenant.
+    expect(dbFalso.reclamoEvento.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ reclamo: { contratoId: 'cnt_A' } }),
+      }),
+    );
+  });
+
+  it('y las FOTOS DE LA VISITA del profesional sobre un reclamo suyo', async () => {
+    // El inquilino las ve en `progreso-visita-inquilino.tsx`. Las sube el profesional, así
+    // que la vía 1 no las cubre para él nunca.
+    dbFalso.visitaProfesional.count.mockResolvedValue(1);
+    expect(await puedeLeerArchivo(MIO, inquilino)).toBe(true);
+  });
+
+  it('pero el adjunto del chat de OTRO contrato sigue cerrado', async () => {
+    // El control que prueba que lo agregado no es una puerta abierta: la cuenta da 0 porque
+    // el `where` filtra por contrato, y el veredicto sigue siendo no.
+    dbFalso.reclamoEvento.count.mockResolvedValue(0);
+    expect(await puedeLeerArchivo(AJENO, inquilino)).toBe(false);
   });
 
   it('un inquilino SIN contrato sólo llega a lo suyo como persona', async () => {

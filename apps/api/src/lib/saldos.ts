@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { diaCivilAR } from '@llave/shared';
 import { prisma } from '../db.js';
 
 /** Igual que en `lib/deposito.ts`: acepta el cliente global o el `tx` de una transaccion. */
@@ -97,14 +98,33 @@ export async function pagadoAlVencimientoPorLiquidacion(
     where: { liquidacionId: { in: liqs.map((l) => l.id) }, estado: 'CONCILIADO' },
     select: { liquidacionId: true, monto: true, fechaTransferencia: true },
   });
-  const vencePorLiq = new Map(liqs.map((l) => [l.id, new Date(l.fechaVencimiento).getTime()]));
+  const vencePorLiq = new Map(
+    liqs.map((l) => {
+      const v = new Date(l.fechaVencimiento);
+      v.setUTCHours(0, 0, 0, 0);
+      return [l.id, v.getTime()] as const;
+    }),
+  );
   const out = new Map<string, number>();
   for (const p of pagos) {
     const venc = vencePorLiq.get(p.liquidacionId);
     if (venc == null) continue;
-    // El vencimiento se guarda como medianoche UTC del día civil: un pago hecho ESE día cuenta
-    // como en fecha, así que el corte es el final del día, no su comienzo.
-    if (new Date(p.fechaTransferencia).getTime() > venc + 86_400_000 - 1) continue;
+    // EL CORTE VA EN HORA ARGENTINA, igual que `diasAtraso` (punitorios.ts).
+    //
+    // Acá decía `> venc + 86_400_000 - 1`: el final del día **UTC**. Y el vencimiento se guarda
+    // como medianoche UTC del día civil, así que ese día terminaba a las 21:00 de Argentina —
+    // el inquilino todavía tenía tres horas de su día de pago y este corte ya lo daba por tarde.
+    //
+    // Es EXACTAMENTE el error que T-56 arregló en `diasAtraso`, con el comentario al lado:
+    // «Normalizarlo con setUTCHours lo llevaba al día UTC, que desde las 21:00 hora argentina ya
+    // es el día siguiente». Se arregló ahí y quedó vivo acá, en el corte gemelo.
+    //
+    // Y no es un borde raro: la PWA manda `new Date().toISOString()` —un instante—, así que
+    // cualquier pago hecho entre las 21:00 y las 23:59 del día del vencimiento caía afuera.
+    // El costo es el de T-57 reintroducido por la puerta de atrás: una cuota de $600.000 pagada
+    // en $599.000 a las 21:30 del día 10 dejaba de descontar, y a 30 días con 0,15% diario la
+    // mora corría sobre los $600.000 completos: $27.000 en vez de $45. Seiscientas veces.
+    if (diaCivilAR(new Date(p.fechaTransferencia)).getTime() > venc) continue;
     out.set(p.liquidacionId, (out.get(p.liquidacionId) ?? 0) + Number(p.monto));
   }
   return out;

@@ -54,6 +54,7 @@ import {
   ESTADO_UF_LABEL,
   balanceConsorcio,
   morosidadConsorcio,
+  estadoUfVisible,
   type UnidadFuncional,
 } from '@/lib/consorcios-storage';
 import { apiEnabled } from '@/lib/api/client';
@@ -131,7 +132,9 @@ export default function DetalleConsorcioPage() {
     );
   }
 
-  const balance = balanceConsorcio(consorcio);
+  // CON el período: los tres rótulos dicen "del mes" y hasta acá mostraban el acumulado
+  // histórico. Un edificio administrado hace tres años sumaba todo desde 2022.
+  const balance = balanceConsorcio(consorcio, consorcio.periodoActual);
   const morosidad = morosidadConsorcio(consorcio);
   const soc = sociedadById(consorcio.sociedadId);
 
@@ -398,8 +401,10 @@ export default function DetalleConsorcioPage() {
                         {u.saldoDeudor > 0 ? formatMonto(u.saldoDeudor) : '—'}
                       </TableCell>
                       <TableCell>
-                        <Badge className={`text-[10px] ${ESTADO_UF_COLOR[u.estado]}`}>
-                          {ESTADO_UF_LABEL[u.estado]}
+                        {/* El saldo manda sobre el rótulo: la fila se contradecía sola,
+                            con el saldo en ámbar y "Al día" en verde al lado. */}
+                        <Badge className={`text-[10px] ${ESTADO_UF_COLOR[estadoUfVisible(u)]}`}>
+                          {ESTADO_UF_LABEL[estadoUfVisible(u)]}
                         </Badge>
                       </TableCell>
                       {apiEnabled && (

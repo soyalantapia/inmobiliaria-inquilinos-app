@@ -61,16 +61,28 @@ async function loSubioEl(url: string, actor: ActorArchivo, db: Prisma.Transactio
  * ¿Alguna fila del ámbito del actor referencia este archivo? (vía 2)
  *
  * Las columnas están elegidas una por una: son las que el front de ese actor efectivamente
- * renderiza. NO es un `archivoSigueEnUso` genérico sobre las 16 tablas — eso autorizaría por
+ * renderiza. NO es un `archivoSigueEnUso` genérico sobre las 18 tablas — eso autorizaría por
  * "existe en algún lado del tenant", que es el agujero de nuevo.
+ *
+ * El costo de elegirlas a mano es que se puede olvidar una, y eso ya pasó: faltaban el
+ * adjunto del chat del reclamo y las fotos de la visita, las dos cosas que la PWA del
+ * inquilino renderiza en pantallas que ya estaban cubiertas a medias. Como esta lista NO se
+ * puede derivar del schema (elegir de más ES el agujero), lo que la sostiene es un test que
+ * la contrasta contra lo que los fronts efectivamente piden.
  */
 async function estaEnSuAmbito(url: string, actor: ActorArchivo): Promise<boolean> {
   if (actor.kind === 'usuario') return true;
 
   if (actor.kind === 'profesional') {
-    // El profesional ve la foto del reclamo de SU visita, que es lo que le renderiza /p/:token.
+    // El profesional ve, en /p/:token, la foto del reclamo de SU visita y las dos fotos de la
+    // visita misma. Las que subió él las cubre `loSubioEl`; estas cuentan cubren el caso en
+    // que la foto la cargó otro (el panel por él, o una reasignación de la visita).
     const n = await prisma.visitaProfesional.count({
-      where: { id: actor.visitaId, inmobiliariaId: actor.tenant, reclamo: { fotoUrl: url } },
+      where: {
+        id: actor.visitaId,
+        inmobiliariaId: actor.tenant,
+        OR: [{ reclamo: { fotoUrl: url } }, { fotoAntes: url }, { fotoDespues: url }],
+      },
     });
     return n > 0;
   }
@@ -84,6 +96,24 @@ async function estaEnSuAmbito(url: string, actor: ActorArchivo): Promise<boolean
       prisma.pago.count({ where: { contratoId, inmobiliariaId: tenant, comprobanteUrl: url } }),
       prisma.boletaServicio.count({ where: { contratoId, archivoUrl: url } }),
       prisma.reclamo.count({ where: { contratoId, inmobiliariaId: tenant, fotoUrl: url } }),
+      // EL ADJUNTO DEL CHAT DEL MISMO RECLAMO que cubre la línea de arriba. La foto del
+      // reclamo estaba y el adjunto de los mensajes no, aunque el timeline de la PWA
+      // (`reclamo-timeline.tsx`) los pinta uno al lado del otro. Cuando el adjunto lo manda
+      // la inmobiliaria, la vía 1 (`ArchivoSubido`) no salva el caso: la fila queda a nombre
+      // de un usuario del panel. Tampoco salva al co-inquilino ni a los adjuntos históricos,
+      // porque no hay backfill del ledger.
+      prisma.reclamoEvento.count({
+        where: { adjuntoUrl: url, inmobiliariaId: tenant, reclamo: { contratoId } },
+      }),
+      // LAS FOTOS DE LA VISITA del profesional sobre un reclamo de este contrato: el inquilino
+      // las ve en su app (`progreso-visita-inquilino.tsx`), y las sube el profesional, así que
+      // la vía 1 nunca las cubre para él.
+      prisma.visitaProfesional.count({
+        where: { inmobiliariaId: tenant, reclamo: { contratoId }, fotoAntes: url },
+      }),
+      prisma.visitaProfesional.count({
+        where: { inmobiliariaId: tenant, reclamo: { contratoId }, fotoDespues: url },
+      }),
       prisma.documentoContrato.count({ where: { contratoId, archivoUrl: url } }),
       prisma.comprobante.count({ where: { pdfUrl: url, liquidacion: { contratoId } } }),
     );

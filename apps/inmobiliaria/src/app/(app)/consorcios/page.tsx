@@ -43,10 +43,13 @@ export default function ConsorciosPage() {
   const lista = consorcios ?? [];
   const totalConsorcios = lista.length;
   const totalUF = lista.reduce((s, c) => s + c.cantUf, 0);
-  const totalIngresosMes = lista.reduce(
-    (s, c) => s + balanceConsorcio(c).ingresos,
-    0,
-  );
+  // `GET /consorcios` NO manda los movimientos (sólo el detalle), así que este KPI no se puede
+  // calcular acá: antes daba 0 y `formatMonto(0)` lo mostraba como "$ 0" —un cero que parece un
+  // dato—. Mientras el endpoint no mande un agregado del período, se dice que no se sabe.
+  const balancesDisponibles = lista.every((c) => balanceConsorcio(c, c.periodoActual).disponible);
+  const totalIngresosMes = balancesDisponibles
+    ? lista.reduce((s, c) => s + balanceConsorcio(c, c.periodoActual).ingresos, 0)
+    : null;
   const totalMorosidad = lista.reduce(
     (s, c) => s + morosidadConsorcio(c).totalDeuda,
     0,
@@ -101,7 +104,7 @@ export default function ConsorciosPage() {
           />
           <Kpi
             label="Ingresos del mes"
-            valor={formatMonto(totalIngresosMes)}
+            valor={totalIngresosMes === null ? '—' : formatMonto(totalIngresosMes)}
             icon={<TrendingUp className="h-4 w-4" />}
             tone="emerald"
           />
@@ -162,7 +165,7 @@ export default function ConsorciosPage() {
           ) : null}
 
           {lista.map((c) => {
-            const balance = balanceConsorcio(c);
+            const balance = balanceConsorcio(c, c.periodoActual);
             const morosidad = morosidadConsorcio(c);
             const soc = sociedadById(c.sociedadId);
             return (
@@ -209,14 +212,17 @@ export default function ConsorciosPage() {
                         label="Expensa del mes"
                         valor={formatMonto(c.expensasPeriodoActual)}
                       />
+                      {/* "—" y no "$ 0": el listado no recibe los movimientos, así que acá no
+                          hay un cero, hay un "no sé". Mostrarlo como cero era lo que hacía que
+                          la lista dijera 0 y el detalle del mismo edificio 2.840.000. */}
                       <Mini
                         label="Ingresos del mes"
-                        valor={formatMonto(balance.ingresos)}
+                        valor={balance.disponible ? formatMonto(balance.ingresos) : '—'}
                         accent="emerald"
                       />
                       <Mini
                         label="Egresos del mes"
-                        valor={formatMonto(balance.egresos)}
+                        valor={balance.disponible ? formatMonto(balance.egresos) : '—'}
                         accent="amber"
                       />
                       <Mini

@@ -231,7 +231,10 @@ function SeguroSection({ ficha }: { ficha: RedProfesionalFicha }) {
   const qc = useQueryClient();
   const [editando, setEditando] = useState(false);
   const [aseguradora, setAseguradora] = useState(ficha.aseguradora ?? '');
-  const [nroPoliza, setNroPoliza] = useState('');
+  // Arrancaba en '' porque el GET no devolvía el número: al editar, el campo aparecía vacío
+  // sobre una póliza que SÍ estaba cargada, y guardar sin tocarlo lo dejaba igual. Sus dos
+  // vecinos —aseguradora y vencimiento— sí se precargaban de la ficha.
+  const [nroPoliza, setNroPoliza] = useState(ficha.nroPoliza ?? '');
   const [polizaVence, setPolizaVence] = useState(ficha.polizaVence ?? '');
   const [guardando, setGuardando] = useState(false);
 
@@ -267,6 +270,10 @@ function SeguroSection({ ficha }: { ficha: RedProfesionalFicha }) {
           <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
             <ShieldCheck className="mr-1 inline h-3.5 w-3.5" />
             Asegurado{ficha.aseguradora ? ` por ${ficha.aseguradora}` : ''}
+            {/* El número es lo que hace falta para hacer el reclamo, y era lo único que no se
+                mostraba: la inmobiliaria abría la ficha con el departamento inundado y leía
+                "Asegurado por La Caja · vence 12/03/2027", sin el dato que necesita. */}
+            {ficha.nroPoliza ? ` · póliza ${ficha.nroPoliza}` : ''}
             {ficha.polizaVence ? ` · vence ${new Date(ficha.polizaVence).toLocaleDateString('es-AR')}` : ''}
           </p>
         ) : (

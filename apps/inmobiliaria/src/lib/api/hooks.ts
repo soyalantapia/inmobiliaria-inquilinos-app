@@ -621,6 +621,13 @@ export interface CobranzaCuenta {
 export interface MoraDefault {
   tipoDefault: TipoMora;
   valorDefault: number | null;
+  /**
+   * Moneda EN LA QUE ESTÁ EXPRESADO el default, no la del contrato. Sólo importa para
+   * `MONTO_FIJO`, que es un importe absoluto: los porcentajes se aplican sobre una base que
+   * ya está en la moneda del contrato y se heredan siempre. El server aplica esta misma regla
+   * en `resolverEsquemaMora` (T-58) y sin este campo el panel no podía aplicarla.
+   */
+  monedaDefault: Moneda;
 }
 
 export function useCobranza(): {

@@ -9,6 +9,7 @@ import { prisma } from '../db.js';
 import { urlEsDelTenant } from './uploads.js';
 import { dineroPositivo } from '../lib/monto.js';
 import { puedeAdjuntar } from '../lib/acceso-archivos.js';
+import { CAMPOS_VISITA_INQUILINO } from '../lib/visita-campos.js';
 import {
   exigirContratoActivo,
   requireAuth,
@@ -234,7 +235,17 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       include: {
         propiedad: { select: { direccion: true, ciudad: true, reglasConvivencia: true, mascotasPermitidas: true } },
         inmobiliaria: {
-          select: { nombre: true, telefono: true, moraTipoDefault: true, moraValorDefault: true, monedaDefault: true },
+          // `whatsapp` va acá porque el número que el inquilino toca en la PWA salía de
+          // `telefono` — el fijo de la oficina— mientras el campo WhatsApp, que la
+          // inmobiliaria carga como obligatorio en Configuración, no lo leía NADIE. Ver abajo.
+          select: {
+            nombre: true,
+            telefono: true,
+            whatsapp: true,
+            moraTipoDefault: true,
+            moraValorDefault: true,
+            monedaDefault: true,
+          },
         },
         sociedad: { select: { cuentaCobranza: true } },
         cobraDirectoPropietario: { include: { cuentaCobranza: true } },
@@ -295,7 +306,19 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       direccion: contrato.propiedad.direccion,
       ciudad: contrato.propiedad.ciudad,
       inmobiliaria: contrato.inmobiliaria.nombre,
-      inmobiliariaTelefono: contrato.inmobiliaria.telefono ?? null,
+      // EL WHATSAPP MANDA, EL TELÉFONO ES EL RESPALDO.
+      //
+      // La PWA arma SIETE links `wa.me` con este campo, y salía de `telefono`. La inmobiliaria
+      // carga en Configuración un Teléfono ("011 4631-5870", el fijo de la oficina) y un
+      // WhatsApp ("11 5234-7891"), ve el toast de guardado, y el inquilino toca el botón verde:
+      // se abre `wa.me/541146315870`, un fijo sin WhatsApp. El chat no existe y el mensaje
+      // nunca llega. `Inmobiliaria.whatsapp` se persistía y su único lector era el GET que
+      // repinta ese mismo formulario.
+      //
+      // El fallback a `telefono` NO es de más: hay inmobiliarias que hoy tienen el celular
+      // cargado en Teléfono y el campo WhatsApp vacío. Sin el fallback, a ésas se les rompe el
+      // botón que hoy les funciona.
+      inmobiliariaTelefono: contrato.inmobiliaria.whatsapp || contrato.inmobiliaria.telefono || null,
       fechaInicio: contrato.fechaInicio.toISOString().slice(0, 10),
       fechaFin: contrato.fechaFin.toISOString().slice(0, 10),
       diaPago: contrato.diaPago,
@@ -1026,7 +1049,11 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
         out.push({
           id: `pago-ok-${p.id}`,
           titulo: loInformoQuienConsulta ? 'Tu comprobante fue confirmado' : `Se confirmó el pago de ${p.periodo}`,
-          detalle: `$${Math.round(Number(p.monto)).toLocaleString('es-AR')} acreditado.`,
+          // El formateador correcto está definido en esta misma función, 160 líneas arriba, y
+          // su comentario dice textual que el signo equivocado "ya fue bug varias veces". Se usa
+          // para el aviso de ajuste y se había salteado justo acá — que es el aviso que el
+          // inquilino guarda COMO COMPROBANTE de que pagó.
+          detalle: `${fmtMonedaContrato(Math.round(Number(p.monto)))} acreditado.`,
           href: `/pago/${p.liquidacionId}`,
           cuando: p.decididoAt ? relativo(p.decididoAt) : 'reciente',
           icono: 'pago_confirmado',
@@ -1038,7 +1065,17 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
     // 3) Reclamos: respondidos por la inmo / profesional asignado / a calificar.
     const reclamos = await prisma.reclamo.findMany({
       where: { contratoId },
-      include: { eventos: { orderBy: { fecha: 'asc' } }, profesional: true, visita: true, rating: true },
+      include: {
+        eventos: { orderBy: { fecha: 'asc' } },
+        profesional: true,
+        // NUNCA el token. `visita: true` le mandaba al INQUILINO el link mágico del
+        // profesional, y con él puede canjear un JWT de profesional (el canje no pide bearer)
+        // y cerrar su propio reclamo poniendo el `costoTrabajo` que quiera: 0 para no
+        // pagarlo, o un número grande si el pagador clasificado es el propietario.
+        // Acá no hay rol que valga: el inquilino no crea ni regenera ese link nunca.
+        visita: { select: CAMPOS_VISITA_INQUILINO },
+        rating: true,
+      },
     });
     const CERRADOS = ['RESUELTO', 'CERRADO', 'RECHAZADO'];
     for (const r of reclamos) {

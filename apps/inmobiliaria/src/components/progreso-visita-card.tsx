@@ -108,17 +108,22 @@ function ProgresoVisitaCardReal({ reclamoId }: ProgresoVisitaCardProps) {
 
   return (
     <VisitaProgresoBody datos={visita}>
-      <div className="flex gap-1.5 border-t pt-3">
-        <Button size="sm" variant="outline" className="flex-1 gap-1.5" onClick={copiarLink} disabled={copiando}>
-          <Copy className="h-3.5 w-3.5" />
-          Copiar link
-        </Button>
-        {visita.estado === 'ASIGNADO' && (
-          <Button size="sm" variant="ghost" onClick={reenviarLink}>
-            Regenerar
+      {/* Los dos botones son la MISMA capacidad (`profesional.asignar`), y el server ya no le
+          manda el token a quien no la tiene: sin él, "Copiar link" copiaría `/p/undefined/`.
+          Un rol LECTURA ve el progreso de la visita y no la llave — que es el punto. */}
+      {visita.token && (
+        <div className="flex gap-1.5 border-t pt-3">
+          <Button size="sm" variant="outline" className="flex-1 gap-1.5" onClick={copiarLink} disabled={copiando}>
+            <Copy className="h-3.5 w-3.5" />
+            Copiar link
           </Button>
-        )}
-      </div>
+          {visita.estado === 'ASIGNADO' && (
+            <Button size="sm" variant="ghost" onClick={reenviarLink}>
+              Regenerar
+            </Button>
+          )}
+        </div>
+      )}
     </VisitaProgresoBody>
   );
 }

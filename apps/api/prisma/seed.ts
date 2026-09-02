@@ -117,11 +117,11 @@ export async function seedBase(prisma: PrismaClient) {
 
   // ===== Propietarios =====
   const propietarios = [
-    { id: 'own_001', nombre: 'Eduardo', apellido: 'Castro', cuit: '20-12345678-2', email: 'eduardo.castro@gmail.com', telefono: '+54 11 4789 1234', cbuAlias: 'castro.eduardo.cuenta', comisionPct: 8, notas: 'Pide rendición los días 10 de cada mes. Prefiere WhatsApp.' },
-    { id: 'own_002', nombre: 'Silvana', apellido: 'Morales', cuit: '27-23456789-3', email: 'silvana.morales@hotmail.com', telefono: '+54 11 5234 8765', cbuAlias: 'morales.silvana.mp', comisionPct: 7, notas: null },
-    { id: 'own_003', nombre: 'Federico', apellido: 'López Vega', cuit: '20-34567890-4', email: 'fedelopezvega@gmail.com', telefono: '+54 11 6677 2211', cbuAlias: null, comisionPct: 8, notas: 'Sin CBU cargado — no podemos rendirle hasta que lo pase.' },
-    { id: 'own_004', nombre: 'Patricia', apellido: 'Iglesias', cuit: '27-45678901-5', email: 'patricia.iglesias@yahoo.com', telefono: '+54 11 4455 9988', cbuAlias: 'iglesias.cobro', comisionPct: 6.5, notas: 'Cobra directo (fideicomiso familiar).' },
-    { id: 'own_005', nombre: 'Martín', apellido: 'Bravo', cuit: '20-56789012-6', email: 'martin.bravo@gmail.com', telefono: '+54 11 3322 1144', cbuAlias: 'bravo.martin.usd', comisionPct: 8, notas: 'Inmueble en USD; cobra en pesos al MEP.' },
+    { id: 'own_001', nombre: 'Eduardo', apellido: 'Castro', cuit: '20-12345678-2', email: 'eduardo.castro@example.com', telefono: '+54 11 4789 1234', cbuAlias: 'castro.eduardo.cuenta', comisionPct: 8, notas: 'Pide rendición los días 10 de cada mes. Prefiere WhatsApp.' },
+    { id: 'own_002', nombre: 'Silvana', apellido: 'Morales', cuit: '27-23456789-3', email: 'silvana.morales@example.com', telefono: '+54 11 5234 8765', cbuAlias: 'morales.silvana.mp', comisionPct: 7, notas: null },
+    { id: 'own_003', nombre: 'Federico', apellido: 'López Vega', cuit: '20-34567890-4', email: 'fedelopezvega@example.com', telefono: '+54 11 6677 2211', cbuAlias: null, comisionPct: 8, notas: 'Sin CBU cargado — no podemos rendirle hasta que lo pase.' },
+    { id: 'own_004', nombre: 'Patricia', apellido: 'Iglesias', cuit: '27-45678901-5', email: 'patricia.iglesias@example.com', telefono: '+54 11 4455 9988', cbuAlias: 'iglesias.cobro', comisionPct: 6.5, notas: 'Cobra directo (fideicomiso familiar).' },
+    { id: 'own_005', nombre: 'Martín', apellido: 'Bravo', cuit: '20-56789012-6', email: 'martin.bravo@example.com', telefono: '+54 11 3322 1144', cbuAlias: 'bravo.martin.usd', comisionPct: 8, notas: 'Inmueble en USD; cobra en pesos al MEP.' },
   ];
   await Promise.all(propietarios.map((p) =>
     prisma.propietario.upsert({
@@ -203,7 +203,7 @@ export async function seedBase(prisma: PrismaClient) {
 
   // ===== Inquilinos (titulares 1:1 con su contrato) =====
   const inquilinos = [
-    { email: 'mariela.sosa@gmail.com', nombre: 'Mariela', apellido: 'Sosa', telefono: '+5491145678900', dni: '32456789', contratoId: 'cnt_001' },
+    { email: 'mariela.sosa@example.com', nombre: 'Mariela', apellido: 'Sosa', telefono: '+5491145678900', dni: '32456789', contratoId: 'cnt_001' },
     { email: 'juan.perez@inquilino.demo', nombre: 'Juan', apellido: 'Pérez', contratoId: 'cnt_002' },
     { email: 'laura.gimenez@inquilino.demo', nombre: 'Laura', apellido: 'Giménez', contratoId: 'cnt_003' },
     { email: 'carlos.romero@inquilino.demo', nombre: 'Carlos', apellido: 'Romero', contratoId: 'cnt_004' },

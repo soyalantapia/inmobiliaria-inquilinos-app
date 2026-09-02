@@ -39,6 +39,7 @@
 | **T-57** la mora sobre el saldo | **hecho y desplegado el 31/08** — PR #66 |
 | **T-58** monto fijo según la moneda | test en `mora-cascada.test.ts:109` |
 | **T-34** `payment-hero.tsx` era código muerto | **hecho el 31/08** — PR #71; con él se fue una cuarta copia de la aritmética de pago |
+| **T-51** los dominios de correo de la demo Y del seed | **hecho el 31/08** — PR #72; entraron además dos generadores que la ficha no tenía |
 | **T-61** el ajuste posterior a una renovación | **hecho el 31/08** — PR #69, reparación al escribir en los tres puntos de canon |
 | **T-72** el candado de archivos | **prendido el 31/08** — `UPLOADS_AMBITO=on` en Render |
 
@@ -73,23 +74,34 @@ rechaza, o se registra como ajuste del día en curso?
 
 ---
 
-## T-21-N3-N1 · La capacidad #1 del MVP no está construida
+## T-21-N3-N1 · Las cuatro capacidades del brief: qué se hace con ellas — ◑ reencuadrada
 
-**Objetivo.** Cerrar la contradicción entre lo que el documento fundacional promete y lo que el
-producto hace.
+**Objetivo.** Decidir el roadmap de las cuatro capacidades del brief de mayo.
 
-**Problema.** `CLAUDE.md` §1 lista **"Carga de contrato con IA"** como la primera de las cuatro
-capacidades **no negociables** del MVP, y §5.1 la describe con endpoint, flujo, prompt y tests.
-**No existe**, verificado por tres caminos independientes: no hay endpoint `/contratos/parse`, el
-SDK de Anthropic no está en ninguna dependencia, y `ANTHROPIC_*` no se lee en ningún archivo de
-`apps/api/src`.
+**Lo que la ficha decía, y ya no es cierto.** Decía que `CLAUDE.md` promete la carga de contrato
+con IA como capacidad **no negociable** y el producto no la hace — o sea, que el documento
+fundacional mentía. **Verificado el 31/08: esa mitad ya está resuelta.** `CLAUDE.md` §1.2 se
+reescribió el 19/08 y hoy dice, textual:
 
-Lo que sí hay para cargar contratos: el wizard manual y la importación de cartera desde Excel/CSV
-— determinística, sin IA, y que funciona.
+> *"Estas son las que este documento llamó «no-negociables». **Ninguna está construida como está
+> escrita.**"*
 
-**Solución.** Es **decisión de producto, no tarea técnica**: o se construye, o se saca de la lista
-de capacidades no negociables. Mientras no se decida, el documento que define el MVP promete algo
-que el producto no hace — y eso contamina cualquier conversación de alcance.
+…con una tabla del estado real de cada una. **El documento ya no promete nada que el producto no
+haga.**
+
+**Lo que sigue abierto** —y verificado hoy por los tres caminos: sin endpoint `/contratos/parse`,
+sin SDK de ningún LLM en las dependencias, sin `ANTHROPIC_*` en el código— es **la decisión de
+roadmap**, y no es sólo la #1:
+
+| Capacidad | Estado real |
+|---|---|
+| 1 · Carga de contrato con IA | no existe. En su lugar: wizard manual + importación de cartera, las dos en producción |
+| 2 · Pago unificado con Mercado Pago | **el resultado sí, el medio no**: una pantalla y un botón, pero se cobra por transferencia con validación humana |
+| 3 · Chat con el contrato (RAG) | no existe. La tabla de mensajes está y nadie la escribe |
+| 4 · Screening crediticio | cáscara: el informe sale de un PRNG. *(El endpoint ya devuelve 501, no inventa más.)* |
+
+**Solución.** Es **decisión de producto**, y la pregunta está en `PARA-ALAN.md`. Ninguna de las
+cuatro es trabajo que un agente pueda tomar sin esa respuesta.
 
 ---
 
@@ -194,6 +206,30 @@ acordado: **la fecha de vigencia no**, y la dirección tampoco.
 **Solución.** Relevar campo por campo qué se puede editar hoy y cerrar la brecha contra la lista de
 Camila — probablemente falte poco. Y que la capacidad sea **de la administradora**, no de todos.
 
+### ✅ Relevamiento hecho → `work-agent/T-11-QUE-SE-PUEDE-EDITAR.md`
+
+**El ticket describe un bloqueo que no existe.** Ningún endpoint de edición se niega a trabajar
+porque el contrato tenga pagos: todos editan igual y lo que hacen es proteger las cuotas que ya
+tienen plata, dejándolas con su monto histórico. Los dos datos que Camila pidió —teléfono del
+inquilino y garante— **ya se editan hoy**, y CARGA puede hacerlo.
+
+Lo que sí encontró el relevamiento, y es lo que se arregla acá:
+
+- 🔴 **`PATCH /contratos/:id/inquilino-contacto` no cortaba a CARGA**, y desde T-45 escribe
+  `Inquilino.email`, que es el **login** del inquilino (el OTP viaja ahí). Un rol cuyo trabajo
+  espera aprobación podía reapuntar el acceso a la app de cualquier inquilino, sin aprobación y
+  sin rastro. Los cuatro endpoints vecinos de edición sí cortan; el gemelo del lado del
+  propietario ya estaba cerrado. **Arreglado + test de comportamiento + test estructural** que
+  obliga al próximo endpoint de edición a decidir explícitamente qué hace con CARGA.
+- **Hay nueve datos que no tienen endpoint de edición por ningún camino** —ni con pagos ni sin
+  pagos—: propiedad, inquilino titular, `fechaInicio`, moneda, **índice de ajuste**, frecuencia
+  de ajuste, comisión, sociedad y penalidad. Ahí sí hay que rehacer el contrato: **esa es la
+  rescisión falsa**. El más probable de los nueve es el índice.
+
+**Queda abierto** (tickets sugeridos, con su detalle en el relevamiento): T-11-a editar índice y
+frecuencia de ajuste *(necesita una decisión de producto: ¿recalcula hacia atrás o rige desde el
+próximo?)*, T-11-b cambiar la propiedad, T-11-c corregir `fechaInicio`.
+
 ---
 
 ## T-13 · Cuentas de caja: que se entiendan
@@ -209,6 +245,23 @@ ella esperaba las cuentas adentro de caja.
 mover plata entre cuentas— y decidir si `/cuentas` se integra dentro de `/caja` o se enlaza
 claramente. **Es UX, no backend.**
 
+### ✅ Ya resuelto en `main` → `work-agent/T-13-CUENTAS-Y-CAJA.md`
+
+La queja está cerrada y verificada **en el navegador**, no sólo leyendo código: `/caja` abre con
+las pestañas `Movimientos | Cuentas`, el menú tiene un solo ítem ("Caja y cuentas"),
+`/caja?tab=cuentas` es linkeable, `/cuentas` sigue viva como ruta, y la pestaña explica la relación
+con palabras. De los tres flujos, **dos están hechos**: cargar un gasto eligiendo cuenta (con el
+selector filtrado por dirección ENTRADA/SALIDA/AMBAS) y ver el saldo por cuenta (por moneda, con el
+negativo resaltado y drill-down de movimientos).
+
+**🟡 T-13-a (nuevo) · Mover plata entre cuentas no existe.** Es el caso de Camila *"Gaspar retira
+Mercado Pago"*: hoy hay que cargar un `GASTO` en una cuenta y un `INGRESO_EXTRA` en la otra. Los
+saldos quedan bien, pero **inventa un gasto y un ingreso** en los totales de la inmobiliaria. Y
+🔴 si alguien elige una propiedad, ese `INGRESO_EXTRA` **se le acredita al dueño en la rendición** y
+el `GASTO` se le descuenta a otro: un traspaso mal cargado mueve plata entre propietarios. Es
+inofensivo por defecto (Propiedad es opcional y arranca en "sin propiedad"), pero no hay nada que
+lo impida. Propuesta y alcance en el relevamiento.
+
 ---
 
 ## T-22 · Consorcio: avisar por mail y cargar la expensa del período
@@ -222,6 +275,25 @@ consorcio.
 **Solución.** Relevar, definir el flujo con producto e implementarlo **reusando
 `enviarAnuncioEmail`**, que ya existe.
 
+### ✅ Relevado → `work-agent/T-22-RELEVAMIENTO-CONSORCIO.md` · 🔴 BLOQUEADO en producto
+
+**La parte de consorcio está construida a la mitad, y la mitad que falta no es una pantalla: es una
+foreign key.** `UnidadFuncional` no tiene ninguna referencia a `Propiedad`. Hay dos universos
+paralelos que no se tocan: el del consorcio (unidad, `titular` como string, coeficiente,
+`saldoDeudor` a mano) y el de los alquileres (propiedad → contrato → liquidación → pago). Sin esa
+FK **ningún dato puede cruzar**, y todo lo demás de T-22 depende de ella.
+
+Los cuatro agujeros son el mismo visto de cuatro lados: (1) la expensa del mes no llega a las
+cuotas *(T-19)*; (2) la cobranza no entra al libro del consorcio *(T-20)*; (3) **hay dos verdades
+sobre la misma deuda** — el 1°A puede decir AL_DIA en el consorcio mientras su inquilino debe tres
+meses, y la que se ve al abrir el edificio es la de a mano; (4) no se le puede avisar a nadie,
+porque `enviarAnuncioEmail` necesita un email y la unidad sólo guarda un nombre suelto.
+
+**Cinco decisiones de producto antes de construir** (en el relevamiento, con mi lectura de cada
+una): si unidad y propiedad son la misma cosa; quién manda con la deuda; qué hace exactamente
+"aplicar la expensa del período"; a quién avisa el mail; y qué pasa si los coeficientes no suman
+100. **Orden sugerido: la FK primero — sin eso no se puede construir nada más.**
+
 ---
 
 ## T-20 · Consorcio con propiedades de régimen mixto
@@ -234,6 +306,29 @@ edificio pueden tener regímenes distintos sin hacer nada especial.
 
 **Solución.** Verificar el caso E2E, prestando atención a que `montoAlquilerSegunTipo` devuelve
 **0** para `SOLO_EXPENSAS` — que es correcto, pero conviene ver qué hace la rendición con eso.
+
+### ✅ Verificado → `work-agent/T-20-REGIMEN-MIXTO.md`
+
+Funciona, y sin nada especial. E2E en `apps/api/test/consorcio-regimen-mixto.test.ts`, con las dos
+unidades colgando del mismo `Consorcio`: la alquilada devenga $400.000 de alquiler; la de sólo
+expensas devenga **$0 de alquiler** y $150.000 de total.
+
+**Y la pregunta anotada tiene respuesta:** la rendición del dueño de la unidad de sólo expensas
+devuelve **409 aunque el inquilino haya pagado todo**, porque esa plata es del consorcio. Correcto.
+El contraste está en el mismo test: la unidad alquilada del mismo consorcio sí se rinde, y con
+plata.
+
+**🟡 T-20-a (nuevo):** el 409 dice *"No hay cobros nuevos"* y sí los hubo — lo que no hay es nada
+*rendible*. Para Camila, parada frente a una unidad cuyo inquilino pagó todo, ese texto dice lo
+contrario de lo que pasó. No se arregló acá porque el 409 se lanza desde adentro de la transacción
+y se traduce ~430 líneas más abajo sin acceso a lo cobrado: distinguir los dos casos es más que un
+cambio de copy.
+
+**Y el hallazgo grande:** la plata de las expensas **entra y desaparece de la vista**. El libro del
+consorcio (`MovimientoConsorcio`, categoría `COBRANZA`) **sólo se escribe a mano**; nada conecta el
+pago del inquilino con el consorcio. Sumado a que el `expensasPeriodoActual` tampoco llega a las
+cuotas (T-19), la parte de consorcio está **construida a la mitad: la estructura existe y la plata
+no la recorre**. Todo eso es T-22, que sube de prioridad.
 
 ---
 
@@ -264,6 +359,18 @@ hace falta cambiarlo entero: las direcciones que podrían ser de personas reales
 
 **Las cuentas de login del seed (`@delsol.com`) se dejan como están:** no son de un tercero, y
 moverlas es un refactor de 53 archivos sin beneficio de privacidad.
+## T-34 · `payment-hero.tsx` es código muerto
+
+**Objetivo.** Sacar un archivo que no importa nadie.
+
+**Problema.** Se exporta y **ningún módulo lo importa** (verificado hoy: cero importadores). La
+única otra mención en todo el árbol es un comentario.
+
+**Solución.** Borrarlo. No puede cambiar comportamiento. Conviene hacerlo **solo, en su propia
+pasada**, porque vive bajo la carpeta de pagos y así nadie discute si cuenta como "tocar plata".
+
+---
+
 
 ---
 
@@ -294,6 +401,23 @@ total, en una sola operación. No existe ningún camino que le cobre las expensa
 
 **Solución.** E2E completo con un contrato `ALQUILER_Y_EXPENSAS` y **mostrárselo**. Verificación y
 comunicación.
+
+### ✅ Verificado → `work-agent/T-19-EL-PAGO-VA-UNIFICADO.md`
+
+Está como ella quiere, y más de lo que pidió: **no existe la opción de pagarlo separado**. El E2E
+(`apps/api/test/pago-unificado-alquiler-y-expensas.test.ts`) recorre alta → devengo → informar →
+validar → rendir con un contrato de $500.000 + $100.000. El caso que lo demuestra: **pagar
+exactamente el alquiler NO salda la cuota**, queda debiendo las expensas. Y esa plata le llega al
+dueño **prorrateada** ($416.666,67, no $500.000), que es la prueba del otro lado del mostrador.
+
+Nadie lo había probado antes: el devengo mixto estaba testeado como función pura y el
+informar/validar sobre contratos de sólo alquiler; el cruce de los dos no tenía cobertura.
+
+**Pero hay que decirle la otra mitad en la misma conversación:** *cobrar* la expensa unificada
+funciona, **cargarla no**. El `expensasPeriodoActual` del consorcio no llega a ninguna cuota — el
+devengo lee `Contrato.montoExpensas` y nada lo copia desde el consorcio. Cuando llega la expensa
+del mes, hay que entrar contrato por contrato. Si se olvida una unidad, se le cobra de menos al
+inquilino y la inmobiliaria le paga igual al consorcio. **Eso es T-22, y sube de prioridad.**
 
 ---
 
@@ -379,6 +503,9 @@ aplicar.** Cuanto antes.
 
 El orden que yo tomaría:
 
+1. **T-13-N1** (el cierre de caja) y **T-61** (el ajuste anulado): las dos tocan plata, las dos
+   tienen diagnóstico cerrado y ninguna necesita relevar nada. **T-61 ni siquiera necesita
+   migración.**
 1. **T-13-N1** (el cierre de caja): toca plata, tiene diagnóstico cerrado y no necesita relevar
    nada. ~~T-61~~ ya está cerrada (PR #69).
 2. **T-34** y **T-51**: baratas, cierran en una pasada cada una y bajan el ruido.

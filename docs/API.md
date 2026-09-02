@@ -84,7 +84,7 @@ Acepta la invitación y emite la sesión de co-inquilino.
 Sesión de inquilino demo (Mariela) con un click.
 - **Auth:** público, pero gated por `app.env.DEMO_MODE`.
 - **Body:** ninguno.
-- **Respuesta:** `{ token, nombre }` (token JWT `kind:'inquilino'` del inquilino `mariela.sosa@gmail.com`).
+- **Respuesta:** `{ token, nombre }` (token JWT `kind:'inquilino'` del inquilino `mariela.sosa@example.com`).
 - **Errores:** `404` "No disponible" si `DEMO_MODE` off; `500` "Seed demo faltante" si no existe el inquilino demo.
 
 ### GET /auth/me

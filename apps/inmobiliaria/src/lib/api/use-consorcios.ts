@@ -139,6 +139,11 @@ function mapConsorcio(c: ConsorcioApi): Consorcio {
     expensasPeriodoActual: Number(c.expensasPeriodoActual),
     unidades: (c.unidades ?? []).map(mapUnidad),
     movimientos: (c.movimientos ?? []).map(mapMovimiento),
+    // `?? []` de arriba borraba la diferencia entre "este edificio no tiene movimientos" y "el
+    // endpoint no me los mandó". El listado (`GET /consorcios`) NO los manda —decisión
+    // declarada en el docblock de arriba—, así que sin este flag la lista calculaba un balance
+    // sobre vacío y mostraba "$ 0" con la misma cara con la que mostraría un cero real.
+    movimientosCargados: c.movimientos != null,
     asambleas: (c.asambleas ?? []).map(mapAsamblea),
     desde: (c.desde ?? '').slice(0, 10),
   };

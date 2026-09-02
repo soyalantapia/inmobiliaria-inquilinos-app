@@ -243,7 +243,7 @@ export async function borrarArchivoSubido(url: string, tenant: string): Promise<
  *
  * Chequea TODAS las columnas que guardan una URL de archivo. Antes cada call site escribía
  * a mano su propia lista y ninguno estaba completo: los seis miraban entre 1 y 3 tablas de
- * las 16 que existen. Un archivo referenciado por la foto de un reclamo, el PDF de un
+ * las 18 que existen. Un archivo referenciado por la foto de un reclamo, el PDF de un
  * contrato, el comprobante de un movimiento de caja o el extracto de un resumen bancario
  * daba "no está en uso" y se BORRABA DEL DISCO, dejando esa otra fila con una URL rota y a
  * la inmobiliaria sin el respaldo. Irreversible.
@@ -253,6 +253,9 @@ export async function borrarArchivoSubido(url: string, tenant: string): Promise<
  * se incluye todo, y cualquier error de la query se trata como "sí está en uso".
  *
  * Si mañana se agrega una columna de URL nueva, va acá — es el ÚNICO lugar que hay que tocar.
+ * Esa promesa estaba escrita y no se cumplía: faltaban las dos fotos de `VisitaProfesional`.
+ * Ahora la sostiene un test que LEE `schema.prisma`, enumera las columnas de URL y exige que
+ * cada una aparezca acá (`el-inventario-de-archivos-esta-completo.test.ts`).
  */
 export async function archivoSigueEnUso(url: string): Promise<boolean> {
   if (!url) return true;
@@ -271,6 +274,16 @@ export async function archivoSigueEnUso(url: string): Promise<boolean> {
       prisma.boletaServicio.count({ where: { archivoUrl: url } }),
       prisma.reclamo.count({ where: { fotoUrl: url } }),
       prisma.reclamoEvento.count({ where: { adjuntoUrl: url } }),
+      // LAS FOTOS DE LA VISITA DEL PROFESIONAL. Faltaban, y el docstring de arriba promete
+      // que acá están TODAS: son URLs de /uploads del tenant como cualquier otra (se validan
+      // con `urlEsDelTenant` y se guardan en `visitas-publicas.ts`), y el inquilino las ve
+      // renderizadas en su propia app. O sea: tiene la URL a la vista. Adjuntándola a un
+      // documento personal suyo y borrando ese documento, `borrarArchivoSiHuerfano` no
+      // encontraba ninguna referencia —`visitas_profesional` no estaba en la lista—, hacía
+      // `unlink`, y se perdía la evidencia con la que se decide quién paga la reparación.
+      // Justo lo que al inquilino le podía convenir que desapareciera.
+      prisma.visitaProfesional.count({ where: { fotoAntes: url } }),
+      prisma.visitaProfesional.count({ where: { fotoDespues: url } }),
       prisma.resumenBancario.count({ where: { archivoUrl: url } }),
       prisma.importacionCartera.count({ where: { archivoUrl: url } }),
       prisma.reportePiloto.count({ where: { url } }),

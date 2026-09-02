@@ -243,7 +243,7 @@ Claves del patrón:
 - **`seedBase(prisma)`** (`apps/api/prisma/seed.ts`) siembra el tenant demo **"Inmobiliaria del Sol"** con ids exactos del mock del front. Lo que deja:
   - **Usuarios del panel** (password `delsol123`, PIN `1234`): `roberto@delsol.com` (`ADMIN`), `luciana@delsol.com` (`OPERADOR`), `camila@delsol.com` (`CARGA`).
   - **Propietarios** `own_001`…`own_005`, **propiedades** `prp_001`…`prp_006` (con `participaciones` de cotitularidad), **contratos** `cnt_001`…`cnt_008`.
-  - **Inquilinos titulares** 1:1 con su contrato; ej. `mariela.sosa@gmail.com` → `cnt_001`.
+  - **Inquilinos titulares** 1:1 con su contrato; ej. `mariela.sosa@example.com` → `cnt_001`.
   - Plata: liquidaciones (`liq_*`), pagos a validar (`pag_*`), caja/`movimientoCaja` (`mov_*`), una `rendicion` seed (`ren_001`) y su `gastoRendido`, aprobaciones pendientes, más los dominios de Fases 4-6 (`seedOperacion` / `seedAnuncios` / `seedInquilinoMundo`).
   - Devuelve `{ inmobiliariaId }`.
 

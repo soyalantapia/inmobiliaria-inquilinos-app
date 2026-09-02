@@ -32,6 +32,7 @@ import {
 } from '@/lib/boletas-servicios-storage';
 import { type ServicioPublico, useBoletas, useServicios } from '@/lib/api/use-servicios';
 import { formatFecha, formatFechaCorta, formatMonto, formatPeriodo, diasHastaVencimiento } from '@/lib/format';
+import { boletaAAvisar } from '@/lib/aviso-de-boleta';
 
 const ICONO_TIPO: Record<TipoServicio, typeof Zap> = {
   LUZ: Zap,
@@ -95,21 +96,18 @@ export default function ServiciosPage() {
     return { pagadas, sinPagar, totalPagadoAnio, totalEsteMes };
   }, [boletas]);
 
-  // Próxima boleta a vencer entre las no pagadas — para el banner de alerta.
-  const proximaAVencer = useMemo(() => {
-    const futuras = stats.sinPagar
-      .map((b) => ({
-        b,
-        // diasHastaVencimiento parsea la fecha en horario LOCAL (parseLocal),
-        // igual que formatFecha que se muestra al lado en el banner. Antes
-        // new Date('YYYY-MM-DD') parseaba en UTC y el conteo quedaba off-by-one
-        // respecto a la fecha impresa en UTC-3.
-        dias: diasHastaVencimiento(b.vencimiento),
-      }))
-      .filter(({ dias }) => dias <= 7)
-      .sort((a, b) => a.dias - b.dias);
-    return futuras[0] ?? null;
-  }, [stats.sinPagar]);
+  // La boleta que se avisa arriba de todo. La elección vive en `lib/aviso-de-boleta` porque
+  // acá era `filter(dias <= 7) + sort ascendente + [0]`, o sea LA MÁS VIEJA: una boleta
+  // vencida hace 120 días tapaba a la que vence en 3, y sin piso se quedaba avisando para
+  // siempre (el inquilino no puede marcarla como paga en prod, así que no salía nunca).
+  //
+  // `diasHastaVencimiento` parsea la fecha en horario LOCAL (parseLocal), igual que
+  // `formatFecha` que se muestra al lado en el banner. Antes `new Date('YYYY-MM-DD')` parseaba
+  // en UTC y el conteo quedaba off-by-one respecto a la fecha impresa en UTC-3.
+  const proximaAVencer = useMemo(
+    () => boletaAAvisar(stats.sinPagar, (b) => diasHastaVencimiento(b.vencimiento)),
+    [stats.sinPagar],
+  );
 
   // Tipos presentes en las boletas — para mostrar solo chips relevantes en
   // el filtro (no tiene sentido un chip "Cable" si nunca subiste una).
@@ -178,9 +176,14 @@ export default function ServiciosPage() {
 
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">Servicios</h1>
+          {/* Decía "La inmobiliaria las ve cuando se cargan" y NO es cierto: `POST /boletas`
+              guarda la fila, pero ningún endpoint con sesión de panel las lee — los tres
+              consumidores del lado inmobiliaria están apagados en producción. Prometerlo hacía
+              que el inquilino subiera la boleta y se quedara esperando. Lo que sí es verdad —y
+              es para lo que sirve hoy— es el archivo propio. */}
           <p className="text-sm text-muted-foreground">
-            Subí las boletas de luz, gas, agua e internet. La inmobiliaria las
-            ve cuando se cargan y queda el historial archivado.
+            Subí las boletas de luz, gas, agua e internet y te queda el historial
+            archivado, con lo que pagaste y cuándo vence cada una.
           </p>
         </div>
 
@@ -191,8 +194,9 @@ export default function ServiciosPage() {
           <ServiciosPublicosCard servicios={servicios} />
         )}
 
-        {/* Alerta de boleta próxima a vencer (≤ 7 días, no pagada).
-            Va arriba de las stats para que el inquilino la vea apenas entra. */}
+        {/* Alerta de la boleta más urgente entre las no pagadas: una vencida reciente, o la que
+            vence dentro de 7 días. Va arriba de las stats para que se vea apenas entra.
+            La elección y su ventana viven en `lib/aviso-de-boleta`. */}
         {proximaAVencer && (
           <Card className="border-amber-300 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-900/10">
             <CardContent className="flex items-start gap-3 p-3 text-sm">
@@ -208,10 +212,13 @@ export default function ServiciosPage() {
                       ? 'hoy'
                       : `en ${proximaAVencer.dias} día${proximaAVencer.dias === 1 ? '' : 's'}`}
                 </p>
+                {/* "marcala como paga" sólo si el botón existe: con `puedeGestionar` en false
+                    —que es como corre producción, porque no hay endpoint— el banner le pedía
+                    al inquilino una acción que la pantalla no le ofrece en ningún lado. */}
                 <p className="text-xs text-amber-800/80 dark:text-amber-300/80">
                   {formatMonto(proximaAVencer.b.monto)} ·{' '}
-                  {formatFecha(proximaAVencer.b.vencimiento)} · cuando la
-                  pagues marcala como paga.
+                  {formatFecha(proximaAVencer.b.vencimiento)}
+                  {puedeGestionar && ' · cuando la pagues marcala como paga'}
                 </p>
               </div>
             </CardContent>

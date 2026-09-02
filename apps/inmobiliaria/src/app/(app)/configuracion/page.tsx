@@ -108,7 +108,7 @@ const equipoInicial: Miembro[] = [
     // tiene nombres reales; usamos uno coherente con el email (martin.contador).
     // El rol "Solo lectura" ya comunica que es un externo de consulta.
     nombre: 'Martín Herrera',
-    email: 'martin.contador@gmail.com',
+    email: 'martin.contador@example.com',
     rol: 'LECTURA',
     ultimoAcceso: '2026-05-08T11:20:00-03:00',
   },

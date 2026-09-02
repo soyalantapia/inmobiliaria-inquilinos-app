@@ -73,7 +73,7 @@ interface InvitadoRegistrado {
 
 const SEED_INQUILINOS: Array<Omit<InquilinoSesion, 'esInvitado' | 'loggeadoAt'>> = [
   {
-    email: 'mariela.sosa@gmail.com',
+    email: 'mariela.sosa@example.com',
     nombre: 'Mariela',
     apellido: 'Sosa',
     direccion: 'Gorriti 4521, 3°B',

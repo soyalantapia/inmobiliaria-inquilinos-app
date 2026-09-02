@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { origenDeReapertura } from '../lib/reapertura-reclamo.js';
 import { registrarEventoContrato } from '../lib/evento-contrato.js';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { verificarPinUsuario } from '../auth/pin.js';
@@ -15,6 +16,8 @@ import { TIPOS_AVISO_INMO } from '../lib/destinatario-aviso.js';
 import { normalizarEmail } from '../lib/normalizar-email.js';
 import { dinero, dineroConSigno } from '../lib/monto.js';
 import { puedeAdjuntar } from '../lib/acceso-archivos.js';
+import { rolTienePermiso } from '@llave/shared';
+import { CAMPOS_VISITA_PANEL } from '../lib/visita-campos.js';
 
 /** Token opaco del link mágico de visita (/p/:token) — 24 bytes base64url, no adivinable. */
 function generarTokenVisita(): string {
@@ -224,6 +227,7 @@ export async function operacionRoutes(app: FastifyInstance) {
   app.get('/reclamos/:id', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'reclamos.ver');
     if (!u) return;
+    const puedeVerElLink = rolTienePermiso(u.rol, 'profesional.asignar');
     const { id } = request.params as { id: string };
     const reclamo = await prisma.reclamo.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
@@ -241,7 +245,24 @@ export async function operacionRoutes(app: FastifyInstance) {
         },
         profesional: true,
         eventos: { orderBy: { fecha: 'asc' } },
-        visita: true,
+        // EL TOKEN DE LA VISITA NO VIAJA PARA CUALQUIERA.
+        //
+        // `visita: true` traía la fila entera, y ahí adentro va `token`: el link mágico en
+        // crudo. Ese token se canjea SIN bearer en `GET /visitas-publicas/:token` por un JWT
+        // `kind: 'profesional'` de tres días, que cierra el reclamo, escribe `costoTrabajo` y
+        // dispara `imputarCostoReclamo` — o sea, puede crear un CargoContrato contra el
+        // inquilino o descontar el depósito.
+        //
+        // Y este endpoint está gateado con `reclamos.ver`, que incluye a **LECTURA**. El rol
+        // de consulta no puede asignar un profesional (eso es `profesional.asignar`, ADMIN y
+        // OPERADOR) y sin embargo se llevaba la llave que emite sesiones de profesional.
+        //
+        // El token sale sólo para quien PUEDE crear y regenerar ese link, que es el mismo que
+        // lo necesita para copiarlo. Mismo patrón que `veDatosDelDuenio` en core.ts.
+        //
+        // Que era sensible ya se sabía: el propio `GET /visitas-publicas/:token` arma su
+        // respuesta campo por campo y OMITE el token.
+        visita: { select: { ...CAMPOS_VISITA_PANEL, ...(puedeVerElLink ? { token: true } : {}) } },
         confirmacion: true,
         rating: true,
         cargos: true,
@@ -934,7 +955,10 @@ export async function operacionRoutes(app: FastifyInstance) {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return reclamos.map(conSla);
+    // `reabiertoPor` viaja resuelto desde acá: la pantalla del inquilino lo estaba infiriendo
+    // con una regla que dejó de ser cierta cuando se agregó `/reclamos/:id/reabrir`, y terminaba
+    // diciéndole «Reportaste que sigue» a alguien que no había reportado nada.
+    return reclamos.map((r) => ({ ...conSla(r), reabiertoPor: origenDeReapertura(r) }));
   });
 
   app.post('/mis-reclamos', async (request, reply) => {
@@ -1405,6 +1429,15 @@ export async function operacionRoutes(app: FastifyInstance) {
       zona: red.zona,
       asegurado: estaAsegurado(red),
       aseguradora: red.aseguradora ?? null,
+      // EL NÚMERO DE PÓLIZA SE ACEPTABA, SE GUARDABA, Y NINGÚN GET LO DEVOLVÍA. La ficha exponía
+      // `asegurado`, `aseguradora` y `polizaVence`, y nada más — el número quedaba en la base sin
+      // ninguna pantalla que lo sacara. El delator estaba en el propio formulario: `aseguradora`
+      // y `polizaVence` se precargan de la ficha y `nroPoliza` arrancaba en `''`.
+      //
+      // El escenario: en marzo se carga "POL-2026-48721". En agosto el plomero inunda un
+      // departamento, la inmobiliaria abre la ficha para hacer el reclamo al seguro y lee
+      // "Asegurado por La Caja · vence 12/03/2027". Abre "Editar" y el campo está vacío.
+      nroPoliza: red.nroPoliza ?? null,
       polizaVence: red.polizaVence ? red.polizaVence.toISOString().slice(0, 10) : null,
       ...ficha,
       // El teléfono/email de contacto sólo si ya lo contraté (es mío); si no, null
@@ -2204,7 +2237,20 @@ export async function operacionRoutes(app: FastifyInstance) {
   });
 
   // Rescisión anticipada por defecto: preaviso (meses) + penalidad (cánones de alquiler).
-  // La heredan los contratos sin valor propio (core.ts la lee al finalizar).
+  //
+  // OJO, LOS DOS CAMPOS NO SON IGUALES, y este comentario decía que sí ("la heredan los
+  // contratos sin valor propio (core.ts la lee al finalizar)"), en plural y para los dos:
+  //
+  //   · `penalidadRescisionMesesDefault` SÍ: `core.ts` la lee al finalizar como penalidad
+  //     sugerida, y eso termina emitido como `CargoContrato`. `Contrato` tiene su columna
+  //     propia para pisarla.
+  //   · `preavisoRescisionMesesDefault` NO. No lo lee nadie: se escribe acá y sólo se relee en
+  //     `GET /mi-inmobiliaria/reglas` para repintar el mismo input. Y no se puede pisar por
+  //     contrato, porque `Contrato` no tiene columna de preaviso.
+  //
+  // Nada que ver con el preaviso de EGRESO (`Renovacion.fechaEgreso`), que sí funciona.
+  // Qué hacer con este campo es una decisión de producto: ver
+  // `work-agent/DOS-PROMESAS-QUE-NO-SE-CUMPLEN.md`.
   app.put('/mi-inmobiliaria/rescision', async (request, reply) => {
     const u = await requireUsuario(request, reply);
     if (!u) return;
