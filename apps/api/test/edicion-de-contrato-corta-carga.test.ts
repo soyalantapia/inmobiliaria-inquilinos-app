@@ -32,13 +32,19 @@ const CARGA_PUEDE: Record<string, string> = {
   // del mismo endpoint sí corta a CARGA (guard adentro del handler), y eso lo cubre
   // `carga-no-cambia-la-credencial.test.ts` con el 403 de verdad.
   "'/contratos/:id/inquilino-contacto'": 'sólo el teléfono; el email corta adentro del handler',
-  // La garantía es papelerío del alta, que es literalmente el trabajo de CARGA. Y no hay
-  // credencial en juego: el garante NO tiene acceso a ninguna app —no existe login de garante—,
-  // así que su `contactoEmail` es un dato de contacto y nada más. Cortar el PUT dejando abierto
-  // el POST/DELETE (que tampoco cortan) sería además incoherente: podría borrarlo y volver a
-  // crearlo con los datos nuevos.
-  "'/contratos/:id/garantes/:garanteId'": 'papelerío del alta; el garante no tiene login',
 };
+
+// ACÁ HABÍA UNA SEGUNDA EXCEPCIÓN, y sacarla es lo que más dice de para qué sirve esta lista.
+//
+// El PUT de garantes estaba declarado como legítimo: "papelerío del alta, y el garante no tiene
+// login". Las dos mitades eran ciertas, pero la conclusión era media verdad, porque el motivo no
+// miraba el ESTADO del contrato. Sobre un BORRADOR es carga —y sujeta a aprobación—; sobre un
+// contrato VIGENTE es reescribirle el DNI o el número de póliza a la garantía de una obligación
+// en curso, sin auditoría y sin que nadie lo note.
+//
+// Hoy el handler corta por estado, así que ya no necesita excepción: la lista es más corta y el
+// producto más estricto. Escribir la excepción con su motivo fue lo que dejó el error a la vista.
+
 
 /** Handlers `app.patch|put('/contratos/:id/...')` con su cuerpo, por llaves balanceadas. */
 function handlersDeEdicion(src: string): { ruta: string; cuerpo: string }[] {
