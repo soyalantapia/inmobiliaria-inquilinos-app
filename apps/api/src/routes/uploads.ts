@@ -8,6 +8,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { JwtPayloadSchema, JwtProfesionalSchema, type JwtPayload, type JwtProfesional } from '@llave/shared';
 import { requireInquilino, requireUsuario } from '../auth/guards.js';
 import { prisma } from '../db.js';
+import { resolverUploadsDir } from '../lib/donde-viven-los-archivos.js';
 import { cuotaBytes, registrarSubida, usoDelTenant } from '../lib/cuota-uploads.js';
 import { inquilinoRevocado } from '../auth/guards.js';
 import { puedeLeerArchivo, actorDeJwt } from '../lib/acceso-archivos.js';
@@ -27,9 +28,10 @@ import { puedeLeerArchivo, actorDeJwt } from '../lib/acceso-archivos.js';
  * guarda en su campo la `url` que devuelve este endpoint.
  */
 
-// En prod el Volume vive en /data; en dev/test (sin volumen) caemos a un tmp escribible.
-const UPLOADS_DIR =
-  process.env.UPLOADS_DIR ?? (existsSync('/data') ? '/data/uploads' : path.join(os.tmpdir(), 'myalquiler-uploads'));
+// Dónde se escriben los archivos. La elección vive en `lib/donde-viven-los-archivos.ts`,
+// con el porqué y su test: el modo de falla es que ELIJA MAL Y NO FALLE — subir sigue
+// devolviendo 200 y todo desaparece en el próximo reinicio, sin un error en el log.
+const UPLOADS_DIR = resolverUploadsDir(process.env, existsSync, path.join(os.tmpdir(), 'myalquiler-uploads'));
 
 // El tope por archivo NO se aplica acá: lo aplica `@fastify/multipart` en su registro
 // (`app.ts`, `limits: { fileSize: 10 MB, files: 1 }`), y este handler sólo detecta el

@@ -34,22 +34,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           name="build-commit"
           content={process.env.NEXT_PUBLIC_COMMIT?.slice(0, 7) || 'desconocido'}
         />
-        {/* Sonar corre acá en PRODUCCIÓN aunque el hostname sea el del panel. Sin este meta,
-            su heurística por dominio clasifica los tickets según por dónde entró el usuario y
-            no según lo que son. */}
-        <meta name="sonar-env" content="production" />
-        {/* SONAR, que hasta acá el portal no tenía. El panel y la PWA sí, así que un error del
-            dueño era el único que no llegaba a ningún lado: el portal es la superficie con la
-            que MENOS contacto tenemos —no hay un operador al lado que avise— y era la única
-            sin telemetría. Un dueño que ve la pantalla en blanco no llama: cierra y desconfía.
+        {/* Sonar: reporte de errores del portfolio. El HOST viene por variable de entorno y
+            SIN default: si falta, no se emite nada.
 
-            `async` a propósito: si Sonar se cae, no bloquea el portal. La key es pública y el
-            guard real es `allowedOrigins` del proyecto en Sonar. */}
-        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script
-          src="https://sonar-api-production-77b5.up.railway.app/v1/loader.js?key=son_pub_live_L4ZgFYmfd8ITxrofS_uDPhst"
-          async
-        />
+            Estuvo escrito a mano apuntando a Railway y murio con el ban del 28/08; como esto
+            se hornea en el HTML al construir, un host equivocado sobrevive hasta el proximo
+            build de los tres servicios. La key sigue siendo publica a proposito: el guard real
+            es `allowedOrigins` del proyecto en Sonar.
+
+            El `meta` va adentro del mismo guard: sin loader no clasifica nada. */}
+        {process.env.NEXT_PUBLIC_SONAR_URL && (
+          <>
+            <meta name="sonar-env" content="production" />
+            {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+            <script
+              src={`${process.env.NEXT_PUBLIC_SONAR_URL}/v1/loader.js?key=son_pub_live_L4ZgFYmfd8ITxrofS_uDPhst`}
+              async
+            />
+          </>
+        )}
       </head>
       <body className="min-h-screen bg-background font-sans" style={{ backgroundColor: '#ffffff' }}>
         <QueryProvider>
