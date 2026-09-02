@@ -25,7 +25,7 @@ async function resetAnuncios(prisma: PrismaClient) {
   await prisma.anuncio.deleteMany({ where: { id: { notIn: SEED_IDS } } });
   // Acuses que Mariela dejó sobre los seeds en corridas previas (su flujo
   // leído→enterado tiene que arrancar virgen)
-  const mariela = await prisma.inquilino.findFirst({ where: { email: 'mariela.sosa@gmail.com' } });
+  const mariela = await prisma.inquilino.findFirst({ where: { email: 'mariela.sosa@example.com' } });
   if (mariela) {
     await prisma.anuncioAcuse.deleteMany({ where: { inquilinoId: mariela.id, anuncioId: { in: SEED_IDS } } });
   }

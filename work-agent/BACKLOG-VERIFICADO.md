@@ -38,6 +38,7 @@
 | **T-45** el home de la PWA ignoraba el pago informado | usa el mismo helper que el detalle y muestra el faltante |
 | **T-57** la mora sobre el saldo | **hecho y desplegado el 31/08** — PR #66 |
 | **T-58** monto fijo según la moneda | test en `mora-cascada.test.ts:109` |
+| **T-51** los dominios de correo de la demo Y del seed | **hecho el 31/08** — PR #72; entraron además dos generadores que la ficha no tenía |
 | **T-61** el ajuste posterior a una renovación | **hecho el 31/08** — PR #69, reparación al escribir en los tres puntos de canon |
 | **T-72** el candado de archivos | **prendido el 31/08** — `UPLOADS_AMBITO=on` en Render |
 
@@ -250,16 +251,6 @@ pasada**, porque vive bajo la carpeta de pagos y así nadie discute si cuenta co
 
 ---
 
-## T-51 · Los datos de demo usan dominios de correo reales
-
-**Objetivo.** Que la demo pública no exponga direcciones de terceros.
-
-**Problema.** Ningún email ficticio usa un dominio reservado. Verificado hoy en el seed:
-`@gmail.com`, `@hotmail.com`, `@yahoo.com`, y dominios con pinta de negocio real. Desde el 19/08
-está **publicado en internet**, con nombre y apellido al lado, y algunas de esas direcciones pueden
-ser de personas reales que no tienen nada que ver con el producto.
-
-**Solución.** Pasar todo a `example.com` (RFC 2606). Toca el seed → correr la suite después.
 
 ---
 
@@ -375,6 +366,9 @@ aplicar.** Cuanto antes.
 
 El orden que yo tomaría:
 
+1. **T-13-N1** (el cierre de caja) y **T-61** (el ajuste anulado): las dos tocan plata, las dos
+   tienen diagnóstico cerrado y ninguna necesita relevar nada. **T-61 ni siquiera necesita
+   migración.**
 1. **T-13-N1** (el cierre de caja): toca plata, tiene diagnóstico cerrado y no necesita relevar
    nada. ~~T-61~~ ya está cerrada (PR #69).
 2. **T-34** y **T-51**: baratas, cierran en una pasada cada una y bajan el ruido.
