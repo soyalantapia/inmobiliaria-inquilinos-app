@@ -46,12 +46,18 @@ beforeAll(async () => {
   tAdmin = await loginTest(app, 'roberto@delsol.com', 'delsol123');
   tInquilino = await loginDemoTest(app);
   // El contrato del inquilino demo: es el que `/mis-reclamos` va a devolver.
-  const inq = await prisma.inquilino.findFirstOrThrow({
-    where: { email: 'mariela.sosa@gmail.com' },
-    select: { contratoId: true },
-  });
+  //
+  // 🔴 Sale de la SESIÓN, no de un email escrito a mano. Estaba buscando
+  // `mariela.sosa@gmail.com` y la corrida de merge de los 60 PRs lo puso rojo: #72 pasó las
+  // direcciones del seed a `example.com`. Un test atado a un literal del seed se rompe cuando
+  // otro PR toca el seed, y el rojo aparece lejos de la causa. El token del inquilino demo
+  // trae su `contratoId` adentro, que es exactamente "el contrato de quien está logueado".
+  const payload = JSON.parse(
+    Buffer.from(tInquilino.split('.')[1]!, 'base64url').toString('utf8'),
+  ) as { contratoId?: string };
+  expect(payload.contratoId, 'la sesión demo tiene que traer un contrato').toBeTruthy();
   contrato = await prisma.contrato.findUniqueOrThrow({
-    where: { id: inq.contratoId! },
+    where: { id: payload.contratoId! },
     select: { id: true, inmobiliariaId: true, propiedadId: true },
   });
 }, 420_000);
