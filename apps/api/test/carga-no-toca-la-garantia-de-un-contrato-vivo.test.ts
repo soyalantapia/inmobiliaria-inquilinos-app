@@ -72,9 +72,25 @@ beforeAll(async () => {
   tAdmin = await loginTest(app, 'roberto@delsol.com', 'delsol123');
   tCarga = await loginTest(app, 'camila@delsol.com', 'delsol123');
 
-  contratoActivo = (await prisma.contrato.findFirstOrThrow({ where: { estado: 'ACTIVO' }, select: { id: true } })).id;
+  // 🔴 SCOPEADOS AL TENANT DEL SEED, y con orden fijo. Estaban sin `inmobiliariaId`: agarraban
+  // CUALQUIER contrato de toda la base, incluidos los que dejan otros archivos de test. Los
+  // casos pasaban sólo si la suite entera había corrido antes y en el orden justo; corridos
+  // solos, el `findFirstOrThrow` encontraba un contrato de OTRA inmobiliaria y el endpoint
+  // —que sí scopea— contestaba 404 «Contrato inexistente». Un test que depende de la basura
+  // que dejó otro no está probando lo que dice.
+  contratoActivo = (
+    await prisma.contrato.findFirstOrThrow({
+      where: { estado: 'ACTIVO', inmobiliariaId },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    })
+  ).id;
   contratoBorrador = (
-    await prisma.contrato.findFirstOrThrow({ where: { estado: 'BORRADOR' }, select: { id: true } })
+    await prisma.contrato.findFirstOrThrow({
+      where: { estado: 'BORRADOR', inmobiliariaId },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    })
   ).id;
 });
 

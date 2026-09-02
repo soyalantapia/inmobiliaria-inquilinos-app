@@ -34,20 +34,31 @@ const auth = () => ({ authorization: `Bearer ${token}` });
 
 let reclamoId = '';
 let contratoId = '';
+let inmobiliariaId = '';
 
 beforeAll(async () => {
   prisma = new PrismaClient();
-  await seedBase(prisma);
+  ({ inmobiliariaId } = await seedBase(prisma));
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   token = await loginTest(app, 'luciana@delsol.com', 'delsol123');
 
-  const contrato = await prisma.contrato.findFirst({ select: { id: true, inmobiliariaId: true } });
-  if (!contrato) return;
+  // 🔴 SCOPEADO AL TENANT DEL SEED. Estaba como `findFirst({ select })` SIN `where`: agarraba
+  // cualquier contrato de toda la base, incluidos los que dejan otros archivos. Corrido solo,
+  // tomaba uno de OTRA inmobiliaria y todos los casos daban 404 «Contrato inexistente».
+  //
+  // Y el `if (!contrato) return` que había acá abandonaba el `beforeAll` EN SILENCIO: sin
+  // contrato, los cuatro casos fallaban por `contratoId` vacío y el error aparecía lejos de
+  // la causa. `findFirstOrThrow` grita en el primer renglón, que es donde sirve.
+  const contrato = await prisma.contrato.findFirstOrThrow({
+    where: { inmobiliariaId },
+    select: { id: true, inmobiliariaId: true },
+    orderBy: { id: 'asc' },
+  });
   contratoId = contrato.id;
   // El estado EXACTO que deja /visitas-publicas/listo: RESUELTO, con costo, sin pagador.
   const rec = await prisma.reclamo.create({
     data: {
-      inmobiliariaId: contrato.inmobiliariaId,
+        inmobiliariaId,
       contratoId: contrato.id,
       categoria: 'PLOMERIA',
       descripcion: 'T-65 — pérdida en la cocina, cerrada por el profesional',
@@ -113,7 +124,7 @@ describe('T-65 — rescatar el cierre sin pagador', () => {
   it('un reclamo cerrado CON pagador sigue sin poder reclasificarse', async () => {
     const otro = await prisma.reclamo.create({
       data: {
-        inmobiliariaId: (await prisma.contrato.findFirstOrThrow({ select: { inmobiliariaId: true } })).inmobiliariaId,
+        inmobiliariaId,
         contratoId, categoria: 'OTRO', descripcion: 'T-65 control', urgencia: 'BAJA',
         estado: 'RESUELTO', costoTrabajo: 10_000, pagador: 'PROPIETARIO',
       },
