@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../db.js';
 import { requireUsuario } from '../auth/guards.js';
+import { sim } from '../lib/simbolo-moneda.js';
 
 const money = (n: unknown) => Number(n).toLocaleString('es-AR');
 
@@ -42,9 +43,13 @@ export async function propiedadTimelineRoutes(app: FastifyInstance) {
         fechaEfectivaRescision: true,
         motivoRescision: true,
         inquilinoTitular: { select: { nombre: true, apellido: true } },
+        // Para el signo de los montos del timeline: un ajuste de un contrato en dólares se
+        // escribía "De $1.200 a $1.400".
+        moneda: true,
       },
     });
     const contratoIds = contratos.map((c) => c.id);
+    const monedaDe = new Map(contratos.map((c) => [c.id, c.moneda]));
     const nombre = new Map(
       contratos.map((c) => [
         c.id,
@@ -66,7 +71,7 @@ export async function propiedadTimelineRoutes(app: FastifyInstance) {
           }),
           prisma.reclamo.findMany({
             where: { contratoId: { in: contratoIds }, inmobiliariaId: tenant },
-            select: { contratoId: true, categoria: true, descripcion: true, createdAt: true, resueltoAt: true, resolucion: true },
+            select: { contratoId: true, categoria: true, descripcion: true, createdAt: true, estado: true, resueltoAt: true, resolucion: true },
           }),
           prisma.intencionRenovacion.findMany({
             where: { contratoId: { in: contratoIds }, inmobiliariaId: tenant, fechaEgreso: { not: null } },
@@ -90,14 +95,37 @@ export async function propiedadTimelineRoutes(app: FastifyInstance) {
       }
     }
     for (const a of ajustes) {
-      push(a.createdAt, 'AJUSTE', 'Ajuste de alquiler', `De $${money(a.montoAnterior)} a $${money(a.montoNuevo)} desde ${a.periodoDesde}${a.motivo ? ` · ${a.motivo}` : ''}`, a.contratoId);
+      push(a.createdAt, 'AJUSTE', 'Ajuste de alquiler', `De ${sim(monedaDe.get(a.contratoId))}${money(a.montoAnterior)} a ${sim(monedaDe.get(a.contratoId))}${money(a.montoNuevo)} desde ${a.periodoDesde}${a.motivo ? ` · ${a.motivo}` : ''}`, a.contratoId);
     }
     for (const r of renovaciones) {
-      push(r.createdAt, 'RENOVACION', 'Renovación de contrato', `Nuevo canon $${money(r.montoNuevo)} · vence ${new Date(r.fechaFinNueva).toISOString().slice(0, 10)}`, r.contratoId);
+      push(r.createdAt, 'RENOVACION', 'Renovación de contrato', `Nuevo canon ${sim(monedaDe.get(r.contratoId))}${money(r.montoNuevo)} · vence ${new Date(r.fechaFinNueva).toISOString().slice(0, 10)}`, r.contratoId);
     }
     for (const rc of reclamos) {
       push(rc.createdAt, 'RECLAMO_ABIERTO', 'Reclamo abierto', rc.descripcion?.slice(0, 120) ?? '', rc.contratoId);
-      if (rc.resueltoAt) push(rc.resueltoAt, 'RECLAMO_RESUELTO', 'Reclamo resuelto', rc.resolucion?.slice(0, 120) ?? '', rc.contratoId);
+      if (rc.resueltoAt) {
+        // `resueltoAt` NO quiere decir "está resuelto": quiere decir "se resolvió alguna vez".
+        // Un reclamo reabierto —PERSISTE del inquilino (`operacion.ts:1097`) o
+        // `POST /reclamos/:id/reabrir`— vuelve a EN_CURSO CONSERVANDO la fecha a propósito: es
+        // el ancla con la que `evaluarSla` reinicia el reloj. Y `/rechazar` tampoco la limpia,
+        // así que un resuelto → reabierto → RECHAZADO también llega acá con fecha.
+        // Mirando sólo la fecha, el expediente daba por cerrado lo que estaba abierto hoy.
+        // El corte por `estado` es el mismo que ya aplican `metricas.ts:200-204` y
+        // `plata.ts:2482-2488` para contar reclamos resueltos.
+        const cerrado = rc.estado === 'RESUELTO' || rc.estado === 'CERRADO';
+        // El hito NO se esconde cuando está reabierto: esa resolución existió y movió plata.
+        // Se muestra con su fecha real y contando qué pasó después, que es lo que la operadora
+        // necesita leer. La fecha de la reapertura en sí no está en la fila (vive en
+        // `ReclamoEvento`), así que se ancla en la resolución y no se inventa un instante.
+        push(
+          rc.resueltoAt,
+          cerrado ? 'RECLAMO_RESUELTO' : 'RECLAMO_REABIERTO',
+          cerrado ? 'Reclamo resuelto' : 'Reclamo resuelto y reabierto',
+          cerrado
+            ? (rc.resolucion?.slice(0, 120) ?? '')
+            : `Se reabrió después de esta resolución${rc.resolucion ? `: ${rc.resolucion.slice(0, 120)}` : ''}`,
+          rc.contratoId,
+        );
+      }
     }
     for (const it of intenciones) {
       push(it.decididoAt ?? it.updatedAt, 'AVISO_EGRESO', 'Aviso de egreso del inquilino', it.fechaEgreso ? `Se va el ${new Date(it.fechaEgreso).toISOString().slice(0, 10)}` : '', it.contratoId);

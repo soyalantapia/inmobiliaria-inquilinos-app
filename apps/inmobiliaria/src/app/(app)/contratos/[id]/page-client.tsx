@@ -78,7 +78,7 @@ import {
   type TipoEventoContrato,
 } from '@/lib/mock-data';
 import type { ContratoListado, EstadoContrato, Propietario } from '@/lib/types';
-import { formatFecha, formatMonto } from '@/lib/format';
+import { formatFecha, formatMonto, formatTotalPorMoneda } from '@/lib/format';
 import { rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
 
 const estadoLiqVariant: Record<
@@ -754,9 +754,17 @@ function EditarMoraDialog({
   const { mora: moraDefault } = useCobranza();
   const heredado =
     moraDefault != null
-      ? { tipo: moraDefault.tipoDefault, valor: moraDefault.valorDefault }
+      ? { tipo: moraDefault.tipoDefault, valor: moraDefault.valorDefault, moneda: moraDefault.monedaDefault }
       : contrato.moraEfectiva && contrato.moraEfectiva.origen === 'INMOBILIARIA'
-        ? { tipo: contrato.moraEfectiva.tipo, valor: contrato.moraEfectiva.valor }
+        ? {
+            tipo: contrato.moraEfectiva.tipo,
+            valor: contrato.moraEfectiva.valor,
+            // Este fallback entra cuando /cobranza no está disponible (es ADMIN-only, así que
+            // un OPERADOR SIEMPRE cae acá). Si el origen ya es INMOBILIARIA, el server ya
+            // aplicó la regla de moneda y dejó pasar la herencia: entonces está expresada en
+            // la moneda de ESTE contrato. Poner otra cosa acá reintroduciría el bug.
+            moneda: contrato.moneda,
+          }
         : null;
 
   const [seleccion, setSeleccion] = useState<MoraSeleccion>('HEREDAR');
@@ -1039,17 +1047,31 @@ function ResumenPagos({ liquidaciones }: { liquidaciones: LiquidacionAdmin[] }) 
   const vencidos = liquidaciones.filter((l) => l.estado === 'VENCIDO').length;
   // Total cobrado = montoTotal de las PAGADAS + lo conciliado de las PARCIALES.
   // Antes sólo sumaba PAGADO → lo cobrado en un parcial no aparecía (bug 3/4).
-  const totalCobrado = liquidaciones.reduce(
-    (acc, l) => acc + (l.estado === 'PAGADO' ? l.montoTotal : l.estado === 'PARCIAL' ? l.montoPagado ?? 0 : 0),
-    0,
-  );
+  // Va POR MONEDA y no en un número solo: un contrato puede tener cuotas viejas en una
+  // moneda y nuevas en otra, y un único total las sumaría inventando plata.
+  const totalCobrado = liquidaciones
+    .filter((l) => l.estado === 'PAGADO' || l.estado === 'PARCIAL')
+    .map((l) => ({
+      monto: l.estado === 'PAGADO' ? l.montoTotal : l.montoPagado ?? 0,
+      moneda: l.moneda,
+    }));
 
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       <StatCard label="Liquidaciones" value={liquidaciones.length} />
       <StatCard label="Pagadas" value={pagados} tone="emerald" />
       <StatCard label="Vencidas" value={vencidos} tone={vencidos > 0 ? 'red' : 'muted'} />
-      <StatCard label="Total cobrado" value={formatMonto(totalCobrado)} />
+      {/* Con la lista vacía `formatTotalPorMoneda` cae a "$ 0", y en un contrato en dólares
+          ese peso es el mismo defecto que este bloque arregla. Sin nada cobrado la moneda
+          la dan las cuotas emitidas. */}
+      <StatCard
+        label="Total cobrado"
+        value={
+          totalCobrado.length > 0
+            ? formatTotalPorMoneda(totalCobrado)
+            : formatMonto(0, liquidaciones[0]?.moneda ?? 'ARS')
+        }
+      />
     </div>
   );
 }
@@ -1095,10 +1117,10 @@ function LiquidacionRow({ liq }: { liq: LiquidacionAdmin }) {
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium">
             {liq.montoExpensas != null && liq.montoExpensas > 0 && liq.montoAlquiler > 0
-              ? `Alquiler ${formatMonto(liq.montoAlquiler)} + Expensas ${formatMonto(liq.montoExpensas)}`
+              ? `Alquiler ${formatMonto(liq.montoAlquiler, liq.moneda)} + Expensas ${formatMonto(liq.montoExpensas, liq.moneda)}`
               : liq.montoAlquiler === 0 && liq.montoExpensas != null && liq.montoExpensas > 0
-                ? `Expensas ${formatMonto(liq.montoExpensas)}`
-                : `Alquiler ${formatMonto(liq.montoAlquiler)}`}
+                ? `Expensas ${formatMonto(liq.montoExpensas, liq.moneda)}`
+                : `Alquiler ${formatMonto(liq.montoAlquiler, liq.moneda)}`}
           </p>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -1110,17 +1132,17 @@ function LiquidacionRow({ liq }: { liq: LiquidacionAdmin }) {
             no reflejaba que ya se había cobrado una parte (bug 4). */}
         {liq.estado === 'PARCIAL' && (liq.montoPagado ?? 0) > 0 && (
           <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
-            Cobrado {formatMonto(liq.montoPagado ?? 0)} · Falta {formatMonto(liq.saldo ?? liq.montoTotal)}
+            Cobrado {formatMonto(liq.montoPagado ?? 0, liq.moneda)} · Falta {formatMonto(liq.saldo ?? liq.montoTotal, liq.moneda)}
           </p>
         )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <p className="text-sm font-semibold tabular-nums">{formatMonto(liq.montoTotal)}</p>
+        <p className="text-sm font-semibold tabular-nums">{formatMonto(liq.montoTotal, liq.moneda)}</p>
         {/* Mora al día (punitorio) ya incluida en el total — chip ámbar para
             que se vea de un vistazo cuánto del total es interés por atraso. */}
         {(liq.montoPunitorio ?? 0) > 0 && (
           <span className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300">
-            +{formatMonto(liq.montoPunitorio ?? 0)} mora
+            +{formatMonto(liq.montoPunitorio ?? 0, liq.moneda)} mora
           </span>
         )}
         <Badge variant={estadoLiqVariant[liq.estado]} className="text-[10px]">

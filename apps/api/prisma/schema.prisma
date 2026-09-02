@@ -332,6 +332,12 @@ enum TipoEventoAuditoria {
   PROFESIONAL_ASIGNADO
   EQUIPO_INVITADO
   EQUIPO_REMOVIDO
+  // Los dos caminos que DAN poder, que eran los únicos mudos del recurso: volver a sumar a
+  // alguien que había sido dado de baja (la reactivación del POST, que es la ÚNICA
+  // reincorporación que existe en el producto) y cambiarle el rol a alguien que ya está.
+  // No se reusa EQUIPO_INVITADO porque por esos caminos no sale ninguna invitación.
+  EQUIPO_REINCORPORADO
+  EQUIPO_ROL_CAMBIADO
   FACTURA_ARCA_EMITIDA
   PROPIETARIO_CONFIRMO_RECIBO
   PROPIETARIO_RENDIDO
@@ -351,6 +357,10 @@ enum TipoEventoAuditoria {
   // transfiere el inquilino: es el que menos puede quedar sin rastro.
   PROPIETARIO_CUENTA_CAMBIADA
   MORA_EDITADA
+  // La baja de un contrato (fin de plazo o rescisión) libera la propiedad, anula las cuotas
+  // futuras, puede crear la penalidad y puede resolver el depósito. Todo eso era anónimo:
+  // el contrato quedaba RESCINDIDO y no había forma de saber quién apretó el botón.
+  CONTRATO_DADO_DE_BAJA
   MOVIMIENTO_CONSORCIO_ELIMINADO
   // Conmutador de usuarios (T-25). Son la defensa REAL del feature: un PIN de 5 dígitos
   // tipeado en un mostrador no es un secreto fuerte, pero cada cambio y cada intento

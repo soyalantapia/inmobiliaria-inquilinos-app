@@ -37,46 +37,9 @@ import { enviarInvitacionInquilino, enviarInvitacionEquipo, enviarAvisoAjusteAlq
 import { contratoQuedaPendiente, diaCivilAR, rolTienePermiso, venceDespuesDeHoy, yaVencio } from '@llave/shared';
 import { ROLES_ORDEN, type Rol } from '@llave/shared/permisos';
 import { dinero, dineroPositivo } from '../lib/monto.js';
+import { sim } from '../lib/simbolo-moneda.js';
+import { liqQueDefineEstado, liqVencida } from '../lib/estado-de-pago.js';
 
-/**
- * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
- * VENCIDO, o si todavía no está paga (PENDIENTE/PARCIAL) y su vencimiento pasó.
- * El estado persistido sólo vira a VENCIDO cuando corre el barrido del devengo
- * (marcarLiquidacionesVencidas); esta derivación on-read cubre el hueco entre
- * corridas Y captura el parcial vencido (estado PARCIAL), que si no nunca volvía
- * a figurar como moroso en el panel (auditoría A2).
- */
-function liqVencida(l: { estado: string; fechaVencimiento: Date | string }, now: Date): boolean {
-  if (l.estado === 'VENCIDO') return true;
-  if (l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') return yaVencio(l.fechaVencimiento, now);
-  return false;
-}
-
-/**
- * Liquidación que define `estadoPagoActual` de un contrato. Prioridad:
- * (1) la vencida más reciente — la cobranza manda; (2) la del período en curso
- * o, si no existe, la más reciente NO futura; (3) contrato que recién arranca
- * (solo liqs futuras): la próxima. `liqs` DEBE venir ordenada periodo desc.
- *
- * Antes era `vencida ?? liqs[0]`: como el devengo genera la liq del mes
- * SIGUIENTE por adelantado, `[0]` era esa futura y un contrato con el mes en
- * curso PAGADO reportaba el estado de la cuota del mes que viene → el
- * dashboard "Plata · <mes>" mostraba Cobrado $0 con el mes al día, Por cobrar
- * con plata del mes siguiente, y un adelanto PARCIAL futuro hacía desaparecer
- * el contrato de todos los KPIs (bug "estadísticas principales", 07/07).
- * El período se toma en hora argentina (UTC-3), igual que /caja/cierre.
- */
-function liqQueDefineEstado<
-  T extends { periodo: string; estado: string; fechaVencimiento: Date | string },
->(liqs: T[], now: Date): T | null {
-  const periodoActual = new Date(now.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 7);
-  return (
-    liqs.find((l) => liqVencida(l, now)) ??
-    liqs.find((l) => l.periodo <= periodoActual) ??
-    liqs[0] ??
-    null
-  );
-}
 
 /**
  * Núcleo de datos del panel (Fase 2): contratos, propiedades, propietarios,
@@ -487,6 +450,15 @@ export async function coreRoutes(app: FastifyInstance) {
   app.delete('/contratos/:contratoId/co-inquilinos/:id', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
+    // INVITAR Y REVOCAR NO PESAN LO MISMO. El POST hermano se deja abierto —sumar un
+    // co-inquilino es carga—, pero esto es un borrado duro que le saca el acceso a la PWA a
+    // alguien con permiso PAGAR o COMPLETO: justo el que informa los pagos. La única vuelta
+    // atrás es volver a invitarlo, y no queda rastro de quién lo sacó.
+    if (u.rol === 'CARGA') {
+      return reply
+        .code(403)
+        .send({ message: 'Solo un Admin u Operador puede sacar a un co-inquilino del contrato' });
+    }
     const { contratoId, id } = request.params as { contratoId: string; id: string };
     const co = await prisma.coInquilino.findFirst({
       where: { id, contratoId, inmobiliariaId: u.inmobiliariaId },
@@ -631,6 +603,27 @@ export async function coreRoutes(app: FastifyInstance) {
   app.put('/propiedades/:id/participaciones', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propiedades.crear');
     if (!u) return;
+
+    // CARGA NO TOCA EL REPARTO. Esto no cambia porcentajes: hace `deleteMany` + `createMany` del
+    // set completo, o sea REEMPLAZA A LOS DUEÑOS. Y el reparto es lo que decide a quién le
+    // transfiere cada rendición.
+    //
+    // `propiedades.crear` incluye a CARGA y —a diferencia de sus hermanos destructivos: el DELETE
+    // de propiedades, el DELETE y el PUT de propietarios— acá no había corte. La cadena que eso
+    // habilitaba: CARGA crea un propietario con el CBU que quiera (el alta tampoco cortaba, ver
+    // más abajo) y después reescribe el reparto de la propiedad al 100% a favor de ése. La
+    // próxima rendición transfiere ahí. Agravante: CARGA no tiene `pagos.ver`, así que movía
+    // plata que su propio rol le niega mirar.
+    //
+    // El corte es ANCHO, con el mismo criterio que ya razona el PUT de propietarios: un gate que
+    // depende de qué campos vinieron es una regla que hay que volver a pensar cada vez que
+    // alguien toca el zod.
+    if (u.rol === 'CARGA') {
+      return reply
+        .code(403)
+        .send({ message: 'Solo un Admin u Operador puede cambiar el reparto: define a quién se le rinde la plata' });
+    }
+
     const { id } = request.params as { id: string };
     const parsed = z
       .object({
@@ -907,6 +900,29 @@ export async function coreRoutes(app: FastifyInstance) {
   app.post('/propietarios', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propietarios.crear');
     if (!u) return;
+
+    // CARGA CARGA LA FICHA; EL DESTINO DE LA PLATA LO PONE UN ADMIN.
+    //
+    // El alta de propietario es literalmente el trabajo de CARGA ("auto-onboarding: cargar la
+    // cartera real") y por eso NO se corta entera. Pero dos de estos campos no son ficha:
+    // `cbuAlias` es a dónde va la rendición, y `comisionPct` es cuánto se queda la inmobiliaria.
+    // Y a diferencia del alta de contrato, `propietarios.crear` NO tiene `rolesAprobacion`: lo
+    // que CARGA da de alta acá no lo revisa nadie.
+    //
+    // ES UNA LISTA BLANCA, NO UNA NEGRA, y eso es a propósito. El PUT de propietarios cortó ancho
+    // justamente porque un gate por campos "hay que volver a pensarlo cada vez que alguien agrega
+    // un campo al zod". Con lista blanca, el campo nuevo queda denegado por defecto: el que lo
+    // agregue decide si es ficha, y si se olvida, el error es del lado seguro.
+    if (u.rol === 'CARGA') {
+      const FICHA = new Set(['nombre', 'apellido', 'email', 'telefono', 'cuit', 'notas']);
+      const dePlata = Object.keys((request.body ?? {}) as Record<string, unknown>).filter((k) => !FICHA.has(k));
+      if (dePlata.length) {
+        return reply.code(403).send({
+          message: `Solo un Admin u Operador puede cargar ${dePlata.join(', ')}: define a dónde va la plata`,
+        });
+      }
+    }
+
     const body = z
       .object({
         nombre: z.string().trim().min(2),
@@ -1477,8 +1493,6 @@ export async function coreRoutes(app: FastifyInstance) {
     // no hay pre-check que lo bloquee. La única colisión posible es que ese email lo use
     // OTRA persona (distinto DNI) → la atrapa el unique de Persona (P2002, abajo).
     // Reuso (req 3): si el alta trae personaId, la Persona debe existir en ESTE tenant.
-    // (El guard de email de arriba sigue aplicando: un 2º contrato reusado no puede
-    // repetir el email de otra fila — se deja vacío o distinto; la identidad vive en Persona.)
     if (d.personaId) {
       const per = await prisma.persona.findFirst({
         where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId },
@@ -1486,6 +1500,54 @@ export async function coreRoutes(app: FastifyInstance) {
       });
       if (!per) return reply.code(404).send({ message: 'La persona seleccionada no existe en tu cartera' });
     }
+
+    // EL EMAIL NO PUEDE SER EL DE OTRA PERSONA DE LA CARTERA. Un solo chequeo, ANTES de que el
+    // alta se bifurque, porque las dos ramas tenían el agujero y por motivos distintos:
+    //
+    //   · CON `personaId`: la rama hace un `findFirstOrThrow` de SOLO LECTURA sobre Persona.
+    //     Nunca la escribe, así que no ejerce el `@@unique([inmobiliariaId, email])` y no
+    //     corría ningún chequeo. El comentario que lo autorizaba —"(El guard de email de arriba
+    //     sigue aplicando…)"— citaba un guard que el multi-alquiler ya había sacado, y lo decía
+    //     doce líneas después del comentario que explica esa remoción.
+    //   · SIN `personaId`: `buscarOCrearPersona` busca por DNI PRIMERO. Con un DNI que matchea,
+    //     devuelve esa Persona y `esOtraPersona` compara DNI contra DNI: da false y pasa. O sea
+    //     que el 409 de más abajo sólo atrapa el caso "email de otro DNI, sin DNI propio que
+    //     matchee". Con DNI, el email ajeno entraba igual.
+    //
+    // QUÉ HABILITABA. El operador carga el contrato de Juan y en el campo email tipea el de
+    // Mariela —otra inquilina de la misma cartera—. Queda un `Inquilino` con el email de Mariela
+    // colgado del contrato de Juan; como el acceso a la PWA es por OTP al mail, la casilla de
+    // Mariela entra al contrato de Juan y ve monto, deuda y documentos.
+    //
+    // (Que `/auth/otp/*` busque por email SIN scope de tenant no es parte de esto: es
+    // deliberado y está documentado —"una persona, un login, varios alquileres"—, y la
+    // propiedad de seguridad se sostiene porque el OTP prueba control de la casilla.)
+    //
+    // Es como máximo una fila: `Persona` tiene `@@unique([inmobiliariaId, email])`.
+    if (emailInq) {
+      const duenioDelEmail = await prisma.persona.findFirst({
+        where: { inmobiliariaId: u.inmobiliariaId, email: emailInq },
+        select: { id: true, dni: true },
+      });
+      // Reusando una Persona, "otra" es por ID. Sin reuso, por DNI — la misma regla que ya
+      // aplicaba `esOtraPersona` adentro de la transacción, sólo que ahora también corre cuando
+      // el DNI del alta matchea con una Persona DISTINTA de la dueña del email.
+      const esDeOtro = duenioDelEmail
+        ? d.personaId
+          ? duenioDelEmail.id !== d.personaId
+          : esOtraPersona(normalizarDni(d.inquilino.dni || null), duenioDelEmail.dni)
+        : false;
+      if (esDeOtro) {
+        // MISMO texto que el 409 de la otra rama, a propósito: para el operador es el mismo
+        // problema, y dos redacciones para el mismo caso es lo que hace que un mensaje deje
+        // de ser reconocible.
+        return reply.code(409).send({
+          message:
+            'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, poné otro email.',
+        });
+      }
+    }
+
     // Modo cobranza directa: el contrato apunta al dueño PRINCIPAL (mayor
     // participación). Si la propiedad no tiene dueños cargados, rechazamos acá:
     // si no, el inquilino quedaría sin cuenta real a la cual transferir y /mi-
@@ -2135,6 +2197,30 @@ export async function coreRoutes(app: FastifyInstance) {
     // viene arreglando en otros lados.
     const resuelveDeposito =
       b.decisionDeposito === 'DEVOLVER' || b.decisionDeposito === 'NETEAR' || b.decisionDeposito === 'EJECUTAR';
+    // EL MISMO PERMISO QUE LA PUERTA DEDICADA.
+    //
+    // `POST /contratos/:id/deposito/resolver` (plata.ts) exige `deposito.devolver` —sólo
+    // ADMIN— y lo dice al lado: "NO `contratos.crear`, que incluye a OPERADOR y CARGA.
+    // Devolver o ejecutar el depósito mueve plata de un tercero y es irreversible".
+    // Este handler acepta EL MISMO body (DEVOLVER/NETEAR/EJECUTAR + monto), escribe LOS
+    // MISMOS campos y aplica la misma retención contra la deuda… gateado con
+    // `contratos.crear`. La capacidad ADMIN existía y se saltaba entrando por "dar de baja".
+    //
+    // NO corta la baja, corta la DECISIÓN sobre el depósito: un OPERADOR finaliza igual
+    // eligiendo "Después" (MANTENER) y la garantía queda RETENIDA para que la resuelva un Admin.
+    if (resuelveDeposito && !rolTienePermiso(u.rol, 'deposito.devolver')) {
+      return reply.code(403).send({
+        message: 'Solo un Admin puede resolver el depósito. Dá de baja el contrato con "Después" y que lo resuelva un Admin.',
+      });
+    }
+    // Y EL MISMO 409. La puerta dedicada rechaza resolver un depósito que ya se resolvió;
+    // acá no había chequeo. Con `estadoDeposito` ya DEVUELTO se pisaban `depositoDevueltoMonto`
+    // y `depositoDevueltoAt` de esa devolución, y —peor— con NETEAR/EJECUTAR el depósito se
+    // imputaba contra la deuda POR SEGUNDA VEZ: `estadoDepositoContrato` calcula el disponible
+    // como bruto − cargos abiertos, no sabe nada de una resolución anterior.
+    if (resuelveDeposito && contrato.estadoDeposito !== 'RETENIDO') {
+      return reply.code(409).send({ message: 'El depósito de este contrato ya fue resuelto' });
+    }
     if (resuelveDeposito && (b.montoDepositoDevuelto ?? 0) > 0) {
       const dep = await estadoDepositoContrato(prisma, {
         contratoId: id,
@@ -2145,7 +2231,7 @@ export async function coreRoutes(app: FastifyInstance) {
         return reply.code(400).send({
           message:
             dep.deducciones > 0
-              ? `Sólo quedan $${dep.disponible} para devolver: hay $${dep.deducciones} en reparaciones imputadas a este depósito.`
+              ? `Sólo quedan ${sim(contrato.moneda)}${dep.disponible} para devolver: hay ${sim(contrato.moneda)}${dep.deducciones} en reparaciones imputadas a este depósito.`
               : 'No podés devolver más que el depósito en custodia',
         });
       }
@@ -2285,11 +2371,47 @@ export async function coreRoutes(app: FastifyInstance) {
       if (estadoDep) {
         await cerrarCargosContraDeposito(tx, { contratoId: id, inmobiliariaId: u.inmobiliariaId, usuarioId: u.userId });
       }
-      return { cuotasAnuladas: anuladas.count, cargoPenalidad };
+      return { cuotasAnuladas: anuladas.count, cargoPenalidad, estadoDep };
       // timeout holgado: si hay que aplicar el depósito, la tx recorre las cuotas exigibles
       // y con el proxy de por medio se pasaba de los 5s por defecto de Prisma → 500.
     }, { timeout: 20000 });
     if (!fin) return reply.code(409).send({ message: 'El contrato ya está finalizado' });
+    // QUIÉN dio de baja, y qué se llevó puesto.
+    //
+    // Esta era la acción más irreversible de la app sin una sola línea de auditoría: el
+    // contrato quedaba RESCINDIDO, la propiedad liberada, las cuotas futuras borradas y la
+    // penalidad creada, y no había forma de saber quién apretó el botón. Cambiar el email de
+    // un propietario sí deja rastro.
+    const simb = contrato.moneda === 'USD' ? 'US$' : '$';
+    const detalleBaja = [
+      `Contrato ${nuevoEstado === 'RESCINDIDO' ? 'rescindido' : 'finalizado'}`,
+      ...(fin.cargoPenalidad > 0 ? [`penalidad ${simb}${fin.cargoPenalidad}`] : []),
+      ...(fin.cuotasAnuladas > 0
+        ? [`${fin.cuotasAnuladas} cuota${fin.cuotasAnuladas === 1 ? '' : 's'} futura${fin.cuotasAnuladas === 1 ? '' : 's'} anulada${fin.cuotasAnuladas === 1 ? '' : 's'}`]
+        : []),
+      ...(b.motivoRescision?.trim() ? [b.motivoRescision.trim()] : []),
+    ].join(' · ');
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'CONTRATO_DADO_DE_BAJA',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion: detalleBaja,
+    });
+    // El depósito, además, con el MISMO tipo y la misma forma de texto que
+    // `deposito/resolver`: es el mismo hecho por otra puerta, y quien audite "qué pasó con
+    // la garantía de este contrato" tiene que encontrarlo filtrando una sola cosa.
+    if (fin.estadoDep) {
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'PAGO_CONCILIADO',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: id,
+        entidadDescripcion: `Depósito ${fin.estadoDep.toLowerCase()} · se devolvió ${simb}${b.montoDepositoDevuelto ?? 0} de ${simb}${Number(contrato.depositoGarantia ?? 0)} · al dar de baja el contrato`,
+      });
+    }
     return {
       ok: true,
       estado: nuevoEstado,
@@ -2324,7 +2446,19 @@ export async function coreRoutes(app: FastifyInstance) {
     const now = new Date();
     const liqs = await prisma.liquidacion.findMany({
       where: { contratoId: id, inmobiliariaId: u.inmobiliariaId, estado: { in: ['PENDIENTE', 'VENCIDO', 'PARCIAL'] } },
-      include: { _count: { select: { pagos: true } } },
+      // SÓLO LOS PAGOS VIVOS, igual que el POST que este preview describe.
+      //
+      // Contaba los pagos de CUALQUIER estado, así que una cuota futura con sólo un pago
+      // RECHAZADO no entraba en `cuotasFuturasAAnular` — y como tampoco pasa `liqVencida`,
+      // caía en el `continue` de abajo y desaparecía también de `deudaVencida`. La cuota no
+      // figuraba en NINGÚN número del diálogo… y el POST la borraba igual: suelta los pagos
+      // muertos antes del `deleteMany` justo para eso, con el comentario que enuncia la
+      // regla («una cuota futura con sólo un pago rechazado es deuda fantasma igual que una
+      // sin pagos»). El operador confirmaba una baja irreversible sobre un resumen que le
+      // ocultaba una cuota.
+      //
+      // Mismo criterio de "pago vivo" que core.ts:1940, :2257, :3863 y :4036.
+      include: { _count: { select: { pagos: { where: { estado: { in: ['INFORMADO', 'CONCILIADO'] } } } } } },
     });
     const esquema = resolverEsquemaMora(contrato, contrato.inmobiliaria);
     const pagadoMap = await montoPagadoPorLiquidacion(liqs.map((l) => l.id));
@@ -2645,6 +2779,32 @@ export async function coreRoutes(app: FastifyInstance) {
           data: { montoAlquiler: canonNuevo, montoTotal: canonNuevo + expensasDeLaCuota },
         });
       }
+      // La intención de renovación quedaba colgada del plazo VIEJO. `IntencionRenovacion` es
+      // 1:1 con el contrato y su único writer era `POST /renovaciones/:contratoId/decision`,
+      // así que después de renovar sobrevivía un NO_RENOVAR con una `fechaEgreso` que ya no va
+      // a pasar: en `/renovaciones` el contrato seguía contando en el KPI "No renuevan" y su
+      // tarjeta mostraba "Vence 31/08/2028" y "Se va el 30/09/2026" una al lado de la otra.
+      // El expediente de la propiedad seguía empujando el hito "Aviso de egreso del inquilino",
+      // que filtra sólo por `fechaEgreso != null`.
+      //
+      // Es el mismo criterio que el endpoint de decisión ya aplica unas líneas más abajo
+      // (`operacion.ts:2148`): al cambiar de opinión, la fecha huérfana se limpia. Renovar ES
+      // ese cambio de opinión, sólo que expresado firmando.
+      //
+      // SIN_RESPUESTA Y NO 'RENOVAR', que es lo que primero parece. La intención responde
+      // "¿qué dijo el inquilino sobre el vencimiento que viene?", y la pantalla la muestra
+      // contra la fechaFin NUEVA. Escribir RENOVAR dejaría al contrato diciendo "quieren
+      // renovar" en 2028 sin que nadie lo haya preguntado: el mismo defecto de hoy con el
+      // signo cambiado. Lo cierto después de renovar es que sobre el plazo nuevo todavía no
+      // se habló. El hecho de la renovación no se pierde: queda en `RenovacionContrato` y en
+      // el historial del contrato.
+      //
+      // `updateMany` y no `update`: la mayoría de los contratos no tiene fila de intención, y
+      // renovar no es motivo para inventarle una decisión que nadie tomó.
+      await tx.intencionRenovacion.updateMany({
+        where: { contratoId: id, inmobiliariaId: u.inmobiliariaId },
+        data: { decision: 'SIN_RESPUESTA', fechaEgreso: null, decididoAt: null, comentario: null },
+      });
       // Devengar los nuevos períodos (hasta el tope del devengo) con la nueva fechaFin + monto.
       // Idempotente (skipDuplicates); el cron completa el resto mes a mes.
       const nuevas = await generarLiquidacionesContrato(tx, {
@@ -2907,13 +3067,29 @@ export async function coreRoutes(app: FastifyInstance) {
     contactoTelefono: z.string().trim().min(3).max(50),
     contactoEmail: z.string().trim().email().optional().or(z.literal('')),
   });
+  // Los campos de PÓLIZA sólo existen para una póliza. El schema ya lo dice —«Montos/
+  // vigencia son de una PÓLIZA (caución/digital): opcionales para un garante persona
+  // (propietaria/sueldo), que NO TIENE cobertura ni vencimiento»— y el body los aceptaba
+  // para los cuatro tipos sin un solo `refine`.
+  //
+  // Una fila PROPIETARIA con `vigenciaHasta` no es un dato de más: es un dato que MIENTE.
+  // `propiedad-seguros.ts` deriva `estadoPoliza` sólo `if (esPoliza && vigenciaHasta)`, así
+  // que esa fila queda con estado `null`, y el badge del expediente pintaba el null como
+  // «Vigente» junto a una fecha vencida hace medio año.
+  //
+  // Se normaliza acá y no con un 400 porque el caso real es un RESIDUO, no una decisión: el
+  // operador carga una caución, corrige el tipo a PROPIETARIA, y el formulario le esconde los
+  // campos de póliza sin limpiarlos. Lo que ve en pantalla es "sin póliza"; esto guarda eso.
+  // Y a diferencia de arreglarlo sólo en el formulario, cubre también los imports, el seed y
+  // cualquier cliente de la API.
+  const esPolizaTipo = (t: z.infer<typeof garanteBody>['tipo']) => t === 'CAUCION' || t === 'DIGITAL';
   const garanteData = (b: z.infer<typeof garanteBody>) => ({
     tipo: b.tipo,
     nombreProveedor: b.nombreProveedor,
     dni: b.dni || null,
-    numeroPoliza: b.numeroPoliza || null,
-    montoCobertura: b.montoCobertura ?? null,
-    vigenciaHasta: b.vigenciaHasta ?? null,
+    numeroPoliza: esPolizaTipo(b.tipo) ? b.numeroPoliza || null : null,
+    montoCobertura: esPolizaTipo(b.tipo) ? b.montoCobertura ?? null : null,
+    vigenciaHasta: esPolizaTipo(b.tipo) ? b.vigenciaHasta ?? null : null,
     contactoNombre: b.contactoNombre || null,
     contactoTelefono: b.contactoTelefono,
     contactoEmail: b.contactoEmail || null,
@@ -3256,6 +3432,16 @@ export async function coreRoutes(app: FastifyInstance) {
       mora: {
         tipoDefault: inmoMora?.moraTipoDefault ?? 'SIN_MORA',
         valorDefault: inmoMora?.moraValorDefault ?? null,
+        // LA MONEDA DEL DEFAULT, que ya se estaba seleccionando y no se devolvía.
+        //
+        // Sin ella el panel no puede aplicar la regla de T-58 (`resolverEsquemaMora`): un
+        // default MONTO_FIJO sólo se hereda si la moneda coincide con la del contrato. El
+        // wizard de alta heredaba igual, prefilleaba la mora de cada período vencido con esa
+        // tasa fantasma y la mandaba como `moraManual` — que el server persiste como
+        // `montoPunitorioManual` y `calcularMora` respeta antes que nada. Quedaba deuda
+        // punitoria real y cobrable respaldada por un esquema que este mismo server dice
+        // que no corresponde.
+        monedaDefault: inmoMora?.monedaDefault ?? 'ARS',
       },
     };
   });
@@ -3608,6 +3794,23 @@ export async function coreRoutes(app: FastifyInstance) {
           },
           select: { id: true, nombre: true, apellido: true, email: true, rol: true, activo: true },
         });
+        // ESTE ES EL ÚNICO CAMINO DE REINCORPORACIÓN QUE EXISTE. La pantalla Equipo filtra
+        // por `activo`, así que el usuario dado de baja desaparece y no hay botón de
+        // "reactivar" en ninguna parte: al admin no le queda otra que apretar «Sumar» y
+        // volver a tipear el email — y caía justo acá, en la rama muda.
+        //
+        // Con el rol NUEVO y el VIEJO: alguien que salió como CARGA puede volver como ADMIN,
+        // y sin el rol anterior el rastro no dice que hubo un salto de poder.
+        await registrarEvento({
+          inmobiliariaId: u.inmobiliariaId,
+          tipo: 'EQUIPO_REINCORPORADO',
+          autorId: u.userId,
+          rolAutor: u.rol,
+          entidadId: reactivado.id,
+          entidadDescripcion:
+            `${reactivado.nombre} ${reactivado.apellido} (${reactivado.rol}) · ${reactivado.email}` +
+            (yaExiste.rol !== reactivado.rol ? ` · antes era ${yaExiste.rol}` : ''),
+        });
         return reply.code(200).send({ ...reactivado, esVos: false });
       }
       return reply.code(409).send({ message: 'Ya existe una cuenta con ese email' });
@@ -3679,8 +3882,9 @@ export async function coreRoutes(app: FastifyInstance) {
     // Atómico: aplicamos el cambio y verificamos que quede ≥1 Admin activo
     // DENTRO de la misma transacción serializable. Cubre la carrera de dos
     // admins degradándose en simultáneo (que un pre-chequeo no atómico no ve).
+    let actualizado;
     try {
-      return await prisma.$transaction(
+      actualizado = await prisma.$transaction(
         async (tx) => {
           const r = await tx.usuario.update({
             where: { id },
@@ -3699,6 +3903,25 @@ export async function coreRoutes(app: FastifyInstance) {
       }
       throw e;
     }
+    // El OTRO endpoint que escribe `Usuario.rol`, y tampoco dejaba rastro: un contador externo
+    // podía pasar de LECTURA a ADMIN y en /auditoría no quedaba nada. El rol VIEJO va en el
+    // texto porque es lo que hace legible el salto; `target` ya estaba leído arriba, así que
+    // no cuesta una query.
+    //
+    // Va DESPUÉS del commit, no adentro de la transacción: `registrarEvento` es best-effort
+    // (se traga su propio error) y meterlo adentro ataría el cambio de rol a que el rastro
+    // funcione. Por eso el `return` salió de adentro de la tx.
+    if (body.data.rol && body.data.rol !== target.rol) {
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'EQUIPO_ROL_CAMBIADO',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: actualizado.id,
+        entidadDescripcion: `${actualizado.nombre} ${actualizado.apellido} · ${target.rol} → ${actualizado.rol} · ${actualizado.email}`,
+      });
+    }
+    return actualizado;
   });
 
   app.delete('/usuarios/:id', async (request, reply) => {
@@ -3794,6 +4017,7 @@ export async function coreRoutes(app: FastifyInstance) {
       where: { id, inmobiliariaId: u.inmobiliariaId },
       select: {
         id: true,
+        estado: true,
         monto: true,
         montoExpensas: true,
         tipoContrato: true,
@@ -3803,6 +4027,25 @@ export async function coreRoutes(app: FastifyInstance) {
       },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
+    // Un contrato terminado no se re-tarifa: sus cuotas son historia. Es la MISMA regla que
+    // ya aplican los dos hermanos —`POST /contratos/:id/ajustar` y `PATCH /:id/expensas`—,
+    // y este endpoint ni siquiera traía `estado` en el select.
+    //
+    // No es teórico. Una cuota del mes en curso SOBREVIVE a la baja (la finalización sólo
+    // borra las PENDIENTE con vencimiento futuro), así que queda como deuda real e impaga.
+    // `recomputarLiquidacionesFuturas` toma las PENDIENTE y VENCIDO desde el período actual:
+    // un `monto: 1` la reescribe, la deuda del ex-inquilino se evapora, queda una fila
+    // `AjusteAlquiler` falsa y le sale un aviso de ajuste por mail a alguien que ya no vive ahí.
+    //
+    // El panel ya lo gatea en sus dos call sites (el botón del detalle y el ajuste masivo,
+    // los dos con `c.estado === 'ACTIVO'`): esto deja de ser una suposición del front.
+    //
+    // La puerta de limpieza del `monto: 0` que documenta el guard de abajo no se cierra:
+    // sigue disponible mientras el contrato está ACTIVO, que es cuando la suciedad todavía
+    // puede seguir facturando.
+    if (contrato.estado !== 'ACTIVO') {
+      return reply.code(409).send({ message: 'Solo se ajusta el monto de un contrato activo' });
+    }
     // Un solo expensas no tiene canon que SUBIR — pero sí puede necesitar que lo BAJEN a 0.
     //
     // Ojo con esta asimetría, que no es capricho: este endpoint es, además, la única

@@ -38,7 +38,11 @@ beforeAll(async () => {
   prisma = new PrismaClient();
   await seedBase(prisma);
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
-  token = await loginTest(app, 'luciana@delsol.com', 'delsol123');
+  // ADMIN, no la OPERADORA: desde que `finalizar` exige `deposito.devolver` para resolver el
+  // depósito, un OPERADOR se come un 403 antes de llegar al tope. Este archivo prueba EL TOPE
+  // y el cierre de cargos, no quién puede; el rol lo cubre
+  // `el-deposito-no-tiene-puerta-de-servicio.test.ts`.
+  token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
 
   // Contrato PROPIO, no uno del seed: finalizar es destructivo y esta base es compartida
   // entre los 55 archivos de la suite. Se apoya en una propiedad existente, pero como NO es

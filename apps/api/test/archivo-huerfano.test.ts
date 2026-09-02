@@ -15,8 +15,13 @@ let tid = '';
 const URL_RECLAMO = '/uploads/ZZ-cazabug/foto-reclamo.jpg';
 const URL_CAJA = '/uploads/ZZ-cazabug/comprobante-caja.pdf';
 const URL_LIBRE = '/uploads/ZZ-cazabug/nadie-me-referencia.jpg';
+// TERCERA AUDITORÍA · las dos columnas que la lista se había salteado.
+const URL_VISITA_ANTES = '/uploads/ZZ-cazabug/visita-antes.jpg';
+const URL_VISITA_DESPUES = '/uploads/ZZ-cazabug/visita-despues.jpg';
 let reclamoId = '';
 let movId = '';
+let reclamoVisitaId = '';
+let visitaId = '';
 
 beforeAll(async () => {
   prisma = new PrismaClient();
@@ -40,11 +45,31 @@ beforeAll(async () => {
     },
   });
   movId = mov.id;
+  // Las fotos de la visita del profesional: las ÚNICAS dos columnas de URL del schema que
+  // `archivoSigueEnUso` no miraba, en la función cuyo docstring promete que están todas.
+  const recVis = await prisma.reclamo.create({
+    data: {
+      inmobiliariaId: tid, contratoId: 'cnt_001', propiedadId: 'prp_001',
+      categoria: 'PLOMERIA', urgencia: 'MEDIA', descripcion: 'Reclamo con visita (tercera auditoría)',
+    },
+  });
+  reclamoVisitaId = recVis.id;
+  const prof = await prisma.profesional.findFirstOrThrow({ where: { inmobiliariaId: tid } });
+  const vis = await prisma.visitaProfesional.create({
+    data: {
+      inmobiliariaId: tid, reclamoId: recVis.id, profesionalId: prof.id,
+      token: 'ZZ-cazabug-token-visita',
+      fotoAntes: URL_VISITA_ANTES, fotoDespues: URL_VISITA_DESPUES,
+    },
+  });
+  visitaId = vis.id;
 });
 
 afterAll(async () => {
   if (reclamoId) await prisma.reclamo.deleteMany({ where: { id: reclamoId } });
   if (movId) await prisma.movimientoCaja.deleteMany({ where: { id: movId } });
+  if (visitaId) await prisma.visitaProfesional.deleteMany({ where: { id: visitaId } });
+  if (reclamoVisitaId) await prisma.reclamo.deleteMany({ where: { id: reclamoVisitaId } });
   await prisma.$disconnect();
 });
 
@@ -56,6 +81,18 @@ describe('CAZABUG — el chequeo de archivo huérfano mira TODAS las tablas', ()
 
   it('detecta un archivo usado como comprobante de CAJA (idem)', async () => {
     await expect(archivoSigueEnUso(URL_CAJA)).resolves.toBe(true);
+  });
+
+  it('detecta la foto ANTES de la visita del profesional', async () => {
+    // Con el bug: false → `borrarArchivoSiHuerfano` hacía `unlink` y la evidencia con la que
+    // se decide quién paga la reparación desaparecía del disco. El camino es real y no
+    // requiere privilegios: el inquilino ve esa URL renderizada en su propia app, la adjunta
+    // a un documento personal suyo (`POST /mis-documentos`) y borra ese documento.
+    await expect(archivoSigueEnUso(URL_VISITA_ANTES)).resolves.toBe(true);
+  });
+
+  it('y la foto DESPUÉS, que es la que prueba que el trabajo se hizo', async () => {
+    await expect(archivoSigueEnUso(URL_VISITA_DESPUES)).resolves.toBe(true);
   });
 
   it('un archivo que nadie referencia SÍ da libre (no rompimos el borrado real)', async () => {

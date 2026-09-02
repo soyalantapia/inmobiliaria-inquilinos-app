@@ -1,11 +1,19 @@
-/**
- * Los rótulos del rastro de auditoría, afuera de la pantalla para poder fijarlos con un test.
- *
- * Vivían adentro de `app/(app)/auditoria/page.tsx` y ahí no había forma de chequear que
- * estuvieran completos: doce de los veinticuatro tipos de evento no tenían rótulo y nadie se
- * enteró. El test de al lado los cruza contra el enum de Prisma.
- */
-
+/**
+
+ * Los rótulos del rastro de auditoría, afuera de la pantalla para poder fijarlos con un test.
+
+ *
+
+ * Vivían adentro de `app/(app)/auditoria/page.tsx` y ahí no había forma de chequear que
+
+ * estuvieran completos: doce de los veinticuatro tipos de evento no tenían rótulo y nadie se
+
+ * enteró. El test de al lado los cruza contra el enum de Prisma.
+
+ */
+
+
+
 /**
  * Los 24 valores de `TipoEventoAuditoria` en castellano.
  *
@@ -44,6 +52,9 @@ export const TIPO_LABEL: Record<string, string> = {
   CONMUTACION_RECHAZADA: 'Conmutación rechazada',
   PIN_DESBLOQUEADO: 'PIN desbloqueado',
   PIN_ELIMINADO: 'PIN eliminado',
+  EQUIPO_REINCORPORADO: 'Equipo · reincorporación',
+  EQUIPO_ROL_CAMBIADO: 'Equipo · cambio de rol',
+  CONTRATO_DADO_DE_BAJA: 'Contrato dado de baja',
 };
 
 export const TIPO_VARIANT: Record<string, 'success' | 'destructive' | 'warning' | 'secondary'> = {
@@ -51,10 +62,17 @@ export const TIPO_VARIANT: Record<string, 'success' | 'destructive' | 'warning' 
   PROPIETARIO_RENDIDO: 'success',
   CONTRATO_APROBADO: 'success',
   EQUIPO_INVITADO: 'success',
+  EQUIPO_REINCORPORADO: 'success',
+  // Ámbar y no verde: un cambio de rol puede SUBIR o BAJAR poder, y la línea que hay que
+  // encontrar cuando algo no cierra es la que lo subió. En gris se pierde entre las demás.
+  EQUIPO_ROL_CAMBIADO: 'warning',
   PAGO_RECHAZADO: 'destructive',
   GASTO_CAJA_ELIMINADO: 'destructive',
   CONTRATO_RECHAZADO: 'destructive',
   EQUIPO_REMOVIDO: 'destructive',
+  // La baja libera la propiedad, borra las cuotas futuras y puede resolver el depósito.
+  // Es irreversible: va en rojo, como el resto de lo que deshace.
+  CONTRATO_DADO_DE_BAJA: 'destructive',
   // En rojo lo que deshace o borra plata, y lo que es un intento fallido de entrar.
   PROPIETARIO_RENDICION_ANULADA: 'destructive',
   MOVIMIENTO_CONSORCIO_ELIMINADO: 'destructive',

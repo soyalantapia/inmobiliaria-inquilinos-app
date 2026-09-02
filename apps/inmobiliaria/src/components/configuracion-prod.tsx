@@ -481,7 +481,9 @@ export function MoraDefaultCard() {
           Mora por defecto
         </CardTitle>
         <Badge variant="secondary">
-          {mora ? descripcionMora(mora.tipoDefault, mora.valorDefault) : 'Sin mora'}
+          {/* Con la moneda del default: sin ella un MONTO_FIJO en dólares se leía "$ 5.000",
+              que es otro número — y es el valor que después heredan los contratos. */}
+          {mora ? descripcionMora(mora.tipoDefault, mora.valorDefault, mora.monedaDefault) : 'Sin mora'}
         </Badge>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -497,7 +499,11 @@ export function MoraDefaultCard() {
           }}
           onValorChange={setValor}
           montoBase={500_000}
-          notaPreview="Ejemplo con un alquiler de $ 500.000"
+          // El monto fijo que se carga acá es un IMPORTE en esta moneda, y de eso depende a
+          // qué contratos se hereda. Sin el prop, el input mostraba `$` aunque el tenant
+          // trabajara en dólares.
+          moneda={mora?.monedaDefault ?? 'ARS'}
+          notaPreview={`Ejemplo con un alquiler de ${mora?.monedaDefault === 'USD' ? 'US$' : '$'} 500.000`}
           idPrefix="mora-default"
         />
         {error && (
