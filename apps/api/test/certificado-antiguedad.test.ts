@@ -32,7 +32,7 @@ const inquilinoDe = new Map<string, string>(); // contratoId → inquilinoId
 let propiedadId: string;
 
 const auth = (t: string) => ({ authorization: `Bearer ${t}` });
-const DEMO_INQ_EMAIL = 'mariela.sosa@gmail.com';
+const DEMO_INQ_EMAIL = 'mariela.sosa@example.com';
 
 const CNT_BAJA = 'cnt_test_b3_baja'; // FINALIZADO anticipadamente
 const CNT_ACTIVO = 'cnt_test_b3_activo'; // control ACTIVO

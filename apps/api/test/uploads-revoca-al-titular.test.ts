@@ -60,7 +60,7 @@ beforeAll(async () => {
   token = r.json().token;
   const yo = await app.inject({ method: 'GET', url: '/auth/me', headers: { authorization: `Bearer ${token}` } });
   inquilinoId = yo.json().id ?? '';
-  const fila = await prisma.inquilino.findFirst({ where: { email: 'mariela.sosa@gmail.com' } });
+  const fila = await prisma.inquilino.findFirst({ where: { email: 'mariela.sosa@example.com' } });
   if (fila) {
     inquilinoId = fila.id;
     tenant = fila.inmobiliariaId;

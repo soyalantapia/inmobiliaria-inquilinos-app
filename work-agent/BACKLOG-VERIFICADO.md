@@ -9,14 +9,14 @@
 > del día en que se escribió cada bloque, y el proyecto siguió: atacar desde ahí es trabajo
 > tirado. **Manda el código.**
 >
-> **Quedan 17 accionables, 1 a medias y 1 bloqueada.**
+> **Quedan 17 accionables, 1 a medias y 1 bloqueada.** *(31/08: T-61 cerrada, y entró T-73.)*
 >
 > Y esta lista tampoco es eterna: cada tarea trae la evidencia con la que se la verificó, para que
 > se pueda desconfiar de ella igual que de la otra.
 
 ---
 
-## Antes de empezar: las 19 que NO hay que tocar
+## Antes de empezar: las 20 que NO hay que tocar
 
 | Tarea | Evidencia de que está hecha |
 |---|---|
@@ -38,6 +38,8 @@
 | **T-45** el home de la PWA ignoraba el pago informado | usa el mismo helper que el detalle y muestra el faltante |
 | **T-57** la mora sobre el saldo | **hecho y desplegado el 31/08** — PR #66 |
 | **T-58** monto fijo según la moneda | test en `mora-cascada.test.ts:109` |
+| **T-51** los dominios de correo de la demo Y del seed | **hecho el 31/08** — PR #72; entraron además dos generadores que la ficha no tenía |
+| **T-61** el ajuste posterior a una renovación | **hecho el 31/08** — PR #69, reparación al escribir en los tres puntos de canon |
 | **T-72** el candado de archivos | **prendido el 31/08** — `UPLOADS_AMBITO=on` en Render |
 
 Y una que se cierra sin trabajo: **T-23-N3-N2** está marcada **mal diagnosticada** en el propio
@@ -71,40 +73,55 @@ rechaza, o se registra como ajuste del día en curso?
 
 ---
 
-## T-21-N3-N1 · La capacidad #1 del MVP no está construida
+## T-21-N3-N1 · Las cuatro capacidades del brief: qué se hace con ellas — ◑ reencuadrada
 
-**Objetivo.** Cerrar la contradicción entre lo que el documento fundacional promete y lo que el
-producto hace.
+**Objetivo.** Decidir el roadmap de las cuatro capacidades del brief de mayo.
 
-**Problema.** `CLAUDE.md` §1 lista **"Carga de contrato con IA"** como la primera de las cuatro
-capacidades **no negociables** del MVP, y §5.1 la describe con endpoint, flujo, prompt y tests.
-**No existe**, verificado por tres caminos independientes: no hay endpoint `/contratos/parse`, el
-SDK de Anthropic no está en ninguna dependencia, y `ANTHROPIC_*` no se lee en ningún archivo de
-`apps/api/src`.
+**Lo que la ficha decía, y ya no es cierto.** Decía que `CLAUDE.md` promete la carga de contrato
+con IA como capacidad **no negociable** y el producto no la hace — o sea, que el documento
+fundacional mentía. **Verificado el 31/08: esa mitad ya está resuelta.** `CLAUDE.md` §1.2 se
+reescribió el 19/08 y hoy dice, textual:
 
-Lo que sí hay para cargar contratos: el wizard manual y la importación de cartera desde Excel/CSV
-— determinística, sin IA, y que funciona.
+> *"Estas son las que este documento llamó «no-negociables». **Ninguna está construida como está
+> escrita.**"*
 
-**Solución.** Es **decisión de producto, no tarea técnica**: o se construye, o se saca de la lista
-de capacidades no negociables. Mientras no se decida, el documento que define el MVP promete algo
-que el producto no hace — y eso contamina cualquier conversación de alcance.
+…con una tabla del estado real de cada una. **El documento ya no promete nada que el producto no
+haga.**
+
+**Lo que sigue abierto** —y verificado hoy por los tres caminos: sin endpoint `/contratos/parse`,
+sin SDK de ningún LLM en las dependencias, sin `ANTHROPIC_*` en el código— es **la decisión de
+roadmap**, y no es sólo la #1:
+
+| Capacidad | Estado real |
+|---|---|
+| 1 · Carga de contrato con IA | no existe. En su lugar: wizard manual + importación de cartera, las dos en producción |
+| 2 · Pago unificado con Mercado Pago | **el resultado sí, el medio no**: una pantalla y un botón, pero se cobra por transferencia con validación humana |
+| 3 · Chat con el contrato (RAG) | no existe. La tabla de mensajes está y nadie la escribe |
+| 4 · Screening crediticio | cáscara: el informe sale de un PRNG. *(El endpoint ya devuelve 501, no inventa más.)* |
+
+**Solución.** Es **decisión de producto**, y la pregunta está en `PARA-ALAN.md`. Ninguna de las
+cuatro es trabajo que un agente pueda tomar sin esa respuesta.
 
 ---
 
 # 🟠 Código, con diagnóstico cerrado
 
-## T-61 · Un ajuste posterior a una renovación queda anulado en el devengo
+## T-73 · `portal-propietario-e2e` falla de a ratos y enseña a ignorar los rojos
 
-**Objetivo.** Que el último cambio de canon sea el que manda.
+**Objetivo.** Que un rojo del CI vuelva a significar algo.
 
-**Problema.** Si se carga una renovación y **después** un ajuste, el devengo usa el snapshot de la
-renovación y el ajuste queda anulado. Verificado que sigue abierto: `lib/liquidaciones.ts` **no
-compara `createdAt`** en ningún lado.
+**Problema.** En el PR #69, **el mismo commit** dio una corrida de `integracion` en rojo y otra en
+verde. La falla es *"pedir el código tiene que dejarlo guardado: expected 2 to be 1"* en
+`test/portal-propietario-e2e.test.ts`: cuenta los códigos OTP guardados y a veces encuentra uno de
+más. Al relanzar el job, verde.
 
-**Solución.** Ya está relevada y **no necesita migración**: `AjusteAlquiler` y `RenovacionContrato`
-**ya tienen `createdAt`**, así que el dato para distinguir "el snapshot sigue valiendo" de "alguien
-tocó el canon después" existe. Son tres puntos de escritura: `core.ts:2460` y `core.ts:3813`
-(ajustes) y `core.ts:2574` (renovación).
+O sea: **el test no está aislado de lo que dejó una corrida anterior.** No es un defecto del
+producto — pero es el mismo mecanismo que ya costó nueve días de CI en rojo acá: un semáforo que
+falla sin motivo entrena a mirar para otro lado.
+
+**Solución.** Aislar el conteo: o limpiar los códigos de ese propietario en el `beforeEach`, o
+contar sólo los emitidos después de una marca de tiempo tomada dentro del test, en vez de contar
+todos los que existen.
 
 ---
 
@@ -269,16 +286,6 @@ pasada**, porque vive bajo la carpeta de pagos y así nadie discute si cuenta co
 
 ---
 
-## T-51 · Los datos de demo usan dominios de correo reales
-
-**Objetivo.** Que la demo pública no exponga direcciones de terceros.
-
-**Problema.** Ningún email ficticio usa un dominio reservado. Verificado hoy en el seed:
-`@gmail.com`, `@hotmail.com`, `@yahoo.com`, y dominios con pinta de negocio real. Desde el 19/08
-está **publicado en internet**, con nombre y apellido al lado, y algunas de esas direcciones pueden
-ser de personas reales que no tienen nada que ver con el producto.
-
-**Solución.** Pasar todo a `example.com` (RFC 2606). Toca el seed → correr la suite después.
 
 ---
 
@@ -397,6 +404,8 @@ El orden que yo tomaría:
 1. **T-13-N1** (el cierre de caja) y **T-61** (el ajuste anulado): las dos tocan plata, las dos
    tienen diagnóstico cerrado y ninguna necesita relevar nada. **T-61 ni siquiera necesita
    migración.**
+1. **T-13-N1** (el cierre de caja): toca plata, tiene diagnóstico cerrado y no necesita relevar
+   nada. ~~T-61~~ ya está cerrada (PR #69).
 2. **T-34** y **T-51**: baratas, cierran en una pasada cada una y bajan el ruido.
 3. **T-21-N3-N1**: no es código, es una definición tuya — y hasta que no esté, el documento que
    define el MVP promete algo que el producto no hace.
