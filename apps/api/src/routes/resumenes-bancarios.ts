@@ -416,7 +416,13 @@ export async function resumenesBancariosRoutes(app: FastifyInstance): Promise<vo
             montoLiqTotal: liq.montoTotal,
             metodo: 'TRANSFERENCIA',
             nroOperacion: credito.nroOperacion,
-            fechaTransferencia: credito.fecha,
+            // UN INSTANTE, no la fecha civil cruda — como guardan los otros cuatro caminos que
+            // escriben `fechaTransferencia`. El parser del extracto entrega `D T00:00Z`, que en
+            // Argentina son las 21:00 del día ANTERIOR; guardarlo así le regalaba un día a todo
+            // lo que después lee este campo por día civil. Este archivo YA normaliza con
+            // `instanteEnDiaCivilAR` en los dos lugares donde calcula la mora (líneas 368 y 439):
+            // lo único que faltaba era guardar lo mismo que ya usa para pensar.
+            fechaTransferencia: instanteEnDiaCivilAR(credito.fecha),
             notaInquilino: `Conciliado desde extracto bancario · ${credito.bancoOrigen || 'banco'} · op. ${credito.nroOperacion}`,
             estado: 'CONCILIADO',
             decididoPorId: u.userId,
