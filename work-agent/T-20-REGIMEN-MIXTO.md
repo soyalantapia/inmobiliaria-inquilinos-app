@@ -26,7 +26,7 @@ exactamente lo que `lib/cierre-caja.ts` ya dice por escrito.
 El contraste está en el mismo test: la unidad **alquilada del mismo consorcio** sí se rinde, y con
 plata. La distinción funciona.
 
-### 🟡 Pero el mensaje engaña
+### ✅ El mensaje engañaba — arreglado acá mismo (T-20-a)
 
 El 409 dice:
 
@@ -36,14 +36,22 @@ Y sí hubo cobros: se cobraron los $150.000 completos. Lo que no hay es nada **r
 Camila, parada frente a una unidad cuyo inquilino pagó todo, ese texto dice lo contrario de lo que
 pasó — y el camino natural para "arreglarlo" es buscar el pago que supuestamente falta.
 
-**No se cambió acá**, y a propósito: el 409 se lanza como excepción desde adentro de la
-transacción y se traduce a mensaje ~430 líneas más abajo, sin acceso a lo cobrado. Distinguir
-*"no cobramos nada"* de *"cobramos, pero es del consorcio"* implica llevar ese dato hasta el
-handler, que es más que un cambio de copy.
+El 409 se lanza como excepción desde adentro de la transacción y se traduce a mensaje ~430 líneas
+más abajo, donde ya no hay con qué distinguir los casos. La solución fue hacer viajar los dos
+números en la excepción: lo **cobrado** del período y, de eso, la porción que es **alquiler**.
 
-**T-20-a (sugerido):** que el 409 de la rendición distinga los dos casos. Texto propuesto para el
-segundo: *"Se cobraron $X de expensas, que van al consorcio: no hay alquiler para rendirle a este
-propietario."*
+Ahora el 409 dice, cuando se cobró y nada es alquiler:
+
+> *"Se cobraron $ 150.000 de expensas del período 2026-06, que van al consorcio: no hay alquiler
+> para rendirle a este propietario"*
+
+…y sigue diciendo *"No hay cobros nuevos"* en los otros dos casos (no se cobró nada, o ya se
+rindió todo lo cobrado), donde ese texto sí describe lo que pasó. La respuesta lleva además un
+`codigo` (`SOLO_EXPENSAS` / `SIN_COBROS_NUEVOS`) para que el panel pueda decidir sin parsear texto.
+
+El test cubre **los dos** caminos: sin el segundo caso, un arreglo que reemplazara el mensaje para
+todos pasaría igual y dejaría un texto de expensas sobre una unidad alquilada — la misma mentira
+al revés.
 
 ---
 

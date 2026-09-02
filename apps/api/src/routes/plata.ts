@@ -2355,6 +2355,9 @@ export async function plataRoutes(app: FastifyInstance) {
           );
 
           let montoBruto = 0;
+          // Para el 409: distinguir "no se cobró nada" de "se cobró, pero no es rendible".
+          let cobradoDelPeriodo = 0;
+          let alquilerCobradoDelPeriodo = 0;
           const alquilerData: {
             inmobiliariaId: string;
             liquidacionId: string;
@@ -2389,6 +2392,10 @@ export async function plataRoutes(app: FastifyInstance) {
               base: total,
               cobrado: cobradoMap.get(liq.id) ?? 0,
             });
+            // Se acumulan ANTES del `continue` de abajo: si todas las liquidaciones se saltean,
+            // estos dos son lo único que queda para explicar por qué.
+            cobradoDelPeriodo += cobradoMap.get(liq.id) ?? 0;
+            alquilerCobradoDelPeriodo += alquilerCobrado;
             const parteOwner = alquilerCobrado * (porcentaje / 100);
             const yaRend = yaRendMap.get(liq.id) ?? 0;
             const yaRendTotal = yaRendTotalMap.get(liq.id) ?? 0;
@@ -2409,7 +2416,8 @@ export async function plataRoutes(app: FastifyInstance) {
             });
           }
           montoBruto = r2c(montoBruto);
-          if (montoBruto <= 0) throw new RendicionSinCobros();
+          if (montoBruto <= 0)
+            throw new RendicionSinCobros(r2c(cobradoDelPeriodo), r2c(alquilerCobradoDelPeriodo));
 
           // Gastos pendientes del período (dentro del lock, misma foto que el bruto).
           const propIdsConIngreso = [...new Set(liqsCobradas.map((l) => l.contrato.propiedadId))];
@@ -2840,11 +2848,19 @@ export async function plataRoutes(app: FastifyInstance) {
         });
       }
       if (e instanceof RendicionSinCobros) {
-        return reply
-          .code(409)
-          .send({
-            message: `No hay cobros nuevos del período ${periodo} para rendir a este propietario`,
-          });
+        // Se cobró plata, y NADA de eso es alquiler → son expensas, que van al consorcio. Decirle
+        // "no hay cobros" al operador que acaba de ver el pago entrar es mandarlo a buscar un
+        // pago que no falta. El resto de los casos —no se cobró nada, o ya se rindió todo— sí
+        // están bien descritos por el texto de siempre.
+        const soloExpensas = e.cobrado > 0 && e.alquilerCobrado <= 0;
+        return reply.code(409).send({
+          codigo: soloExpensas ? 'SOLO_EXPENSAS' : 'SIN_COBROS_NUEVOS',
+          message: soloExpensas
+            ? `Se cobraron ${monedaRendicion === 'USD' ? 'US$' : '$'} ` +
+              `${e.cobrado.toLocaleString('es-AR')} de expensas del período ${periodo}, que van al ` +
+              `consorcio: no hay alquiler para rendirle a este propietario`
+            : `No hay cobros nuevos del período ${periodo} para rendir a este propietario`,
+        });
       }
       if (e instanceof RendicionPreLedger) {
         const cuando = e.rendidoAt.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
@@ -3453,7 +3469,27 @@ class ParticipacionAusente extends Error {
 class MovimientoTomadoPorRendicion extends Error {}
 /** Aborta el `deposito/resolver` cuando otro operador lo resolvió primero. */
 class DepositoYaResuelto extends Error {}
-class RendicionSinCobros extends Error {}
+/**
+ * No hay NADA RENDIBLE, que no es lo mismo que "no se cobró nada".
+ *
+ * T-20-a — El 409 decía siempre *"No hay cobros nuevos"*, y en la unidad de SÓLO EXPENSAS eso es
+ * falso: se cobró la expensa entera. Lo que no hay es alquiler, porque esa plata es del consorcio.
+ * Frente a una unidad cuyo inquilino pagó todo, ese texto decía lo contrario de lo que pasó y
+ * mandaba al operador a buscar un pago que no falta.
+ *
+ * Por eso la excepción viaja con los dos números: se lanza adentro de la transacción y se traduce
+ * a mensaje ~430 líneas más abajo, donde ya no hay con qué distinguir los casos.
+ */
+class RendicionSinCobros extends Error {
+  constructor(
+    /** Lo COBRADO del período en las liquidaciones miradas (alquiler + expensas + mora). */
+    readonly cobrado = 0,
+    /** De eso, la porción que es ALQUILER — la única rendible. */
+    readonly alquilerCobrado = 0,
+  ) {
+    super();
+  }
+}
 /**
  * Ya hay una rendición de este dueño y este período que es ANTERIOR AL LEDGER.
  *
