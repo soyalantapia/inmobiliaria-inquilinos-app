@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from '@llave/ui/cn';
 import { enumerarPeriodosContrato } from '@llave/shared/periodos';
 import { Topbar } from '@/components/topbar';
+import { numeroTipeado } from '@/lib/numero-tipeado';
 import { apiEnabled, apiFetch, ApiError, datoDeError, subirArchivo, varianteError } from '@/lib/api/client';
 import { ensureApiSession } from '@/lib/api/session';
 import {
@@ -2176,11 +2177,15 @@ function CargarContratoApiWizard() {
               <div className="space-y-1.5 md:max-w-xs">
                 <Label htmlFor="comision">Comisión de la inmobiliaria (%)</Label>
                 <div className="relative">
+                    {/* La coma como separador decimal la resuelve `numeroTipeado`, que tiene el caso
+                        escrito: acá «8,5» se guardaba como 85. */}
                   <Input
                     id="comision"
                     inputMode="decimal"
                     value={comisionInmobiliaria}
-                    onChange={(e) => setComisionInmobiliaria(e.target.value.replace(/[^\d.]/g, '').slice(0, 5))}
+                    onChange={(e) =>
+                      setComisionInmobiliaria(numeroTipeado(e.target.value))
+                    }
                     placeholder="8"
                     className="pr-8"
                   />
