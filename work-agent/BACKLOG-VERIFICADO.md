@@ -9,14 +9,14 @@
 > del día en que se escribió cada bloque, y el proyecto siguió: atacar desde ahí es trabajo
 > tirado. **Manda el código.**
 >
-> **Quedan 17 accionables, 1 a medias y 1 bloqueada.**
+> **Quedan 17 accionables, 1 a medias y 1 bloqueada.** *(31/08: T-61 cerrada, y entró T-73.)*
 >
 > Y esta lista tampoco es eterna: cada tarea trae la evidencia con la que se la verificó, para que
 > se pueda desconfiar de ella igual que de la otra.
 
 ---
 
-## Antes de empezar: las 19 que NO hay que tocar
+## Antes de empezar: las 20 que NO hay que tocar
 
 | Tarea | Evidencia de que está hecha |
 |---|---|
@@ -39,6 +39,7 @@
 | **T-57** la mora sobre el saldo | **hecho y desplegado el 31/08** — PR #66 |
 | **T-58** monto fijo según la moneda | test en `mora-cascada.test.ts:109` |
 | **T-34** `payment-hero.tsx` era código muerto | **hecho el 31/08** — PR #71; con él se fue una cuarta copia de la aritmética de pago |
+| **T-61** el ajuste posterior a una renovación | **hecho el 31/08** — PR #69, reparación al escribir en los tres puntos de canon |
 | **T-72** el candado de archivos | **prendido el 31/08** — `UPLOADS_AMBITO=on` en Render |
 
 Y una que se cierra sin trabajo: **T-23-N3-N2** está marcada **mal diagnosticada** en el propio
@@ -94,18 +95,22 @@ que el producto no hace — y eso contamina cualquier conversación de alcance.
 
 # 🟠 Código, con diagnóstico cerrado
 
-## T-61 · Un ajuste posterior a una renovación queda anulado en el devengo
+## T-73 · `portal-propietario-e2e` falla de a ratos y enseña a ignorar los rojos
 
-**Objetivo.** Que el último cambio de canon sea el que manda.
+**Objetivo.** Que un rojo del CI vuelva a significar algo.
 
-**Problema.** Si se carga una renovación y **después** un ajuste, el devengo usa el snapshot de la
-renovación y el ajuste queda anulado. Verificado que sigue abierto: `lib/liquidaciones.ts` **no
-compara `createdAt`** en ningún lado.
+**Problema.** En el PR #69, **el mismo commit** dio una corrida de `integracion` en rojo y otra en
+verde. La falla es *"pedir el código tiene que dejarlo guardado: expected 2 to be 1"* en
+`test/portal-propietario-e2e.test.ts`: cuenta los códigos OTP guardados y a veces encuentra uno de
+más. Al relanzar el job, verde.
 
-**Solución.** Ya está relevada y **no necesita migración**: `AjusteAlquiler` y `RenovacionContrato`
-**ya tienen `createdAt`**, así que el dato para distinguir "el snapshot sigue valiendo" de "alguien
-tocó el canon después" existe. Son tres puntos de escritura: `core.ts:2460` y `core.ts:3813`
-(ajustes) y `core.ts:2574` (renovación).
+O sea: **el test no está aislado de lo que dejó una corrida anterior.** No es un defecto del
+producto — pero es el mismo mecanismo que ya costó nueve días de CI en rojo acá: un semáforo que
+falla sin motivo entrena a mirar para otro lado.
+
+**Solución.** Aislar el conteo: o limpiar los códigos de ese propietario en el `beforeEach`, o
+contar sólo los emitidos después de una marca de tiempo tomada dentro del test, en vez de contar
+todos los que existen.
 
 ---
 
@@ -374,9 +379,8 @@ aplicar.** Cuanto antes.
 
 El orden que yo tomaría:
 
-1. **T-13-N1** (el cierre de caja) y **T-61** (el ajuste anulado): las dos tocan plata, las dos
-   tienen diagnóstico cerrado y ninguna necesita relevar nada. **T-61 ni siquiera necesita
-   migración.**
+1. **T-13-N1** (el cierre de caja): toca plata, tiene diagnóstico cerrado y no necesita relevar
+   nada. ~~T-61~~ ya está cerrada (PR #69).
 2. **T-34** y **T-51**: baratas, cierran en una pasada cada una y bajan el ruido.
 3. **T-21-N3-N1**: no es código, es una definición tuya — y hasta que no esté, el documento que
    define el MVP promete algo que el producto no hace.
