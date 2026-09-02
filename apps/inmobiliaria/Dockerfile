@@ -33,6 +33,10 @@ COPY apps/propietario apps/propietario
 # Se declaran acá (después del COPY) para no invalidar la capa de pnpm install.
 ARG NEXT_PUBLIC_INQUILINO_URL
 ENV NEXT_PUBLIC_INQUILINO_URL=$NEXT_PUBLIC_INQUILINO_URL
+# Sonar: el HOST, sin default. Si no se pasa, el layout no emite el script — que es lo
+# que queremos: el valor viejo apuntaba a Railway y sobrevivio al ban horneado en el HTML.
+ARG NEXT_PUBLIC_SONAR_URL
+ENV NEXT_PUBLIC_SONAR_URL=$NEXT_PUBLIC_SONAR_URL
 ARG NEXT_PUBLIC_POSTHOG_KEY
 ENV NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY
 ARG NEXT_PUBLIC_POSTHOG_HOST
@@ -42,7 +46,10 @@ ENV NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST
 # layout cae a 'desconocido' en vez de mentir. Es lo que hace verificable un deploy del front:
 # hasta ahora sólo la API decía qué versión corría, en /health.
 ARG RAILWAY_GIT_COMMIT_SHA
-ENV NEXT_PUBLIC_COMMIT=$RAILWAY_GIT_COMMIT_SHA
+# Render expone RENDER_GIT_COMMIT; Railway, RAILWAY_GIT_COMMIT_SHA. Se declaran los dos y
+# gana el que venga, para que el <meta build-commit> diga la verdad en las dos plataformas.
+ARG RENDER_GIT_COMMIT
+ENV NEXT_PUBLIC_COMMIT=${RAILWAY_GIT_COMMIT_SHA:-$RENDER_GIT_COMMIT}
 # EL PORTAL DEL PROPIETARIO VIAJA ADENTRO DEL PANEL, en `/propietario`.
 #
 # Es una app de sólo lectura y 100% estática (ya se exporta así para la demo). Un servicio

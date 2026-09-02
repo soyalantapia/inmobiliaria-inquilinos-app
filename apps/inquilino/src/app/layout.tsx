@@ -52,17 +52,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           content={process.env.NEXT_PUBLIC_COMMIT?.slice(0, 7) || 'desconocido'}
         />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        {/* Sonar corre acá en PRODUCCIÓN aunque el dominio sea *.up.railway.app. Sin este
-            meta, su heurística por hostname lo toma como staging y los tickets quedan
-            clasificados según por qué dominio entró el usuario, no según lo que son. */}
-        <meta name="sonar-env" content="production" />
-        {/* Sonar: reporte de errores del portfolio. async → si Sonar se cae, NO bloquea la app.
-            La key es pública a propósito; el guard real es allowedOrigins del proyecto en Sonar. */}
-        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script
-          src="https://sonar-api-production-77b5.up.railway.app/v1/loader.js?key=son_pub_live_L4ZgFYmfd8ITxrofS_uDPhst"
-          async
-        />
+        {/* Sonar: reporte de errores del portfolio. El HOST viene por variable de entorno y
+            SIN default: si falta, no se emite nada.
+
+            Estuvo escrito a mano apuntando a Railway y murio con el ban del 28/08; como esto
+            se hornea en el HTML al construir, un host equivocado sobrevive hasta el proximo
+            build de los tres servicios. La key sigue siendo publica a proposito: el guard real
+            es `allowedOrigins` del proyecto en Sonar.
+
+            El `meta` va adentro del mismo guard: sin loader no clasifica nada. */}
+        {process.env.NEXT_PUBLIC_SONAR_URL && (
+          <>
+            <meta name="sonar-env" content="production" />
+            {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+            <script
+              src={`${process.env.NEXT_PUBLIC_SONAR_URL}/v1/loader.js?key=son_pub_live_L4ZgFYmfd8ITxrofS_uDPhst`}
+              async
+            />
+          </>
+        )}
       </head>
       <body className="min-h-screen bg-background font-sans" style={{ backgroundColor: '#ffffff' }}>
         <QueryProvider>
