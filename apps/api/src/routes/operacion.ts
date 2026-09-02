@@ -15,6 +15,8 @@ import { TIPOS_AVISO_INMO } from '../lib/destinatario-aviso.js';
 import { normalizarEmail } from '../lib/normalizar-email.js';
 import { dinero, dineroConSigno } from '../lib/monto.js';
 import { puedeAdjuntar } from '../lib/acceso-archivos.js';
+import { rolTienePermiso } from '@llave/shared';
+import { CAMPOS_VISITA_PANEL } from '../lib/visita-campos.js';
 
 /** Token opaco del link mágico de visita (/p/:token) — 24 bytes base64url, no adivinable. */
 function generarTokenVisita(): string {
@@ -224,6 +226,7 @@ export async function operacionRoutes(app: FastifyInstance) {
   app.get('/reclamos/:id', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'reclamos.ver');
     if (!u) return;
+    const puedeVerElLink = rolTienePermiso(u.rol, 'profesional.asignar');
     const { id } = request.params as { id: string };
     const reclamo = await prisma.reclamo.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
@@ -241,7 +244,24 @@ export async function operacionRoutes(app: FastifyInstance) {
         },
         profesional: true,
         eventos: { orderBy: { fecha: 'asc' } },
-        visita: true,
+        // EL TOKEN DE LA VISITA NO VIAJA PARA CUALQUIERA.
+        //
+        // `visita: true` traía la fila entera, y ahí adentro va `token`: el link mágico en
+        // crudo. Ese token se canjea SIN bearer en `GET /visitas-publicas/:token` por un JWT
+        // `kind: 'profesional'` de tres días, que cierra el reclamo, escribe `costoTrabajo` y
+        // dispara `imputarCostoReclamo` — o sea, puede crear un CargoContrato contra el
+        // inquilino o descontar el depósito.
+        //
+        // Y este endpoint está gateado con `reclamos.ver`, que incluye a **LECTURA**. El rol
+        // de consulta no puede asignar un profesional (eso es `profesional.asignar`, ADMIN y
+        // OPERADOR) y sin embargo se llevaba la llave que emite sesiones de profesional.
+        //
+        // El token sale sólo para quien PUEDE crear y regenerar ese link, que es el mismo que
+        // lo necesita para copiarlo. Mismo patrón que `veDatosDelDuenio` en core.ts.
+        //
+        // Que era sensible ya se sabía: el propio `GET /visitas-publicas/:token` arma su
+        // respuesta campo por campo y OMITE el token.
+        visita: { select: { ...CAMPOS_VISITA_PANEL, ...(puedeVerElLink ? { token: true } : {}) } },
         confirmacion: true,
         rating: true,
         cargos: true,
