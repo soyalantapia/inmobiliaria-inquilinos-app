@@ -54,6 +54,7 @@ export const TIPO_LABEL: Record<string, string> = {
   PIN_ELIMINADO: 'PIN eliminado',
   EQUIPO_REINCORPORADO: 'Equipo · reincorporación',
   EQUIPO_ROL_CAMBIADO: 'Equipo · cambio de rol',
+  CONTRATO_DADO_DE_BAJA: 'Contrato dado de baja',
 };
 
 export const TIPO_VARIANT: Record<string, 'success' | 'destructive' | 'warning' | 'secondary'> = {
@@ -69,6 +70,9 @@ export const TIPO_VARIANT: Record<string, 'success' | 'destructive' | 'warning' 
   GASTO_CAJA_ELIMINADO: 'destructive',
   CONTRATO_RECHAZADO: 'destructive',
   EQUIPO_REMOVIDO: 'destructive',
+  // La baja libera la propiedad, borra las cuotas futuras y puede resolver el depósito.
+  // Es irreversible: va en rojo, como el resto de lo que deshace.
+  CONTRATO_DADO_DE_BAJA: 'destructive',
   // En rojo lo que deshace o borra plata, y lo que es un intento fallido de entrar.
   PROPIETARIO_RENDICION_ANULADA: 'destructive',
   MOVIMIENTO_CONSORCIO_ELIMINADO: 'destructive',

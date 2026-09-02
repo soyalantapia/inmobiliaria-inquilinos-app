@@ -30,14 +30,14 @@
 
 ## Task 1: Escenario local de 2 alquileres (harness de verificación)
 
-Sin esto no se puede verificar nada del resto. Crea una 2ª inmobiliaria con un contrato para el MISMO email que ya usa el seed (`mariela.sosa@gmail.com`), con un monto deliberadamente distinto para que el bug de caché sea imposible de confundir.
+Sin esto no se puede verificar nada del resto. Crea una 2ª inmobiliaria con un contrato para el MISMO email que ya usa el seed (`mariela.sosa@example.com`), con un monto deliberadamente distinto para que el bug de caché sea imposible de confundir.
 
 **Files:**
 - Create: `apps/api/prisma/escenario-multi-alquiler.ts`
 
 **Interfaces:**
 - Consumes: `seedBase` de `apps/api/prisma/seed.ts`; `generarLiquidacionesContrato` de `apps/api/src/lib/liquidaciones.ts`.
-- Produces: una DB local con 2 alquileres para `mariela.sosa@gmail.com` — uno en "Inmobiliaria del Sol" (monto 480000, del seed) y otro en "Alquileres del Norte" (monto **999999**).
+- Produces: una DB local con 2 alquileres para `mariela.sosa@example.com` — uno en "Inmobiliaria del Sol" (monto 480000, del seed) y otro en "Alquileres del Norte" (monto **999999**).
 
 - [ ] **Step 1: Crear el script del escenario**
 
@@ -57,7 +57,7 @@ import { generarLiquidacionesContrato } from '../src/lib/liquidaciones.js';
  * Uso (contra una DB local efímera, NUNCA la remota):
  *   DATABASE_URL=... JWT_SECRET=... npx tsx prisma/escenario-multi-alquiler.ts
  */
-const EMAIL = 'mariela.sosa@gmail.com';
+const EMAIL = 'mariela.sosa@example.com';
 const MONTO_2 = 999_999;
 
 (async () => {
@@ -179,7 +179,7 @@ npx prisma migrate deploy && npx prisma generate
 npx tsx prisma/escenario-multi-alquiler.ts
 ```
 
-Expected: la última línea imprime `OK — mariela.sosa@gmail.com tiene ahora 2 alquileres. El 2º es "Mendoza 3344, 2°A" por $999999.`
+Expected: la última línea imprime `OK — mariela.sosa@example.com tiene ahora 2 alquileres. El 2º es "Mendoza 3344, 2°A" por $999999.`
 
 - [ ] **Step 3: Verificar que el API lista los 2 alquileres**
 
@@ -189,8 +189,8 @@ Levantar el API y pedir el OTP + verify (el código de demo `000000` funciona co
 cd ~/dev/myalq-multiprop/apps/api
 DEMO_MODE=true PORT=3006 npx tsx src/index.ts &
 sleep 4
-/usr/bin/curl -s -X POST localhost:3006/auth/otp/request -H 'content-type: application/json' -d '{"email":"mariela.sosa@gmail.com"}'
-/usr/bin/curl -s -X POST localhost:3006/auth/otp/verify -H 'content-type: application/json' -d '{"email":"mariela.sosa@gmail.com","code":"000000"}'
+/usr/bin/curl -s -X POST localhost:3006/auth/otp/request -H 'content-type: application/json' -d '{"email":"mariela.sosa@example.com"}'
+/usr/bin/curl -s -X POST localhost:3006/auth/otp/verify -H 'content-type: application/json' -d '{"email":"mariela.sosa@example.com","code":"000000"}'
 ```
 
 Expected: el `verify` devuelve un `personaToken` y un array `alquileres` con **2 elementos**, uno con `inmobiliaria: "Inmobiliaria del Sol"` y otro con `inmobiliaria: "Alquileres del Norte"`, y ambos con el campo `estado`.
@@ -204,7 +204,7 @@ cd ~/dev/myalq-multiprop/apps/inquilino
 NEXT_PUBLIC_API_URL=http://localhost:3006 npx next dev -p 3000
 ```
 
-En el navegador: entrar a `http://localhost:3000/login` → email `mariela.sosa@gmail.com` → código `000000` → aparece el selector con 2 propiedades → entrar a **Mendoza 3344** (la de $999999) → anotar el monto que muestra la home → ir a `/mis-alquileres` → cambiar a **Gorriti 4521** → observar la home.
+En el navegador: entrar a `http://localhost:3000/login` → email `mariela.sosa@example.com` → código `000000` → aparece el selector con 2 propiedades → entrar a **Mendoza 3344** (la de $999999) → anotar el monto que muestra la home → ir a `/mis-alquileres` → cambiar a **Gorriti 4521** → observar la home.
 
 Expected (el bug): la home muestra la dirección NUEVA (Gorriti) pero el **monto/deuda de Mendoza ($999999)**. Dejar registrado con screenshot: es la prueba de que el bug existe.
 
@@ -341,7 +341,7 @@ Ojo con `router`: en `mis-alquileres/page.tsx` se sigue usando (`router.replace(
 
 Recorrido (con el escenario de la Task 1 y la PWA levantada según los gotchas de las Global Constraints):
 
-1. Login `mariela.sosa@gmail.com` / código `000000` → entrar a **Mendoza 3344** (Alquileres del Norte).
+1. Login `mariela.sosa@example.com` / código `000000` → entrar a **Mendoza 3344** (Alquileres del Norte).
 2. La home debe decir "Administra **Alquileres del Norte**".
 3. Ir a `/mis-alquileres` → cambiar a **Gorriti 4521** (Inmobiliaria del Sol).
 4. **Expected CON el fix:** la home dice "Administra **Inmobiliaria del Sol**". (Sin el fix decía "Alquileres del Norte" hasta pasados 60s o un reload duro.)
@@ -958,7 +958,7 @@ npx prisma migrate deploy && npx prisma generate
 npx tsx prisma/escenario-multi-alquiler.ts
 ```
 
-Luego, con el API levantado contra esa DB, crear un 2º contrato en "Inmobiliaria del Sol" para `mariela.sosa@gmail.com` vía `POST /contratos` (login de panel: `roberto@delsol.com` / `delsol123`, propiedad libre `prp_006`).
+Luego, con el API levantado contra esa DB, crear un 2º contrato en "Inmobiliaria del Sol" para `mariela.sosa@example.com` vía `POST /contratos` (login de panel: `roberto@delsol.com` / `delsol123`, propiedad libre `prp_006`).
 
 Expected: el alta **NO** devuelve 409 (antes sí) y `POST /auth/otp/verify` para ese email devuelve **3 alquileres**, dos de ellos de "Inmobiliaria del Sol".
 
@@ -1158,7 +1158,7 @@ Expected: un número **≤ 259** (baseline preexistente). Si sube, hay regresió
 
 Con el escenario local, verificar en una sola pasada:
 
-1. Login con `mariela.sosa@gmail.com` → aparece el selector con las propiedades.
+1. Login con `mariela.sosa@example.com` → aparece el selector con las propiedades.
 2. Entrar a **Mendoza 3344** → la home dice "Administra **Alquileres del Norte**" y $999.999.
 3. Volver a la lista **desde el sidenav** (desktop) y **desde el header** (mobile).
 4. Cambiar a **Gorriti 4521** → la home dice "Administra **Inmobiliaria del Sol**". ← *el test que importa* (ver la nota de la Task 2 Step 5: el nombre de la inmobiliaria es la señal confiable, el monto NO — se actualiza igual sin el fix).

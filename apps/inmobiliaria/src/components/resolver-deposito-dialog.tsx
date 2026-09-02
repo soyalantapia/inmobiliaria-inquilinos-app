@@ -62,7 +62,7 @@ export function ResolverDepositoDialog({
     }
     // "Devolver menos" = devolver algo, pero menos que el total.
     if (decision === 'NETEAR' && !(montoNum > 0 && montoNum < deposito.disponible)) {
-      toast({ title: 'Revisá el monto a devolver', description: `Tiene que ser mayor a $0 y menor a ${formatMonto(deposito.disponible)} (lo disponible). Si devolvés todo usá "Devolver", y si no devolvés nada usá "Retener todo".`, variant: 'destructive' });
+      toast({ title: 'Revisá el monto a devolver', description: `Tiene que ser mayor a $0 y menor a ${formatMonto(deposito.disponible, deposito.moneda)} (lo disponible). Si devolvés todo usá "Devolver", y si no devolvés nada usá "Retener todo".`, variant: 'destructive' });
       return;
     }
     setGuardando(true);

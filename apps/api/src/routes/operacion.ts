@@ -1405,6 +1405,15 @@ export async function operacionRoutes(app: FastifyInstance) {
       zona: red.zona,
       asegurado: estaAsegurado(red),
       aseguradora: red.aseguradora ?? null,
+      // EL NÚMERO DE PÓLIZA SE ACEPTABA, SE GUARDABA, Y NINGÚN GET LO DEVOLVÍA. La ficha exponía
+      // `asegurado`, `aseguradora` y `polizaVence`, y nada más — el número quedaba en la base sin
+      // ninguna pantalla que lo sacara. El delator estaba en el propio formulario: `aseguradora`
+      // y `polizaVence` se precargan de la ficha y `nroPoliza` arrancaba en `''`.
+      //
+      // El escenario: en marzo se carga "POL-2026-48721". En agosto el plomero inunda un
+      // departamento, la inmobiliaria abre la ficha para hacer el reclamo al seguro y lee
+      // "Asegurado por La Caja · vence 12/03/2027". Abre "Editar" y el campo está vacío.
+      nroPoliza: red.nroPoliza ?? null,
       polizaVence: red.polizaVence ? red.polizaVence.toISOString().slice(0, 10) : null,
       ...ficha,
       // El teléfono/email de contacto sólo si ya lo contraté (es mío); si no, null
@@ -2204,7 +2213,20 @@ export async function operacionRoutes(app: FastifyInstance) {
   });
 
   // Rescisión anticipada por defecto: preaviso (meses) + penalidad (cánones de alquiler).
-  // La heredan los contratos sin valor propio (core.ts la lee al finalizar).
+  //
+  // OJO, LOS DOS CAMPOS NO SON IGUALES, y este comentario decía que sí ("la heredan los
+  // contratos sin valor propio (core.ts la lee al finalizar)"), en plural y para los dos:
+  //
+  //   · `penalidadRescisionMesesDefault` SÍ: `core.ts` la lee al finalizar como penalidad
+  //     sugerida, y eso termina emitido como `CargoContrato`. `Contrato` tiene su columna
+  //     propia para pisarla.
+  //   · `preavisoRescisionMesesDefault` NO. No lo lee nadie: se escribe acá y sólo se relee en
+  //     `GET /mi-inmobiliaria/reglas` para repintar el mismo input. Y no se puede pisar por
+  //     contrato, porque `Contrato` no tiene columna de preaviso.
+  //
+  // Nada que ver con el preaviso de EGRESO (`Renovacion.fechaEgreso`), que sí funciona.
+  // Qué hacer con este campo es una decisión de producto: ver
+  // `work-agent/DOS-PROMESAS-QUE-NO-SE-CUMPLEN.md`.
   app.put('/mi-inmobiliaria/rescision', async (request, reply) => {
     const u = await requireUsuario(request, reply);
     if (!u) return;

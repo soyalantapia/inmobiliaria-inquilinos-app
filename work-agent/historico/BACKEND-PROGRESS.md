@@ -39,7 +39,7 @@
       usando la matriz de shared.
 - [x] Seeds idempotentes (`pnpm --filter api seed` y `seedBase()` para tests):
       tenant del-sol + roberto/luciana/camila (delsol123, PIN 1234) + 6 inquilinos
-      (Mariela = mariela.sosa@gmail.com).
+      (Mariela = mariela.sosa@example.com).
 - [x] Tests: 9/9 verdes (login ok/401, OTP backdoor+inválido, /me 401/ok, PIN
       ok/403, demo) contra la DB real.
 - [x] Build: tsup (bundlea @llave/shared; tsconfig paths para typecheck —

@@ -34,6 +34,7 @@ import { CuentaCobranzaDialog } from '@/components/cuenta-cobranza-dialog';
 import {
   calcularMora,
   descripcionMora,
+  moraEfectivaDe,
   MoraSelector,
   type MoraSeleccion,
 } from '@/components/mora-selector';
@@ -1241,10 +1242,22 @@ function CargarContratoApiWizard() {
 
   // Esquema de mora EFECTIVO del wizard (elegido o heredado) — se usa para el
   // prefill de la mora de los períodos anteriores.
-  const moraEfectivaWizard: { tipo: TipoMora; valor: number } =
-    moraSel === 'HEREDAR'
-      ? { tipo: moraDefault?.tipoDefault ?? 'SIN_MORA', valor: moraDefault?.valorDefault ?? 0 }
-      : { tipo: moraSel, valor: Number(moraValor) || 0 };
+  //
+  // Antes heredaba el default A CIEGAS, sin la regla de T-58 que el server sí aplica: un
+  // default MONTO_FIJO no vale en otra moneda. Con esa tasa fantasma el wizard prefilleaba
+  // el `moraManual` de CADA período vencido y lo mandaba en el alta; el server lo guarda en
+  // `montoPunitorioManual` y `calcularMora` lo respeta antes que su propio `SIN_MORA`.
+  // Quedaba deuda punitoria real y cobrable — sobre un alquiler de US$ 800, US$ 20.800.
+  // La regla vive en un solo lugar (`moraEfectivaDe`) para que las tres pantallas que
+  // muestran mora no vuelvan a divergir del server.
+  const moraEfectivaWizard = moraEfectivaDe(
+    moraSel,
+    moraValor,
+    moraDefault
+      ? { tipo: moraDefault.tipoDefault, valor: moraDefault.valorDefault, moneda: moraDefault.monedaDefault }
+      : null,
+    moneda,
+  );
 
   // Períodos ya vencidos entre el inicio del contrato y hoy. Si hay al menos
   // uno, aparece el paso 4 "Períodos anteriores".
@@ -2104,9 +2117,23 @@ function CargarContratoApiWizard() {
                     %
                   </span>
                 </div>
+                {/* EL COPY ANTERIOR PROMETÍA ALGO QUE NO PASA. Decía "Es la comisión que
+                    cobrás por ESTE contrato. Si la dejás vacía, se usa la comisión general en
+                    las rendiciones" — y ese "si la dejás vacía" implica que llenarla cambia la
+                    rendición. No la cambia: `Contrato.comisionInmobiliaria` no lo lee ningún
+                    cálculo de plata. La rendición, el cierre de caja y la ganancia por contrato
+                    descuentan `Propietario.comisionPct` (default 8%).
+                    Su único lector real es el generador del contrato Word, que la estampa en la
+                    Cláusula Sexta — Honorarios. O sea: el papel que firman las partes puede
+                    decir 3% mientras la inmobiliaria se descuenta 8%.
+                    Qué hacer con el campo —honrar la tasa por contrato en la rendición, o sacarlo
+                    del alta— es una decisión de producto: ver
+                    `work-agent/DOS-PROMESAS-QUE-NO-SE-CUMPLEN.md`. Mientras tanto, el texto dice
+                    lo que el campo hace de verdad. */}
                 <p className="text-[11px] text-muted-foreground">
-                  Es la comisión que cobrás por ESTE contrato. Si la dejás vacía, se usa la
-                  comisión general en las rendiciones.
+                  Es la comisión que se imprime en el <strong>contrato</strong> que firman las
+                  partes (Cláusula Sexta — Honorarios). Lo que se descuenta en cada rendición es
+                  la comisión cargada en la ficha del <strong>propietario</strong>.
                 </p>
               </div>
 
@@ -2128,7 +2155,11 @@ function CargarContratoApiWizard() {
                   onValorChange={setMoraValor}
                   heredado={
                     moraDefault
-                      ? { tipo: moraDefault.tipoDefault, valor: moraDefault.valorDefault }
+                      ? {
+                          tipo: moraDefault.tipoDefault,
+                          valor: moraDefault.valorDefault,
+                          moneda: moraDefault.monedaDefault,
+                        }
                       : null
                   }
                   conHeredar

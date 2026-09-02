@@ -31,7 +31,7 @@ const OTP_TTL_MS = 10 * 60 * 1000;
 const codeEnLog = (code: string): { code?: string } =>
   process.env.NODE_ENV === 'production' ? {} : { code };
 /** Email del inquilino demo (Mariela). El front entra con ?demo=1. */
-const DEMO_INQUILINO_EMAIL = 'mariela.sosa@gmail.com';
+const DEMO_INQUILINO_EMAIL = 'mariela.sosa@example.com';
 
 /**
  * Fin del acceso gratis pre-lanzamiento. Todas las cuentas auto-registradas

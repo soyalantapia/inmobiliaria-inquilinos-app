@@ -47,7 +47,7 @@ const prisma = new PrismaClient();
 const SEED_ANUNCIOS = ['anu_seed_1', 'anu_seed_2', 'anu_seed_3'];
 await prisma.anuncioAcuse.deleteMany({ where: { anuncioId: { notIn: SEED_ANUNCIOS } } });
 await prisma.anuncio.deleteMany({ where: { id: { notIn: SEED_ANUNCIOS } } });
-await prisma.anuncioAcuse.deleteMany({ where: { inquilino: { email: 'mariela.sosa@gmail.com' } } });
+await prisma.anuncioAcuse.deleteMany({ where: { inquilino: { email: 'mariela.sosa@example.com' } } });
 
 // ===== La plata =====
 await prisma.pago.deleteMany({ where: { id: { notIn: ['pag_001', 'pag_002'] } } });
@@ -110,7 +110,7 @@ const { inmobiliariaId } = await seedBase(prisma);
 const [anuncios, contratos, acusesMariela, pag, cnt006, apr] = await Promise.all([
   prisma.anuncio.count({ where: { inmobiliariaId } }),
   prisma.contrato.count({ where: { inmobiliariaId } }),
-  prisma.anuncioAcuse.count({ where: { inquilino: { email: 'mariela.sosa@gmail.com' } } }),
+  prisma.anuncioAcuse.count({ where: { inquilino: { email: 'mariela.sosa@example.com' } } }),
   prisma.pago.findUnique({ where: { id: 'pag_001' }, select: { estado: true } }),
   prisma.contrato.findUnique({ where: { id: 'cnt_006' }, select: { estado: true } }),
   prisma.aprobacion.findUnique({ where: { id: 'apr_seed_1' }, select: { estado: true } }),

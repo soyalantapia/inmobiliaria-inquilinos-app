@@ -224,9 +224,20 @@ modo demo (localStorage) sin tocar la API.
 - ⚠️ **`prisma generate` falla con EPERM** si el dev server tiene tomado el motor. Bajalo primero.
 - ⚠️ **La suite con base tarda ~15 minutos** en local y corre en serie a propósito: todas siembran
   la misma base.
+- 🔴 **No toques el fuente mientras la suite larga corre en segundo plano.** Son 15 minutos de
+  tentación para "ir adelantando", y vitest lee cada archivo cuando le toca: los que se colecten
+  después de tu edición corren contra un código distinto del que se colectó al principio. El
+  resultado no es rojo, es **peor: es verde y no significa nada**. Si editaste, matá la corrida y
+  volvé a lanzarla. Aprovechá esos minutos para el backlog, el PR o la documentación.
 
 ### Cómo NO mentirte a vos mismo
 
+- 🔴 **El cliente de Prisma también cruza de rama, y miente peor.** Está generado en
+  `node_modules`, que no cambia al hacer `git checkout`. Si la rama anterior tenía una columna
+  que ésta no tiene, el cliente la pide y la base no la tiene: **59 archivos de test en rojo de
+  golpe**, con un error que apunta al seed y no a tu cambio. Pasó en el ciclo de hoy y costó una
+  corrida entera. **Después de cambiar de rama con migraciones de por medio, `prisma generate`
+  antes de creerle a nada.**
 - ⚠️ **El exit code de una tubería es el del último comando.** `tsc | head` devuelve el de `head`.
   Guardá la salida en un archivo y leé el exit code aparte.
 - ⚠️ **`tsc --noEmit` no es el build.** La API buildea con `tsup` y los fronts con `next build`, y
@@ -237,6 +248,39 @@ modo demo (localStorage) sin tocar la API.
   código de salida solo.
 - ⚠️ **Un patrón vacío en un grep matchea todo.** Si tu búsqueda "encontró" un número redondo y
   enorme, verificá que el patrón no salga vacío.
+- 🔴 **`next build` le rompe el `.next` al `next dev` que está corriendo.** Comparten carpeta: el
+  build de producción pisa los chunks del dev, y a partir de ahí el navegador come 404 y
+  *"Refused to execute script … MIME type ('text/html')"* — que parecen un problema del código y
+  son del entorno. Pisado TRES veces en una sesión. Si vas a verificar en el navegador, corré el
+  build **antes** de levantar el dev, o bajá el dev, `rm -rf .next` y volvelo a levantar.
+- ⚠️ **`pkill -f "next dev"` no mata nada en Windows.** El proceso sigue tomando el 3001 y el
+  `next dev` nuevo muere con `EADDRINUSE` — pero como el viejo sigue sirviendo, parece que
+  arrancó. Matalo por puerto: `Get-NetTCPConnection -LocalPort 3001 -State Listen` y `Stop-Process`.
+- ⚠️ **Recrear la base invalida el token del panel.** El seed regenera los cuids, así que el JWT
+  que guardaste apunta a una inmobiliaria que ya no existe y el panel dice *"Tu sesión venció por
+  seguridad"*. No es un bug de auth: pedí un token nuevo después de cada `docker compose down -v`.
+- ⚠️ **Un test estructural que no encuentra nada pasa en verde.** Si escribís un test que escanea
+  el fuente, la PRIMERA aserción tiene que ser que el parser encontró algo (`length >= N`, y que
+  la lista contenga dos nombres que sabés que están). Sin eso, un cambio de forma en el código lo
+  convierte en un test que mide cero y no avisa. Ya pasó acá con `metricas-moneda.test.ts`.
+- ⚠️ **Probá el control negativo DONDE el control manda.** Neutralizar el guard de un endpoint que
+  tu test declara como excepción no prueba nada: va a seguir verde y vas a creer que lo probaste.
+  Rompé el caso que el test sí gobierna.
+- 🔴 **Corré el typecheck DESPUÉS del último archivo que tocaste, no antes.** Pasó: `tsc` en verde
+  a las 11:55, el último test escrito a las 12:10, PR abierto citando ese verde — y el CI lo tiró
+  abajo con un `TS2532` de ese archivo. El verde no era falso, era **viejo**. Vale para las dos
+  suites igual. Antes de escribir "verificado" en un PR, mirá que la corrida que estás citando sea
+  posterior a tu última edición.
+- ⚠️ **`noUncheckedIndexedAccess` está prendido.** `m[1]` de un `regex.exec`, `arr[0]`, y
+  `map.get()` son `T | undefined` aunque "obviamente" existan. En un test recién escrito es el
+  error más probable, y **vitest no lo ve**: el test corre en verde y el typecheck se cae aparte.
+- 🔴 **Tu base local ACUMULA entre tareas, y te va a dar un rojo que no es tuyo.** El contenedor
+  vive hasta que lo bajes, y `seedBase` no revierte todo: un test de otra rama que renovó un
+  contrato dejó liquidaciones nuevas, y tres tareas después un test ajeno falló con
+  `expected 'cmth8x…' to be 'liq_001'`. **Antes de creerle a un rojo local, recreá la base**
+  (`docker compose -f docker-compose.test.yml down -v && up -d` + `migrate deploy`) y volvé a
+  correr. El CI arranca con una Postgres nueva cada vez, así que si él está verde y vos rojo,
+  empezá por ahí.
 - ⚠️ **El CI reporta, no frena.** `main` no tiene branch protection. Un rojo no impide nada: mirarlo
   es tu trabajo, no del sistema.
 

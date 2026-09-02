@@ -59,7 +59,7 @@ tiempo NO migres pantallas nuevas (scope creep) — solo arreglá lo roto.
 ## Credenciales y datos seed (para asserts exactos)
 - Panel: `roberto@delsol.com` / `delsol123` (ADMIN) · **PIN `1234`** ·
   luciana@ (OPERADOR) y camila@ (CARGA), mismo pass/PIN.
-- Mariela: `mariela.sosa@gmail.com` — OTP `000000` (DEMO_MODE) o el código real
+- Mariela: `mariela.sosa@example.com` — OTP `000000` (DEMO_MODE) o el código real
   que el server loguea; o `/login?demo=1`.
 - Seeds clave: 8 contratos (`cnt_001` Mariela $480.000 ARS ACTIVO **VENCIDO**
   liq mayo $572.000 · `cnt_002` Juan Pérez $620.000 PAGADO · `cnt_003` Laura
@@ -121,7 +121,7 @@ tiempo NO migres pantallas nuevas (scope creep) — solo arreglá lo roto.
 
 ### Journey B — Mariela, "me llegó el aviso" (inquilino, SIEMPRE mobile 375)
 1. localStorage limpio → `/login?force=1` → flujo OTP COMPLETO: email
-   `mariela.sosa@gmail.com` → pedir código → ingresá `000000` → entra al home
+   `mariela.sosa@example.com` → pedir código → ingresá `000000` → entra al home
    con su nombre. (Pasada IMPAR: usá `/login?demo=1` en lugar del OTP —
    alterná los dos caminos.) Verificá que quedó **JWT real** en
    `llave:auth:token` (payload kind=inquilino).
