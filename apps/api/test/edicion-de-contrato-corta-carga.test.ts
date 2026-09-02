@@ -32,6 +32,16 @@ const CARGA_PUEDE: Record<string, string> = {
   // del mismo endpoint sí corta a CARGA (guard adentro del handler), y eso lo cubre
   // `carga-no-cambia-la-credencial.test.ts` con el 403 de verdad.
   "'/contratos/:id/inquilino-contacto'": 'sólo el teléfono; el email corta adentro del handler',
+  // Corregir un BORRADOR es exactamente lo que CARGA hace: cargar. El handler ya corta por
+  // ESTADO —sólo BORRADOR, y 409 si el borrador ya tiene cuotas generadas—, así que lo que
+  // se corrige acá sigue esperando aprobación antes de existir como contrato. Es la misma
+  // distinción que dejó escrita la excepción de garantes al sacarse: sobre un BORRADOR es
+  // carga; sobre un contrato VIGENTE sería reescribir una obligación en curso, y para eso el
+  // handler devuelve 409 y manda a «Ajustar alquiler» o «Renovar».
+  //
+  // Cortarlo sería peor que el riesgo que evita: quien tipea mal una fecha no podría
+  // arreglarla, y tendría que pedirle a otro que le toque su propio borrador.
+  "'/contratos/:id/borrador'": 'sólo sobre BORRADOR, que sigue sujeto a aprobación',
 };
 
 // ACÁ HABÍA UNA SEGUNDA EXCEPCIÓN, y sacarla es lo que más dice de para qué sirve esta lista.
