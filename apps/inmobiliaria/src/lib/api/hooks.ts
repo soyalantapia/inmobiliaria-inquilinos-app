@@ -32,6 +32,7 @@ import { parseLocal } from '@/lib/format';
 import { porcionAlquilerCobrada } from '@/lib/alquiler-cobrado';
 import { faltaRendirle } from '@/lib/falta-rendirle';
 import { cobradoRendible, plataDelContrato } from '@/lib/plata-del-contrato';
+import { reclamosAbiertosDe } from '@/lib/reclamos-abiertos';
 import { useRendidosDelPeriodo } from './use-rendiciones';
 import {
   cargarMovimiento as cargarMovimientoLocal,
@@ -877,6 +878,8 @@ interface PropiedadApi {
 
 interface ReclamoLiteApi {
   contratoId: string | null;
+  /** El reclamo cuelga de la PROPIEDAD; el contrato es circunstancial. Ver abajo. */
+  propiedadId: string | null;
   estado: string;
 }
 
@@ -992,9 +995,9 @@ export function usePropiedades(): {
     const propietarios = (p.participaciones ?? [])
       .filter((pp) => pp.propietario != null)
       .map((pp) => propietarioLite(pp.propietario, p.id));
-    const reclamosAbiertos = reclamos.filter(
-      (r) => r.contratoId === p.contratoActualId && (r.estado === 'ABIERTO' || r.estado === 'EN_CURSO'),
-    ).length;
+    // La regla vive en `lib/reclamos-abiertos.ts`, con sus tests: acá era un filtro inline y
+    // ahí se le escapó que `contratoActualId` cambia cuando el inquilino se va.
+    const reclamosAbiertos = reclamosAbiertosDe(reclamos, { id: p.id, contratoActualId: p.contratoActualId });
     return {
       propiedad: mapPropiedad(p),
       contrato,
