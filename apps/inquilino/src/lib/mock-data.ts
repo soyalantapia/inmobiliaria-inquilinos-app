@@ -33,7 +33,7 @@ export const garanteMock: GaranteContrato = {
   vigenciaHasta: '2028-08-31',
   contactoNombre: 'Equipo de gestión SUMA',
   contactoTelefono: '+54 11 5288 9000',
-  contactoEmail: 'soporte@cobsuma.com.ar',
+  contactoEmail: 'soporte@example.com',
 };
 
 export const hitosContratoMock: HitoContrato[] = [

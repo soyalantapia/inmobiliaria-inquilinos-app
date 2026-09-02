@@ -42,7 +42,7 @@ describe('POST /auth/login', () => {
 });
 
 describe('OTP inquilino', () => {
-  const EMAIL = 'mariela.sosa@gmail.com';
+  const EMAIL = 'mariela.sosa@example.com';
 
   /** Hace verify con el backdoor demo y devuelve el body { personaToken, alquileres }. */
   async function verifyDemo() {

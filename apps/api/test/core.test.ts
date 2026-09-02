@@ -95,7 +95,7 @@ describe('Core (Fase 2)', () => {
     const lista = res.json();
     expect(lista.length).toBe(await cuantasHayDelTenant.inquilinos());
     expect(lista.length).toBeGreaterThanOrEqual(7);
-    const mariela = lista.find((i: { email: string }) => i.email === 'mariela.sosa@gmail.com');
+    const mariela = lista.find((i: { email: string }) => i.email === 'mariela.sosa@example.com');
     expect(mariela.contrato.id).toBe('cnt_001');
   });
 

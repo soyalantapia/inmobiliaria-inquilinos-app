@@ -39,7 +39,7 @@ Landing + legales son estáticas: `bash scripts/build-static.sh` → `out/presen
 | Quién | Acceso |
 |---|---|
 | Roberto (inmobiliaria) | entra solo, mock auto-login |
-| Mariela (inquilina) | `localhost:3000/login?demo=1` entra directo SIN OTP. (O botón "Probar con cuenta demo" → código aparece en banner amarillo DEMO.) email: `mariela.sosa@gmail.com` |
+| Mariela (inquilina) | `localhost:3000/login?demo=1` entra directo SIN OTP. (O botón "Probar con cuenta demo" → código aparece en banner amarillo DEMO.) email: `mariela.sosa@example.com` |
 | Garante (público) | `/inquilino/garantes/demo` |
 | Profesional (público) | `/inquilino/p/demo` |
 | Verificar certificado (público) | `/inquilino/verificar/16NJ-PTVB-KF8B` |

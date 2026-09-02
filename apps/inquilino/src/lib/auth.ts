@@ -11,7 +11,7 @@ export const mockUser = {
     lastName: 'Sosa',
     fullName: 'Mariela Sosa',
     primaryPhoneNumber: { phoneNumber: '+5491145678900' },
-    primaryEmailAddress: { emailAddress: 'mariela.sosa@gmail.com' },
+    primaryEmailAddress: { emailAddress: 'mariela.sosa@example.com' },
     imageUrl: '',
   },
 } as const;
