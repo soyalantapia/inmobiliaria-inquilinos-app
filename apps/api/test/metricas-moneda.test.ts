@@ -55,9 +55,23 @@ describe('cobrar un cargo al inquilino registra la moneda del cargo', () => {
 
     // Dos: el de `saldar` y el de `saldar-deuda`. Si baja a uno, alguien borró un registro de
     // plata; si sube, hay que confirmar que el nuevo también escriba la moneda.
-    expect(posiciones.length).toBeGreaterThanOrEqual(2);
+    const esRegistro = (i: number) => src.slice(Math.max(0, i - 700), i).includes('movimientoCaja.create');
+    const creates = posiciones.filter(esRegistro);
+    expect(creates.length).toBeGreaterThanOrEqual(2);
 
     for (const i of posiciones) {
+      // Sólo las apariciones que son un REGISTRO. La marca también aparece en `descobrar`, que
+      // arma la misma descripción para BUSCAR el movimiento, no para crearlo — y ahí exigir
+      // `moneda: x.moneda` no significa nada.
+      //
+      // ⚠️ Esa tercera aparición ya existía, y este test la daba por buena POR CASUALIDAD: la
+      // ventana de 900 caracteres alcanzaba a tocar el `moneda: cargo.moneda` del `where` de la
+      // búsqueda. Al crecer ese bloque (T-28-N1-N1) la ventana dejó de alcanzarlo y el test se
+      // puso rojo sin que hubiera un solo registro de plata sin moneda. Un test que pasa por
+      // dónde cae una ventana no está mirando lo que dice mirar.
+      // El `create` está ARRIBA de la descripción (`create({ data: { … descripcion } })`), así
+      // que se mira hacia atrás, no hacia adelante.
+      if (!esRegistro(i)) continue;
       // La ventana del create que sigue a esa descripción.
       const create = src.slice(i, i + 900);
       // `MovimientoCaja.moneda` es @default(ARS): omitirla NO falla, escribe ARS igual. Un cargo
