@@ -69,13 +69,27 @@ describe('CAZABUG — el expediente de propiedad pide capacidad', () => {
     }
   });
 
-  it('las ganancias ya no mezclan monedas: traen el desglose por moneda', async () => {
+  it('la respuesta de ganancias trae el desglose por moneda (forma, no plata)', async () => {
+    // ACÁ HABÍA UN TEST QUE NO PODÍA FALLAR, y se cambió por dos motivos, no uno:
+    //
+    //   · corría sobre `prp_001`, que en el seed tiene UN solo contrato y en ARS: el escenario
+    //     de mezcla nunca se ejercitaba;
+    //   · y la aserción se comparaba contra sí misma. `body.moneda` y `body.total` salen los dos
+    //     de `totales[0]`, así que `principal` era siempre `totales[0]` y comparar uno con otro
+    //     era una tautología de la FORMA de la respuesta. Encima iba dentro de un `if
+    //     (principal)`, así que ante un `undefined` se salteaba en vez de fallar.
+    //
+    // Se midió: inyectando la regresión —que el total vuelva a sumar las monedas— el test viejo
+    // pasaba en VERDE y el nuevo se pone rojo.
+    //
+    // La cobertura de verdad vive en `ganancias-no-mezclan-monedas.test.ts`, con un fixture
+    // propio de dos contratos ACTIVOS en monedas distintas. Acá queda sólo lo que este archivo
+    // sí es: un test de PERMISOS, verificando que LECTURA recibe la respuesta con su forma.
     const r = await app.inject({ method: 'GET', url: '/propiedades/prp_001/ganancias', headers: auth(tLECTURA) });
     expect(r.statusCode).toBe(200);
     const body = r.json();
     expect(Array.isArray(body.totalesPorMoneda)).toBe(true);
-    // El total de cabecera es el de UNA moneda (la principal), no la suma de todas.
-    const principal = body.totalesPorMoneda.find((t: { moneda: string }) => t.moneda === body.moneda);
-    if (principal) expect(body.total.ganado).toBe(principal.ganado);
+    expect(body.total).toHaveProperty('ganado');
+    expect(body.total).toHaveProperty('proyeccion');
   });
 });
