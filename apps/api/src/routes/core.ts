@@ -2196,6 +2196,30 @@ export async function coreRoutes(app: FastifyInstance) {
     // viene arreglando en otros lados.
     const resuelveDeposito =
       b.decisionDeposito === 'DEVOLVER' || b.decisionDeposito === 'NETEAR' || b.decisionDeposito === 'EJECUTAR';
+    // EL MISMO PERMISO QUE LA PUERTA DEDICADA.
+    //
+    // `POST /contratos/:id/deposito/resolver` (plata.ts) exige `deposito.devolver` —sólo
+    // ADMIN— y lo dice al lado: "NO `contratos.crear`, que incluye a OPERADOR y CARGA.
+    // Devolver o ejecutar el depósito mueve plata de un tercero y es irreversible".
+    // Este handler acepta EL MISMO body (DEVOLVER/NETEAR/EJECUTAR + monto), escribe LOS
+    // MISMOS campos y aplica la misma retención contra la deuda… gateado con
+    // `contratos.crear`. La capacidad ADMIN existía y se saltaba entrando por "dar de baja".
+    //
+    // NO corta la baja, corta la DECISIÓN sobre el depósito: un OPERADOR finaliza igual
+    // eligiendo "Después" (MANTENER) y la garantía queda RETENIDA para que la resuelva un Admin.
+    if (resuelveDeposito && !rolTienePermiso(u.rol, 'deposito.devolver')) {
+      return reply.code(403).send({
+        message: 'Solo un Admin puede resolver el depósito. Dá de baja el contrato con "Después" y que lo resuelva un Admin.',
+      });
+    }
+    // Y EL MISMO 409. La puerta dedicada rechaza resolver un depósito que ya se resolvió;
+    // acá no había chequeo. Con `estadoDeposito` ya DEVUELTO se pisaban `depositoDevueltoMonto`
+    // y `depositoDevueltoAt` de esa devolución, y —peor— con NETEAR/EJECUTAR el depósito se
+    // imputaba contra la deuda POR SEGUNDA VEZ: `estadoDepositoContrato` calcula el disponible
+    // como bruto − cargos abiertos, no sabe nada de una resolución anterior.
+    if (resuelveDeposito && contrato.estadoDeposito !== 'RETENIDO') {
+      return reply.code(409).send({ message: 'El depósito de este contrato ya fue resuelto' });
+    }
     if (resuelveDeposito && (b.montoDepositoDevuelto ?? 0) > 0) {
       const dep = await estadoDepositoContrato(prisma, {
         contratoId: id,
@@ -2346,11 +2370,47 @@ export async function coreRoutes(app: FastifyInstance) {
       if (estadoDep) {
         await cerrarCargosContraDeposito(tx, { contratoId: id, inmobiliariaId: u.inmobiliariaId, usuarioId: u.userId });
       }
-      return { cuotasAnuladas: anuladas.count, cargoPenalidad };
+      return { cuotasAnuladas: anuladas.count, cargoPenalidad, estadoDep };
       // timeout holgado: si hay que aplicar el depósito, la tx recorre las cuotas exigibles
       // y con el proxy de por medio se pasaba de los 5s por defecto de Prisma → 500.
     }, { timeout: 20000 });
     if (!fin) return reply.code(409).send({ message: 'El contrato ya está finalizado' });
+    // QUIÉN dio de baja, y qué se llevó puesto.
+    //
+    // Esta era la acción más irreversible de la app sin una sola línea de auditoría: el
+    // contrato quedaba RESCINDIDO, la propiedad liberada, las cuotas futuras borradas y la
+    // penalidad creada, y no había forma de saber quién apretó el botón. Cambiar el email de
+    // un propietario sí deja rastro.
+    const simb = contrato.moneda === 'USD' ? 'US$' : '$';
+    const detalleBaja = [
+      `Contrato ${nuevoEstado === 'RESCINDIDO' ? 'rescindido' : 'finalizado'}`,
+      ...(fin.cargoPenalidad > 0 ? [`penalidad ${simb}${fin.cargoPenalidad}`] : []),
+      ...(fin.cuotasAnuladas > 0
+        ? [`${fin.cuotasAnuladas} cuota${fin.cuotasAnuladas === 1 ? '' : 's'} futura${fin.cuotasAnuladas === 1 ? '' : 's'} anulada${fin.cuotasAnuladas === 1 ? '' : 's'}`]
+        : []),
+      ...(b.motivoRescision?.trim() ? [b.motivoRescision.trim()] : []),
+    ].join(' · ');
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'CONTRATO_DADO_DE_BAJA',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion: detalleBaja,
+    });
+    // El depósito, además, con el MISMO tipo y la misma forma de texto que
+    // `deposito/resolver`: es el mismo hecho por otra puerta, y quien audite "qué pasó con
+    // la garantía de este contrato" tiene que encontrarlo filtrando una sola cosa.
+    if (fin.estadoDep) {
+      await registrarEvento({
+        inmobiliariaId: u.inmobiliariaId,
+        tipo: 'PAGO_CONCILIADO',
+        autorId: u.userId,
+        rolAutor: u.rol,
+        entidadId: id,
+        entidadDescripcion: `Depósito ${fin.estadoDep.toLowerCase()} · se devolvió ${simb}${b.montoDepositoDevuelto ?? 0} de ${simb}${Number(contrato.depositoGarantia ?? 0)} · al dar de baja el contrato`,
+      });
+    }
     return {
       ok: true,
       estado: nuevoEstado,
