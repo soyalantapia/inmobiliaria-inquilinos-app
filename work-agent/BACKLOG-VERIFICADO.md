@@ -274,6 +274,25 @@ consorcio.
 **Solución.** Relevar, definir el flujo con producto e implementarlo **reusando
 `enviarAnuncioEmail`**, que ya existe.
 
+### ✅ Relevado → `work-agent/T-22-RELEVAMIENTO-CONSORCIO.md` · 🔴 BLOQUEADO en producto
+
+**La parte de consorcio está construida a la mitad, y la mitad que falta no es una pantalla: es una
+foreign key.** `UnidadFuncional` no tiene ninguna referencia a `Propiedad`. Hay dos universos
+paralelos que no se tocan: el del consorcio (unidad, `titular` como string, coeficiente,
+`saldoDeudor` a mano) y el de los alquileres (propiedad → contrato → liquidación → pago). Sin esa
+FK **ningún dato puede cruzar**, y todo lo demás de T-22 depende de ella.
+
+Los cuatro agujeros son el mismo visto de cuatro lados: (1) la expensa del mes no llega a las
+cuotas *(T-19)*; (2) la cobranza no entra al libro del consorcio *(T-20)*; (3) **hay dos verdades
+sobre la misma deuda** — el 1°A puede decir AL_DIA en el consorcio mientras su inquilino debe tres
+meses, y la que se ve al abrir el edificio es la de a mano; (4) no se le puede avisar a nadie,
+porque `enviarAnuncioEmail` necesita un email y la unidad sólo guarda un nombre suelto.
+
+**Cinco decisiones de producto antes de construir** (en el relevamiento, con mi lectura de cada
+una): si unidad y propiedad son la misma cosa; quién manda con la deuda; qué hace exactamente
+"aplicar la expensa del período"; a quién avisa el mail; y qué pasa si los coeficientes no suman
+100. **Orden sugerido: la FK primero — sin eso no se puede construir nada más.**
+
 ---
 
 ## T-20 · Consorcio con propiedades de régimen mixto
