@@ -71,3 +71,23 @@ lote son aditivas, así que el código viejo convive con el esquema nuevo salvo 
 valores de enum de auditoría: si se volviera atrás después de haber dado de baja un contrato o
 cambiado un rol, hay que borrar esas filas primero. Hoy la base **no tiene datos de negocio**,
 así que eso es teórico.
+
+
+## Fue en dos vueltas
+
+La primera desplegó `0b9e40a` (los 61 PRs). Después entraron cinco más de la tanda de julio
+—#7 páginas legales, #38 instalar la app, #51 corregir borrador, #5 landing, #135 el semáforo
+del DNI— y dos arreglos rescatados del triage (#138, la comisión con coma), así que se
+desplegó de nuevo.
+
+**Lo que sirve producción hoy: `f7e8b50`.** Verificado igual que la primera vez: `/health`
+con el SHA, `<meta build-commit>` en los tres fronts, los tres dominios propios en 200, y
+—la prueba de comportamiento— las páginas `/terminos` y `/privacidad`, que no existían antes
+de este deploy, devuelven 200.
+
+Sin migraciones nuevas en esta segunda vuelta.
+
+> Nota para el que compare: `main` puede estar **adelante** de producción por commits de
+> documentación. Eso es normal y no hay que desplegar por eso. Lo que importa es que no haya
+> **código** sin desplegar: `git diff <sha de /health> main --stat -- apps packages` tiene que
+> dar vacío.
