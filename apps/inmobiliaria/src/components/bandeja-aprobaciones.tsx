@@ -43,7 +43,7 @@ const ICONO_TIPO: Record<TipoAprobacion, typeof Inbox> = {
 const USUARIO_ACTUAL = 'Roberto Tapia';
 
 export function BandejaAprobaciones() {
-  const { aprobaciones: items, cargando, aprobarApi, rechazarApi } = useAprobaciones();
+  const { aprobaciones: items, cargando, aprobarApi, rechazarApi, error: errorAprob } = useAprobaciones();
   const [filtro, setFiltro] = useState<'pendientes' | 'historico'>('pendientes');
   const [aprobar_, setAprobar_] = useState<Aprobacion | null>(null);
   const [rechazar_, setRechazar_] = useState<Aprobacion | null>(null);
@@ -125,10 +125,16 @@ export function BandejaAprobaciones() {
               </div>
               <div>
                 <p className="text-sm font-semibold">Bandeja de aprobaciones</p>
-                <p className="text-xs text-muted-foreground">
-                  {pendientes === 0
-                    ? 'Sin pendientes. Buen trabajo.'
-                    : `${pendientes} ítem${pendientes === 1 ? '' : 's'} esperando tu visto.`}
+                {/* "Sin pendientes. Buen trabajo." es una AFIRMACIÓN, y con la consulta caída
+                    era una afirmación inventada: el hook devolvía lista vacía sin decir que
+                    había fallado. El admin cerraba el panel convencido de estar al día
+                    mientras un gasto esperaba el visto. */}
+                <p className={`text-xs ${errorAprob ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}`}>
+                  {errorAprob
+                    ? 'No pudimos traer las solicitudes. No quiere decir que no haya: volvé a cargar la página.'
+                    : pendientes === 0
+                      ? 'Sin pendientes. Buen trabajo.'
+                      : `${pendientes} ítem${pendientes === 1 ? '' : 's'} esperando tu visto.`}
                 </p>
               </div>
             </div>
@@ -157,9 +163,11 @@ export function BandejaAprobaciones() {
       {filtrados.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            {filtro === 'pendientes'
-              ? 'No tenés solicitudes pendientes de aprobar.'
-              : 'No hay solicitudes en el histórico.'}
+            {errorAprob
+              ? 'No pudimos traer las solicitudes. Volvé a cargar la página antes de dar por cerrado el día.'
+              : filtro === 'pendientes'
+                ? 'No tenés solicitudes pendientes de aprobar.'
+                : 'No hay solicitudes en el histórico.'}
           </CardContent>
         </Card>
       ) : (

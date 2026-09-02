@@ -80,6 +80,7 @@ import {
 import type { ContratoListado, EstadoContrato, Propietario } from '@/lib/types';
 import { formatFecha, formatMonto, formatTotalPorMoneda } from '@/lib/format';
 import { rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
+import { usePuede, useRolActual } from '@/lib/use-puede';
 
 const estadoLiqVariant: Record<
   LiquidacionAdmin['estado'],
@@ -140,6 +141,29 @@ const canalIcono: Record<CanalComunicacion, LucideIcon> = {
 };
 
 export default function DetalleContratoPage() {
+  // LA BARRA OFRECÍA SEIS ACCIONES QUE EL SERVER RECHAZA. La ficha se abre con `contratos.ver`
+  // = los cinco roles, y no había un solo `useMe` en el archivo.
+  //
+  //   · cinco de los seis cortan `u.rol === 'CARGA'` en el server;
+  //   · y "Avisar renovación" pide `contrato.aprobar`, que es SÓLO ADMIN: fallaba para
+  //     OPERADOR, CAJA, CARGA y LECTURA. Cuatro de cinco roles, incluida la operadora, que es
+  //     la usuaria típica del panel.
+  //
+  // Tres líneas más abajo, en esta misma barra, hay un comentario que dice: "Mostrar el botón
+  // igual es prometer algo que va a fallar… Mejor no ofrecerlo que explicar el error".
+  // Aplicaron la regla al TIPO de contrato y no al ROL. En "Ajustar monto" es peor: el flujo
+  // pide PIN, así que se escribía el monto, se tipeaba el PIN y recién ahí llegaba el 403 —
+  // exactamente el escenario que ese comentario dice que se quiso evitar.
+  // `contratos.crear` incluye a CARGA, pero los cinco handlers lo cortan adentro: hay que
+  // preguntar por el rol además de por la capacidad.
+  //
+  // Los dos hooks van en su propia línea, SIN `&&`: con el corto-circuito, `useRolActual`
+  // quedaba condicionado al valor del primero y eso rompe las reglas de hooks. Lo agarró el
+  // lint del build — no el typecheck ni los tests.
+  const puedeCrearContratos = usePuede('contratos.crear');
+  const rolActual = useRolActual();
+  const puedeEditarContrato = puedeCrearContratos && rolActual !== 'CARGA';
+  const puedeAprobar = usePuede('contrato.aprobar');
   const params = useParams<{ id: string }>();
   const { detalle, cargando, noEncontrado } = useContrato(params.id);
   const { eventos, isError: eventosError } = useEventosContrato(params.id);
@@ -337,7 +361,7 @@ export default function DetalleContratoPage() {
                 PIN y RECIÉN AHÍ se come el error — el mismo criterio con el que ya se filtró
                 el ajuste masivo. */}
             {apiEnabled ? (
-              c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS' && (
+              c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS' && puedeEditarContrato && (
                 <Button
                   variant="outline"
                   className="flex-1 sm:flex-none"
@@ -358,22 +382,22 @@ export default function DetalleContratoPage() {
                 Ajustar monto
               </Button>
             )}
-            {apiEnabled && c.estado === 'ACTIVO' && (
+            {apiEnabled && c.estado === 'ACTIVO' && puedeAprobar && (
               <AvisarRenovacionButton contratoId={c.id} inquilino={c.inquilino} direccion={c.direccion} />
             )}
-            {apiEnabled && c.estado === 'ACTIVO' && (
+            {apiEnabled && c.estado === 'ACTIVO' && puedeEditarContrato && (
               <RenovarContratoButton contratoId={c.id} montoActual={c.monto} fechaFinActual={c.fechaFin} moneda={c.moneda} tipoContrato={c.tipoContrato} />
             )}
             {/* En SOLO_EXPENSAS no hay canon que ajustar y el server responde 409. Mostrar el
                 botón igual es prometer algo que va a fallar — el mismo patrón que se corrigió
                 en la bandeja de pagos (T-40/T-43). Mejor no ofrecerlo que explicar el error. */}
-            {apiEnabled && c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS' && (
+            {apiEnabled && c.estado === 'ACTIVO' && c.tipoContrato !== 'SOLO_EXPENSAS' && puedeEditarContrato && (
               <AjustarAlquilerButton contratoId={c.id} montoActual={c.monto} moneda={c.moneda} />
             )}
             {/* Sin gate por tipo, al revés que el ajuste de alquiler: un
                 SOLO_EXPENSAS es JUSTO el que más lo necesita (es su único monto),
                 y un ALQUILER puede empezar a tener expensas. */}
-            {apiEnabled && c.estado === 'ACTIVO' && (
+            {apiEnabled && c.estado === 'ACTIVO' && puedeEditarContrato && (
               <CambiarExpensasButton
                 contratoId={c.id}
                 expensasActuales={c.montoExpensas ?? null}
@@ -383,7 +407,7 @@ export default function DetalleContratoPage() {
                 moneda={c.moneda}
               />
             )}
-            {apiEnabled && c.estado === 'ACTIVO' && (
+            {apiEnabled && c.estado === 'ACTIVO' && puedeEditarContrato && (
               <FinalizarContratoButton contratoId={c.id} direccion={c.direccion} />
             )}
           </div>

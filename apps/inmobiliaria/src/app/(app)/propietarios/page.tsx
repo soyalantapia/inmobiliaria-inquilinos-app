@@ -41,6 +41,7 @@ import {
 } from '@/lib/rendiciones-storage';
 import { formatMonto } from '@/lib/format';
 import { faltaRendirle as faltaRendirleA, tieneMezclaDeMonedas } from '@/lib/falta-rendirle';
+import { usePuede } from '@/lib/use-puede';
 
 // Filtros aplicables vía query param (?filtro=sin-cbu / sin-rendir).
 // Usado por los cards del dashboard "Para resolver hoy" para que el
@@ -157,6 +158,11 @@ export default function PropietariosPage() {
 
   /** Ata el predicado puro al mapa de rendiciones de esta pantalla. */
   const faltaRendirle = (p: Propietario) => faltaRendirleA(p, !!rendicionesMap[p.id]);
+  // Rendir y anular una rendición son `rendicion.confirmar`, que la matriz da SÓLO a ADMIN. La
+  // pantalla la abre `propiedades.ver`, que incluye a LECTURA: se le ofrecía la acción de plata
+  // más grande del mes a un rol descrito como "ve todo sin modificar nada", y el 403 llegaba
+  // recién después de elegir método y revisar los gastos que se descuentan.
+  const puedeRendir = usePuede('rendicion.confirmar');
 
   const filtrados = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -416,7 +422,7 @@ export default function PropietariosPage() {
                               <CheckCircle2 className="h-3 w-3" />
                               Rendido
                             </Badge>
-                            {apiEnabled && (
+                            {apiEnabled && puedeRendir && (
                               <AnularRendicionButton
                                 rendicionId={rendido.id}
                                 nombre={`${p.nombre} ${p.apellido ?? ''}`.trim()}
@@ -545,6 +551,7 @@ export default function PropietariosPage() {
                           WhatsApp
                         </Button>
                       )}
+                      {puedeRendir && (
                       <Button
                         size="sm"
                         onClick={() => setRendiendoA(p)}
@@ -554,6 +561,7 @@ export default function PropietariosPage() {
                         <Wallet className="h-3.5 w-3.5" />
                         {rendido ? 'Rendido ✓' : 'Rendir'}
                       </Button>
+                      )}
                       <Button size="sm" variant="ghost" asChild aria-label="Contratos">
                         <Link href={`/contratos?propietario=${p.id}`}>
                           <FileText className="h-3.5 w-3.5" />
