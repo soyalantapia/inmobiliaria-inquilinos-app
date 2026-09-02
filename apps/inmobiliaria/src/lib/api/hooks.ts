@@ -1545,7 +1545,11 @@ export interface DashboardData {
   morosos: { contratoId: string; inquilino: string; direccion: string; monto: number; moneda: ContratoListado['moneda'] }[];
   propietariosSinCbu: number;
   porRendir: number;
-  proximosVencimientos: { id: string; contratoId: string; direccion: string; inquilino: string; fecha: string; monto: number }[];
+  /** `moneda` incluida: sin ella el tablero imprimía una cuota de US$ 1.200 como «$ 1.200». */
+  proximosVencimientos: {
+    id: string; contratoId: string; direccion: string; inquilino: string; fecha: string;
+    monto: number; moneda: ContratoListado['moneda'];
+  }[];
   cargando: boolean;
   /** Alguna fuente (contratos o propiedades) falló al cargar. El dashboard NO
    *  debe mostrar el estado vacío "cuenta nueva" en este caso: 0 propiedades por
@@ -1735,6 +1739,8 @@ export function useDashboard(): DashboardData {
       inquilino: l.inquilino,
       fecha: l.fechaVencimiento,
       monto: l.montoTotal,
+      // El mapper ya la trae (`mapLiquidacion`); acá se descartaba y el render caía al default ARS.
+      moneda: l.moneda,
     }));
 
   return {

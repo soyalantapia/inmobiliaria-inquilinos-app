@@ -492,3 +492,26 @@ dos monedas por separado— y no le saca información como A. Pero es la más ca
 
 *(Lo que sí arreglé aparte, porque no dependía de esto: el KPI restaba el alquiler de la oficina
 y los sueldos de lo que hay que rendirle a los propietarios, todos los meses y para siempre.)*
+
+### 🔎 Ampliación del 02/09 — hay una cuarta salida, y ya está construida
+
+Barrí el producto entero buscando esta clase de defecto y aparecieron **quince** lugares, todos
+vivos en producción. Nueve **no piden ninguna decisión**: el repo ya tiene el helper
+`formatTotalPorMoneda` —con su test y con el porqué escrito— y esos sitios simplemente no lo
+usaban. Ésos los arreglé y van aparte.
+
+Los otros seis son los KPIs del tablero, que son los que dependen de esta decisión.
+
+**Y apareció una opción D que no había visto: la que `/estadisticas` ya usa.** Esa pantalla
+resuelve el mismo problema así: el server **filtra a pesos**, rotula la respuesta como ARS, y
+devuelve un `hayOtrasMonedas` que enciende un cartel ámbar —«Estos números son en pesos
+(ARS)»—. O sea que el producto **ya tiene una respuesta construida y probada** para esta
+pregunta, en otra pantalla.
+
+**D · Copiar lo de `/estadisticas`: mostrar sólo pesos y avisar que hay más.** **Costo:** el
+tablero deja de contar los contratos en dólares, pero lo dice. **Ventaja sobre A, B y C:** ya
+está escrito, ya se probó, y hace que dos pantallas del panel cuenten la misma historia en vez
+de tres.
+
+Con eso, mi lectura cambia: **D primero** (barato, consistente, y saca el número falso hoy), y
+B —los dos números— cuando se quiera dar el paso completo.

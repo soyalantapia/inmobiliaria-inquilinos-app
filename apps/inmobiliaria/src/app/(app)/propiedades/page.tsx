@@ -39,7 +39,7 @@ import {
   tipoPropiedadLabel,
   type PropiedadEnriquecida,
 } from '@/lib/propiedades-helpers';
-import { formatMonto } from '@/lib/format';
+import { formatMonto, formatTotalPorMoneda } from '@/lib/format';
 import { rotuloPrincipal, rotuloSecundario } from '@/lib/rotulo-propiedad';
 import type { TipoPropiedad } from '@/lib/types';
 
@@ -139,10 +139,16 @@ export default function PropiedadesPage() {
   // con deuda real contra el listado, para avisar en la propiedad que quedó algo por
   // cobrar del inquilino anterior (la deuda se conserva al dar de baja el contrato).
   const deudaExPorPropiedad = useMemo(() => {
-    const m = new Map<string, number>();
+    // 🔴 La lista guarda `{monto, moneda}` y no un número: antes el mapa era
+    // `Map<string, number>` y sumaba la deuda de un contrato en dólares con la de uno en
+    // pesos sobre la misma propiedad. Un ex-inquilino que se fue debiendo US$ 1.200 salía
+    // como «$ 1.200» — parece que no debe casi nada.
+    const m = new Map<string, { monto: number; moneda: (typeof contratos)[number]['moneda'] }[]>();
     for (const c of contratos) {
       if ((c.estado === 'FINALIZADO' || c.estado === 'RESCINDIDO') && (c.deudaTotal ?? 0) > 0 && c.propiedadId) {
-        m.set(c.propiedadId, (m.get(c.propiedadId) ?? 0) + (c.deudaTotal ?? 0));
+        const previas = m.get(c.propiedadId) ?? [];
+        previas.push({ monto: c.deudaTotal ?? 0, moneda: c.moneda });
+        m.set(c.propiedadId, previas);
       }
     }
     return m;
@@ -171,7 +177,7 @@ export default function PropiedadesPage() {
             p.contrato &&
             p.contrato.modoCobranza !== 'PROPIETARIO_DIRECTO',
         )
-        .reduce((acc, p) => acc + (p.contrato?.monto ?? 0), 0),
+        .map((p) => ({ monto: p.contrato?.monto ?? 0, moneda: p.contrato?.moneda })),
       reclamosAbiertos: enriquecidas.reduce((acc, p) => acc + p.reclamosAbiertos, 0),
     }),
     [enriquecidas],
@@ -222,11 +228,13 @@ export default function PropiedadesPage() {
             hint={`${counters.DISPONIBLE} disponible${counters.DISPONIBLE === 1 ? '' : 's'}`}
             accent="emerald"
           />
+          {/* Decía «Total mensual en ARS» sobre una suma que incluía los contratos en dólares
+              uno a uno: un número que no era pesos, rotulado como pesos. */}
           <Kpi
             label="Ingresos del mes"
-            value={formatMonto(counters.ingresosMes)}
+            value={formatTotalPorMoneda(counters.ingresosMes)}
             icon={MapPin}
-            hint="Total mensual en ARS"
+            hint="Total mensual"
           />
           <Kpi
             label="Reclamos abiertos"
@@ -412,7 +420,7 @@ export default function PropiedadesPage() {
                       {deudaExPorPropiedad.has(propiedad.id) && (
                         <div className="rounded-md border border-amber-300 bg-amber-50/60 px-2.5 py-1.5 text-xs text-amber-800">
                           Deuda de ex-inquilino por cobrar:{' '}
-                          <strong>{formatMonto(deudaExPorPropiedad.get(propiedad.id) ?? 0)}</strong>
+                          <strong>{formatTotalPorMoneda(deudaExPorPropiedad.get(propiedad.id) ?? [])}</strong>
                         </div>
                       )}
 
