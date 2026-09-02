@@ -60,8 +60,19 @@ const P = 'auth4_';
 const EMAIL_BLOQUEADO = 'zz-pin-bloqueado@example.com';
 const auth = (t: string) => ({ authorization: `Bearer ${t}` });
 
-/** El email del inquilino demo del seed: existe seguro. */
-const EMAIL_INQUILINO = 'mariela.sosa@gmail.com';
+/**
+ * El email de un inquilino que EXISTE, sacado del seed en tiempo de corrida.
+ *
+ * 🔴 Estaba escrito a mano (`mariela.sosa@gmail.com`) y eso rompió el test sin ponerlo rojo. En la
+ * corrida de merge de los 60 PRs, #72 pasó las direcciones del seed a `example.com`: el literal
+ * dejó de existir y este archivo siguió en VERDE — porque comparaba dos emails inexistentes entre
+ * sí, que obviamente contestan igual y tardan lo mismo. El test que cuida que el login no delate
+ * quién es inquilino había dejado de mirar a ningún inquilino.
+ *
+ * Por eso ahora sale de la base y `beforeAll` **afirma que se encontró**: si el seed vuelve a
+ * cambiar, esto se pone rojo en vez de degradarse en silencio.
+ */
+let EMAIL_INQUILINO = '';
 const EMAIL_INEXISTENTE = 'no-existe-jamas-4444@example.invalid';
 
 const verificar = (email: string) =>
@@ -73,6 +84,20 @@ beforeAll(async () => {
   inmobiliariaId = base.inmobiliariaId;
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   tOperador = await loginTest(app, 'luciana@delsol.com', 'delsol123');
+
+  // Un inquilino REAL del seed, con email. La premisa de los dos primeros casos es que este
+  // email existe: si no, comparan dos inexistentes y no miden nada.
+  const inq = await prisma.inquilino.findFirst({
+    where: { inmobiliariaId, email: { not: null }, contratoId: { not: null } },
+    select: { email: true },
+    orderBy: { id: 'asc' },
+  });
+  expect(
+    inq?.email,
+    'el seed tiene que traer al menos un inquilino con email: sin eso, este archivo compara dos ' +
+      'emails inexistentes entre sí y pasa en verde sin probar nada',
+  ).toBeTruthy();
+  EMAIL_INQUILINO = inq!.email!;
 
   // Un usuario con el PIN BLOQUEADO, para el 423 del conmutador.
   await prisma.usuario.deleteMany({ where: { email: EMAIL_BLOQUEADO } });
