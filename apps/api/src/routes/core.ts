@@ -631,6 +631,27 @@ export async function coreRoutes(app: FastifyInstance) {
   app.put('/propiedades/:id/participaciones', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propiedades.crear');
     if (!u) return;
+
+    // CARGA NO TOCA EL REPARTO. Esto no cambia porcentajes: hace `deleteMany` + `createMany` del
+    // set completo, o sea REEMPLAZA A LOS DUEÑOS. Y el reparto es lo que decide a quién le
+    // transfiere cada rendición.
+    //
+    // `propiedades.crear` incluye a CARGA y —a diferencia de sus hermanos destructivos: el DELETE
+    // de propiedades, el DELETE y el PUT de propietarios— acá no había corte. La cadena que eso
+    // habilitaba: CARGA crea un propietario con el CBU que quiera (el alta tampoco cortaba, ver
+    // más abajo) y después reescribe el reparto de la propiedad al 100% a favor de ése. La
+    // próxima rendición transfiere ahí. Agravante: CARGA no tiene `pagos.ver`, así que movía
+    // plata que su propio rol le niega mirar.
+    //
+    // El corte es ANCHO, con el mismo criterio que ya razona el PUT de propietarios: un gate que
+    // depende de qué campos vinieron es una regla que hay que volver a pensar cada vez que
+    // alguien toca el zod.
+    if (u.rol === 'CARGA') {
+      return reply
+        .code(403)
+        .send({ message: 'Solo un Admin u Operador puede cambiar el reparto: define a quién se le rinde la plata' });
+    }
+
     const { id } = request.params as { id: string };
     const parsed = z
       .object({
@@ -907,6 +928,29 @@ export async function coreRoutes(app: FastifyInstance) {
   app.post('/propietarios', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propietarios.crear');
     if (!u) return;
+
+    // CARGA CARGA LA FICHA; EL DESTINO DE LA PLATA LO PONE UN ADMIN.
+    //
+    // El alta de propietario es literalmente el trabajo de CARGA ("auto-onboarding: cargar la
+    // cartera real") y por eso NO se corta entera. Pero dos de estos campos no son ficha:
+    // `cbuAlias` es a dónde va la rendición, y `comisionPct` es cuánto se queda la inmobiliaria.
+    // Y a diferencia del alta de contrato, `propietarios.crear` NO tiene `rolesAprobacion`: lo
+    // que CARGA da de alta acá no lo revisa nadie.
+    //
+    // ES UNA LISTA BLANCA, NO UNA NEGRA, y eso es a propósito. El PUT de propietarios cortó ancho
+    // justamente porque un gate por campos "hay que volver a pensarlo cada vez que alguien agrega
+    // un campo al zod". Con lista blanca, el campo nuevo queda denegado por defecto: el que lo
+    // agregue decide si es ficha, y si se olvida, el error es del lado seguro.
+    if (u.rol === 'CARGA') {
+      const FICHA = new Set(['nombre', 'apellido', 'email', 'telefono', 'cuit', 'notas']);
+      const dePlata = Object.keys((request.body ?? {}) as Record<string, unknown>).filter((k) => !FICHA.has(k));
+      if (dePlata.length) {
+        return reply.code(403).send({
+          message: `Solo un Admin u Operador puede cargar ${dePlata.join(', ')}: define a dónde va la plata`,
+        });
+      }
+    }
+
     const body = z
       .object({
         nombre: z.string().trim().min(2),
