@@ -138,7 +138,17 @@ export function ExpedientePropiedadTab({ propiedadId }: { propiedadId: string })
                         {g.inquilino && ` · ${g.inquilino}`}
                       </p>
                     </div>
-                    {g.vigenciaHasta && (
+                    {/* Se gatea por `estadoPoliza`, NO por `vigenciaHasta`.
+                        `estadoPoliza` es no-nulo exactamente cuando la garantía es una póliza
+                        Y tiene vigencia: es el único caso en que hay un estado que rotular. Con
+                        `vigenciaHasta` entraba también una garantía PERSONA con una fecha
+                        residual, su `estadoPoliza` venía en null, y el ternario de tres ramas
+                        lo mandaba al `else`: «Vigente», al lado de una fecha vencida hace medio
+                        año, y sin que los contadores de arriba lo cuenten en ningún lado.
+                        La asimetría delataba el descuido: `estadoPolizaColor` ya trataba el
+                        null distinto de 'VIGENTE' —gris vs. verde—. El color modelaba cuatro
+                        estados y el texto tres. */}
+                    {g.estadoPoliza && g.vigenciaHasta && (
                       <div className="shrink-0 text-right">
                         <p className={`text-[11px] font-semibold ${estadoPolizaColor(g.estadoPoliza)}`}>
                           {g.estadoPoliza === 'VENCIDA' ? 'Vencida' : g.estadoPoliza === 'POR_VENCER' ? 'Por vencer' : 'Vigente'}

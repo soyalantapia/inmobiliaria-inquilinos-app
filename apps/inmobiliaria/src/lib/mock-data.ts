@@ -1,6 +1,7 @@
 import type {
   ContratoExtraido,
   ContratoListado,
+  Moneda,
   Propiedad,
   Propietario,
   Reclamo,
@@ -181,7 +182,7 @@ export const screeningMock: ScreeningResultado = {
     { numero: '+54 9 11 6789 1234', tipo: 'CELULAR', whatsappActivo: true },
     { numero: '+54 9 11 3456 7890', tipo: 'CELULAR', whatsappActivo: false },
   ],
-  email: 'carlos.mendez@gmail.com',
+  email: 'carlos.mendez@example.com',
 
   bcra: {
     entidadesCount: 4,
@@ -210,7 +211,7 @@ export const screeningMock: ScreeningResultado = {
       vinculo: 'CONYUGE',
       nombreCompleto: 'María Laura Fernández',
       telefonos: [{ numero: '+54 9 11 5678 1234', tipo: 'CELULAR', whatsappActivo: true }],
-      email: 'mlaura.fernandez@gmail.com',
+      email: 'mlaura.fernandez@example.com',
     },
     {
       vinculo: 'HIJO',
@@ -231,13 +232,13 @@ export const screeningMock: ScreeningResultado = {
         { numero: '+54 11 4234 5678', tipo: 'FIJO', whatsappActivo: false },
         { numero: '+54 9 11 4111 2222', tipo: 'CELULAR', whatsappActivo: true },
       ],
-      email: 'roberto.mendez@yahoo.com.ar',
+      email: 'roberto.mendez@example.com',
     },
     {
       vinculo: 'HERMANO',
       nombreCompleto: 'Mariana Méndez',
       telefonos: [{ numero: '+54 9 11 3322 1144', tipo: 'CELULAR', whatsappActivo: true }],
-      email: 'mariana.mendez@hotmail.com',
+      email: 'mariana.mendez@example.com',
     },
   ],
   rangoIngresoFamiliar: 'A5',
@@ -313,7 +314,7 @@ export const screeningMock: ScreeningResultado = {
     ciiu: '620100',
     actividad: 'Servicios de consultores en informática',
     telefonos: ['+54 11 4014 4040', '+54 11 4014 4041'],
-    email: 'rrhh@globant.com',
+    email: 'rrhh@example.com',
     paginaWeb: 'https://www.globant.com',
     tipoEmpresa: 'Sociedad Anónima',
     artVigente: true,
@@ -790,7 +791,7 @@ export const propietariosMock: Propietario[] = [
     nombre: 'Eduardo',
     apellido: 'Castro',
     cuit: '20-12345678-2',
-    email: 'eduardo.castro@gmail.com',
+    email: 'eduardo.castro@example.com',
     telefono: '+54 11 4789 1234',
     cbuAlias: 'castro.eduardo.cuenta',
     comisionPct: 8,
@@ -822,7 +823,7 @@ export const propietariosMock: Propietario[] = [
     nombre: 'Silvana',
     apellido: 'Morales',
     cuit: '27-23456789-3',
-    email: 'silvanamorales@gmail.com',
+    email: 'silvanamorales@example.com',
     telefono: '+54 9 11 5432 6789',
     cbuAlias: 'morales.silvana',
     comisionPct: 7,
@@ -844,7 +845,7 @@ export const propietariosMock: Propietario[] = [
     nombre: 'Federico',
     apellido: 'López Vega',
     cuit: '20-34567890-4',
-    email: 'federico.lv@outlook.com',
+    email: 'federico.lv@example.com',
     telefono: '+54 11 5678 9012',
     cbuAlias: null,
     comisionPct: 8,
@@ -860,7 +861,7 @@ export const propietariosMock: Propietario[] = [
     nombre: 'Patricia',
     apellido: 'Iglesias',
     cuit: '27-45678901-5',
-    email: 'patriciaiglesias@yahoo.com.ar',
+    email: 'patriciaiglesias@example.com',
     telefono: '+54 9 351 4321 9876',
     cbuAlias: 'iglesias.patricia',
     comisionPct: 6.5,
@@ -886,7 +887,7 @@ export const propietariosMock: Propietario[] = [
     nombre: 'Martín',
     apellido: 'Bravo',
     cuit: '20-56789012-6',
-    email: 'martinbravo@gmail.com',
+    email: 'martinbravo@example.com',
     telefono: '+54 11 2345 1357',
     cbuAlias: 'bravo.martin.cap',
     comisionPct: 8,
@@ -1010,6 +1011,13 @@ export interface LiquidacionAdmin {
   id: string;
   contratoId: string;
   periodo: string; // YYYY-MM
+  /**
+   * Moneda de ESTA cuota. Faltaba, y la pestaña Pagos —que no recibe el contrato— no tenía
+   * de dónde sacarla: sus nueve `formatMonto` caían al default `'ARS'` y un contrato de
+   * US$ 1.200 se leía "$ 1.200", mil veces por debajo de la deuda real. En el mismo archivo
+   * hay once llamadas que sí le pasan `c.moneda`.
+   */
+  moneda: Moneda;
   montoAlquiler: number;
   montoExpensas: number;
   montoTotal: number;
@@ -1048,6 +1056,10 @@ export function generarLiquidaciones(
   // caemos a la estimación histórica del 19% del alquiler. Para SOLO_EXPENSAS
   // (montoBase=0) el 19% daba $0 e ignoraba las expensas reales del contrato.
   montoExpensasBase = 0,
+  // Default ARS para las otras cinco llamadas (cierre de caja y scoring del inquilino),
+  // que suman plata en pesos por construcción. La única que tiene la respuesta de verdad
+  // —el detalle del contrato— pasa `c.moneda`.
+  moneda: Moneda = 'ARS',
 ): LiquidacionAdmin[] {
   const hoy = new Date();
   const liquidaciones: LiquidacionAdmin[] = [];
@@ -1073,6 +1085,7 @@ export function generarLiquidaciones(
       id: `liq_${contratoId}_${periodo}`,
       contratoId,
       periodo,
+      moneda,
       montoAlquiler: montoBase,
       montoExpensas: expensas,
       montoTotal: montoBase + expensas,
@@ -1356,7 +1369,7 @@ export const coInquilinosMock: CoInquilinoAdmin[] = [
     id: 'co_1',
     contratoId: 'cnt_001',
     nombre: 'Federico Ramos',
-    email: 'fede.ramos@gmail.com',
+    email: 'fede.ramos@example.com',
     telefono: '+54 9 11 6789 4421',
     relacion: 'Pareja',
     permiso: 'PAGAR',
@@ -1500,27 +1513,27 @@ export interface ContactoCobranza {
 export const contactosCobranzaMock: ContactoCobranza[] = [
   {
     contratoId: 'cnt_001',
-    titular: { nombre: 'Mariela Sosa', telefono: '+54 9 11 4567 8900', email: 'mariela.sosa@gmail.com' },
+    titular: { nombre: 'Mariela Sosa', telefono: '+54 9 11 4567 8900', email: 'mariela.sosa@example.com' },
     garante: { nombre: 'Roberto Sosa (padre)', telefono: '+54 9 11 5678 9011', tipo: 'Propietaria' },
   },
   {
     contratoId: 'cnt_002',
-    titular: { nombre: 'Juan Pérez', telefono: '+54 9 11 3344 5566', email: 'juan.perez@hotmail.com' },
+    titular: { nombre: 'Juan Pérez', telefono: '+54 9 11 3344 5566', email: 'juan.perez@example.com' },
     garante: { nombre: 'Cobertura SUMA', telefono: '+54 11 5288 9000', tipo: 'Digital · POL-2024-12345' },
   },
   {
     contratoId: 'cnt_003',
-    titular: { nombre: 'Laura Giménez', telefono: '+54 9 11 2233 4455', email: 'laura.gim@yahoo.com.ar' },
+    titular: { nombre: 'Laura Giménez', telefono: '+54 9 11 2233 4455', email: 'laura.gim@example.com' },
     garante: { nombre: 'María Giménez (madre)', telefono: '+54 9 11 6677 8899', tipo: 'Propietaria' },
   },
   {
     contratoId: 'cnt_004',
-    titular: { nombre: 'Carlos Romero', telefono: '+54 9 11 7788 9900', email: 'carlos.romero@gmail.com' },
+    titular: { nombre: 'Carlos Romero', telefono: '+54 9 11 7788 9900', email: 'carlos.romero@example.com' },
     garante: { nombre: 'Recibo de sueldo - Banco Nación', telefono: '+54 11 4347 6000', tipo: 'Sueldo' },
   },
   {
     contratoId: 'cnt_005',
-    titular: { nombre: 'Ana Pereyra', telefono: '+54 9 11 4455 6677', email: 'ana.pereyra@gmail.com' },
+    titular: { nombre: 'Ana Pereyra', telefono: '+54 9 11 4455 6677', email: 'ana.pereyra@example.com' },
     garante: { nombre: 'Diego Pereyra (hermano)', telefono: '+54 9 11 8899 0011', tipo: 'Propietaria' },
   },
 ];
@@ -1576,7 +1589,7 @@ export const profesionalesAdminMock: ProfesionalAdmin[] = [
     categoria: 'PLOMERO',
     zona: 'Palermo, Villa Crespo',
     telefono: '+54 9 11 4421 8830',
-    email: 'sergio.almeida@plomeria.ar',
+    email: 'sergio.almeida@example.com',
     rating: 4.8,
     cantTrabajos: 24,
     ultimoTrabajo: '2026-04-30',
@@ -1590,7 +1603,7 @@ export const profesionalesAdminMock: ProfesionalAdmin[] = [
     categoria: 'ELECTRICISTA',
     zona: 'Palermo, Recoleta',
     telefono: '+54 9 11 6502 7714',
-    email: 'diego@ferrari-elec.com.ar',
+    email: 'diego@example.com',
     rating: 4.9,
     cantTrabajos: 31,
     ultimoTrabajo: '2026-05-02',
@@ -1632,7 +1645,7 @@ export const profesionalesAdminMock: ProfesionalAdmin[] = [
     categoria: 'PINTOR',
     zona: 'Palermo, Belgrano',
     telefono: '+54 9 11 4488 1107',
-    email: 'camila.t@gmail.com',
+    email: 'camila.t@example.com',
     rating: 4.5,
     cantTrabajos: 9,
     ultimoTrabajo: '2026-01-18',
@@ -1646,7 +1659,7 @@ export const profesionalesAdminMock: ProfesionalAdmin[] = [
     categoria: 'TECNICO_AC',
     zona: 'CABA',
     telefono: '+54 9 11 6678 9921',
-    email: 'contacto@friopro.com.ar',
+    email: 'contacto@example.com',
     rating: 4.7,
     cantTrabajos: 22,
     ultimoTrabajo: '2026-04-12',

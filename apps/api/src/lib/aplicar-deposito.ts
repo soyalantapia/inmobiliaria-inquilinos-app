@@ -1,17 +1,16 @@
 import type { Prisma } from '@prisma/client';
-import { yaVencio } from '@llave/shared';
+import { liqVencida } from './estado-de-pago.js';
 import { conSaldo, pagadoAlVencimientoPorLiquidacion } from './saldos.js';
 import { calcularMora, resolverEsquemaMora } from './punitorios.js';
 
 const r2c = (n: number) => Math.round(n * 100) / 100;
 
-/** Igual criterio que el preview de la baja (core.ts): una cuota es EXIGIBLE si ya está
- *  VENCIDO o si sigue impaga y su vencimiento pasó. Una cuota FUTURA no se toca. */
-function esExigible(l: { estado: string; fechaVencimiento: Date | string }, now: Date): boolean {
-  if (l.estado === 'VENCIDO') return true;
-  if (l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') return yaVencio(l.fechaVencimiento, now);
-  return false;
-}
+/** Igual criterio que el preview de la baja: una cuota es EXIGIBLE si ya está VENCIDO o si
+ *  sigue impaga y su vencimiento pasó. Una cuota FUTURA no se toca.
+ *
+ *  Era una COPIA literal de `liqVencida` con otro nombre. Ahora es la misma función: la regla
+ *  vivía en tres archivos y una de las copias se quedó atrás (ver `lib/estado-de-pago.ts`). */
+const esExigible = liqVencida;
 
 export interface ResultadoAplicacion {
   /** Cuánto del depósito se usó efectivamente para cancelar deuda. */

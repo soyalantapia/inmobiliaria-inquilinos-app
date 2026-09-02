@@ -15,7 +15,7 @@ import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { apiEnabled } from '@/lib/api/client';
-import { useCrearPropietario } from '@/lib/api/hooks';
+import { useCrearPropietario, useMe } from '@/lib/api/hooks';
 import { validarCuit } from '@/lib/cuit';
 
 // Modal para dar de alta un propietario.
@@ -40,6 +40,12 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
   const [notas, setNotas] = useState('');
   const [guardando, setGuardando] = useState(false);
   const { crear } = useCrearPropietario();
+  // Igual que en `nuevo-propietario-dialog`: CBU y comisión son plata, no ficha, y el server
+  // corta a CARGA en los dos. Se esconden en vez de deshabilitarse — y hay que sacarlos también
+  // del payload, porque la comisión arranca en "8" y se mandaba SIEMPRE: sin esto CARGA no
+  // podía dar de alta a NADIE desde esta pantalla.
+  const { me, isError: meError } = useMe();
+  const puedeCargarPlata = !apiEnabled || meError || me?.rol !== 'CARGA';
 
   const reset = () => {
     setNombre('');
@@ -106,8 +112,8 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
           email: email.trim(),
           ...(telefono.trim() ? { telefono: telefono.trim() } : {}),
           cuit: cuit.trim(),
-          ...(cbuAlias.trim() ? { cbuAlias: cbuAlias.trim() } : {}),
-          ...(Number.isFinite(comision) ? { comisionPct: comision } : {}),
+          ...(puedeCargarPlata && cbuAlias.trim() ? { cbuAlias: cbuAlias.trim() } : {}),
+          ...(puedeCargarPlata && Number.isFinite(comision) ? { comisionPct: comision } : {}),
           ...(notas.trim() ? { notas: notas.trim() } : {}),
         });
       } catch (err) {
@@ -190,24 +196,33 @@ export function SumarPropietarioDialog({ open, onOpenChange }: Props) {
             </Field>
           </div>
 
-          <Field label="CBU o alias (opcional)">
-            <Input
-              value={cbuAlias}
-              onChange={(e) => setCbuAlias(e.target.value)}
-              placeholder="juan.garcia.mp"
-            />
-          </Field>
+          {puedeCargarPlata ? (
+            <>
+              <Field label="CBU o alias (opcional)">
+                <Input
+                  value={cbuAlias}
+                  onChange={(e) => setCbuAlias(e.target.value)}
+                  placeholder="juan.garcia.mp"
+                />
+              </Field>
 
-          <Field label="Comisión (%)">
-            <Input
-              type="number"
-              min="0"
-              max="30"
-              step="0.5"
-              value={comisionPct}
-              onChange={(e) => setComisionPct(e.target.value)}
-            />
-          </Field>
+              <Field label="Comisión (%)">
+                <Input
+                  type="number"
+                  min="0"
+                  max="30"
+                  step="0.5"
+                  value={comisionPct}
+                  onChange={(e) => setComisionPct(e.target.value)}
+                />
+              </Field>
+            </>
+          ) : (
+            <p className="rounded-md bg-muted px-3 py-2 text-[11px] text-muted-foreground">
+              El <strong>CBU</strong> y la <strong>comisión</strong> los carga un Admin u Operador:
+              definen a dónde va la plata de la rendición.
+            </p>
+          )}
 
           <Field label="Notas internas (opcional)">
             <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} />
