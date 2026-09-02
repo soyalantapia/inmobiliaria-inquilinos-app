@@ -754,9 +754,17 @@ function EditarMoraDialog({
   const { mora: moraDefault } = useCobranza();
   const heredado =
     moraDefault != null
-      ? { tipo: moraDefault.tipoDefault, valor: moraDefault.valorDefault }
+      ? { tipo: moraDefault.tipoDefault, valor: moraDefault.valorDefault, moneda: moraDefault.monedaDefault }
       : contrato.moraEfectiva && contrato.moraEfectiva.origen === 'INMOBILIARIA'
-        ? { tipo: contrato.moraEfectiva.tipo, valor: contrato.moraEfectiva.valor }
+        ? {
+            tipo: contrato.moraEfectiva.tipo,
+            valor: contrato.moraEfectiva.valor,
+            // Este fallback entra cuando /cobranza no está disponible (es ADMIN-only, así que
+            // un OPERADOR SIEMPRE cae acá). Si el origen ya es INMOBILIARIA, el server ya
+            // aplicó la regla de moneda y dejó pasar la herencia: entonces está expresada en
+            // la moneda de ESTE contrato. Poner otra cosa acá reintroduciría el bug.
+            moneda: contrato.moneda,
+          }
         : null;
 
   const [seleccion, setSeleccion] = useState<MoraSeleccion>('HEREDAR');

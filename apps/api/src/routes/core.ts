@@ -3345,6 +3345,16 @@ export async function coreRoutes(app: FastifyInstance) {
       mora: {
         tipoDefault: inmoMora?.moraTipoDefault ?? 'SIN_MORA',
         valorDefault: inmoMora?.moraValorDefault ?? null,
+        // LA MONEDA DEL DEFAULT, que ya se estaba seleccionando y no se devolvía.
+        //
+        // Sin ella el panel no puede aplicar la regla de T-58 (`resolverEsquemaMora`): un
+        // default MONTO_FIJO sólo se hereda si la moneda coincide con la del contrato. El
+        // wizard de alta heredaba igual, prefilleaba la mora de cada período vencido con esa
+        // tasa fantasma y la mandaba como `moraManual` — que el server persiste como
+        // `montoPunitorioManual` y `calcularMora` respeta antes que nada. Quedaba deuda
+        // punitoria real y cobrable respaldada por un esquema que este mismo server dice
+        // que no corresponde.
+        monedaDefault: inmoMora?.monedaDefault ?? 'ARS',
       },
     };
   });

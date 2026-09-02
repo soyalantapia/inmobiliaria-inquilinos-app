@@ -34,6 +34,7 @@ import { CuentaCobranzaDialog } from '@/components/cuenta-cobranza-dialog';
 import {
   calcularMora,
   descripcionMora,
+  moraEfectivaDe,
   MoraSelector,
   type MoraSeleccion,
 } from '@/components/mora-selector';
@@ -1241,10 +1242,22 @@ function CargarContratoApiWizard() {
 
   // Esquema de mora EFECTIVO del wizard (elegido o heredado) — se usa para el
   // prefill de la mora de los períodos anteriores.
-  const moraEfectivaWizard: { tipo: TipoMora; valor: number } =
-    moraSel === 'HEREDAR'
-      ? { tipo: moraDefault?.tipoDefault ?? 'SIN_MORA', valor: moraDefault?.valorDefault ?? 0 }
-      : { tipo: moraSel, valor: Number(moraValor) || 0 };
+  //
+  // Antes heredaba el default A CIEGAS, sin la regla de T-58 que el server sí aplica: un
+  // default MONTO_FIJO no vale en otra moneda. Con esa tasa fantasma el wizard prefilleaba
+  // el `moraManual` de CADA período vencido y lo mandaba en el alta; el server lo guarda en
+  // `montoPunitorioManual` y `calcularMora` lo respeta antes que su propio `SIN_MORA`.
+  // Quedaba deuda punitoria real y cobrable — sobre un alquiler de US$ 800, US$ 20.800.
+  // La regla vive en un solo lugar (`moraEfectivaDe`) para que las tres pantallas que
+  // muestran mora no vuelvan a divergir del server.
+  const moraEfectivaWizard = moraEfectivaDe(
+    moraSel,
+    moraValor,
+    moraDefault
+      ? { tipo: moraDefault.tipoDefault, valor: moraDefault.valorDefault, moneda: moraDefault.monedaDefault }
+      : null,
+    moneda,
+  );
 
   // Períodos ya vencidos entre el inicio del contrato y hoy. Si hay al menos
   // uno, aparece el paso 4 "Períodos anteriores".
@@ -2142,7 +2155,11 @@ function CargarContratoApiWizard() {
                   onValorChange={setMoraValor}
                   heredado={
                     moraDefault
-                      ? { tipo: moraDefault.tipoDefault, valor: moraDefault.valorDefault }
+                      ? {
+                          tipo: moraDefault.tipoDefault,
+                          valor: moraDefault.valorDefault,
+                          moneda: moraDefault.monedaDefault,
+                        }
                       : null
                   }
                   conHeredar
