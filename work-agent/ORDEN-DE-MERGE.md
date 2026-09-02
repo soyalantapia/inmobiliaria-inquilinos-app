@@ -255,3 +255,56 @@ tercera auditoría, y al final los de T-28, que no dependen de nada entre sí:
 
 **#115 conviene antes que los cinco de test**: es el único que toca fuente, y los tests que
 vienen después corren sobre el `saldos.ts` ya corregido.
+
+
+---
+
+# Cuarta corrida: 60, y esta vez es el merge de verdad (01/09, noche)
+
+Entraron los 9 de la cuarta auditoría (#122 a #129). Esta corrida **no fue un ensayo**: es la
+que precede al despliegue a Render de todo el lote.
+
+| | |
+|---|---|
+| PRs mergeados | **60** (#69 a #129, sin #128 — ver abajo) |
+| Conflictos | **8**, todos resueltos **por unión** |
+| `tsc --noEmit` api · panel · PWA · portal | **0** en los cuatro |
+| Suite `sin-db` | **83 archivos / 767 tests** ✅ |
+| Suite `con-db` con `UPLOADS_AMBITO=on` | **90 ok + 1 skip / 629 tests** ✅ |
+| `vitest` panel · PWA · portal | 16/117 · 6/49 · 6/79 ✅ |
+| build api (tsup) + `next build` × 3 | **OK** en los cuatro ✅ |
+
+## 🔴 Lo que encontró esta corrida: dos PRs nuevos repetían arreglos que ya estaban en la cola
+
+Y los dos **mergeaban limpio**. Es el modo de falla que ni git ni el CI ven: dos PRs que
+arreglan lo mismo en líneas distintas.
+
+- **#130 repetía a #77** (el flake del OTP del propietario): mismo enfoque —un propietario
+  exclusivo para el caso de emisión—, hasta el mismo CUIT `20-22222222-2`. **#130 se cerró.**
+- **#128 repetía a #96** (el badge "Al día" de una unidad con deuda). #96 además agrega el
+  selector que faltaba en el formulario, así que hace más. Al mergear los dos, la fila del
+  consorcio quedó **con DOS badges uno al lado del otro**. **#128 salió del lote** y queda para
+  rebasarlo como el delta que sí aporta (la contradicción inversa: saldo 0 con estado de mora).
+
+**La resolución por unión no es universal.** Sirvió para los 8 conflictos de esta corrida
+porque los dos lados eran agregados independientes —entradas de un mapa, imports, trampas de un
+`.md`—. Con #128 la unión produjo código sintácticamente válido y funcionalmente roto. Antes de
+unir, hay que preguntarse si los dos lados son **agregados** o **dos versiones de lo mismo**.
+
+## 🔴 Y un verde que había dejado de medir
+
+`tres-puertas-de-auth-que-dicen-de-mas.test.ts` (#125) tenía escrito a mano
+`mariela.sosa@gmail.com`. **#72 pasó las direcciones del seed a `example.com`**, así que ese
+email dejó de existir — y el archivo siguió **en verde**, porque sus dos primeros casos comparan
+"un email que ES de un inquilino" contra "uno que no existe", y pasaron a comparar dos
+inexistentes entre sí.
+
+El test que cuida que el login no delate quién es inquilino había dejado de mirar a ningún
+inquilino. Su gemelo (#126, `la-reapertura-no-se-le-atribuye-a-quien-no-fue.test.ts`) sí se puso
+rojo por lo mismo, a nivel de archivo — los 5 casos contados como "skipped".
+
+Los dos ya salen del literal: uno lee el email del seed en `beforeAll` **y afirma que lo
+encontró**, el otro saca el contrato del token de la sesión demo.
+
+**La regla que deja esto:** un test atado a un literal del seed se rompe cuando OTRO PR toca el
+seed, y hay un 50% de que se rompa en verde.
