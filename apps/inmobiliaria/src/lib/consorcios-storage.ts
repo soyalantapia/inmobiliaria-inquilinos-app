@@ -486,6 +486,14 @@ export const ESTADO_UF_LABEL: Record<EstadoUF, string> = {
  */
 export function estadoUfVisible(u: { estado: EstadoUF; saldoDeudor: number }): EstadoUF {
   if (u.estado === 'AL_DIA' && u.saldoDeudor > 0) return 'VENCIDO';
+  // Y la contradicción al revés, que abrió el selector: alguien marca VENCIDO a mano, la
+  // unidad después paga y el saldo queda en 0. La fila mostraba «—» en el saldo y un badge
+  // ROJO «Vencido» al lado. Es la misma mentira en el otro sentido, y ahora es alcanzable
+  // porque el estado se puede elegir: antes ningún estado de mora existía en producción.
+  //
+  // Sin deuda no hay mora que mostrar. `CON_PLAN_PAGO` entra en la misma bolsa: un plan de
+  // pago sin saldo es un plan que ya se cumplió.
+  if (u.estado !== 'AL_DIA' && u.saldoDeudor <= 0) return 'AL_DIA';
   return u.estado;
 }
 
