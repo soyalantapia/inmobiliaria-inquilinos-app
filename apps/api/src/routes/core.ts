@@ -13,8 +13,7 @@ import {
   periodoDe,
   recomputarExpensasFuturas,
   recomputarLiquidacionesFuturas,
-  montoAlquilerSegunTipo,
-} from '../lib/liquidaciones.js';
+  montoAlquilerSegunTipo, repararVigenciaSiguiente } from '../lib/liquidaciones.js';
 import {
   conSaldo,
   montoPagadoPorLiquidacion,
@@ -39,46 +38,8 @@ import { contratoQuedaPendiente, diaCivilAR, rolTienePermiso, venceDespuesDeHoy,
 import { ROLES_ORDEN, type Rol } from '@llave/shared/permisos';
 import { dinero, dineroPositivo } from '../lib/monto.js';
 import { sim } from '../lib/simbolo-moneda.js';
+import { liqQueDefineEstado, liqVencida } from '../lib/estado-de-pago.js';
 
-/**
- * Una liquidación cuenta como VENCIDA (a efectos de cobranza) si su estado ya es
- * VENCIDO, o si todavía no está paga (PENDIENTE/PARCIAL) y su vencimiento pasó.
- * El estado persistido sólo vira a VENCIDO cuando corre el barrido del devengo
- * (marcarLiquidacionesVencidas); esta derivación on-read cubre el hueco entre
- * corridas Y captura el parcial vencido (estado PARCIAL), que si no nunca volvía
- * a figurar como moroso en el panel (auditoría A2).
- */
-function liqVencida(l: { estado: string; fechaVencimiento: Date | string }, now: Date): boolean {
-  if (l.estado === 'VENCIDO') return true;
-  if (l.estado === 'PENDIENTE' || l.estado === 'PARCIAL') return yaVencio(l.fechaVencimiento, now);
-  return false;
-}
-
-/**
- * Liquidación que define `estadoPagoActual` de un contrato. Prioridad:
- * (1) la vencida más reciente — la cobranza manda; (2) la del período en curso
- * o, si no existe, la más reciente NO futura; (3) contrato que recién arranca
- * (solo liqs futuras): la próxima. `liqs` DEBE venir ordenada periodo desc.
- *
- * Antes era `vencida ?? liqs[0]`: como el devengo genera la liq del mes
- * SIGUIENTE por adelantado, `[0]` era esa futura y un contrato con el mes en
- * curso PAGADO reportaba el estado de la cuota del mes que viene → el
- * dashboard "Plata · <mes>" mostraba Cobrado $0 con el mes al día, Por cobrar
- * con plata del mes siguiente, y un adelanto PARCIAL futuro hacía desaparecer
- * el contrato de todos los KPIs (bug "estadísticas principales", 07/07).
- * El período se toma en hora argentina (UTC-3), igual que /caja/cierre.
- */
-function liqQueDefineEstado<
-  T extends { periodo: string; estado: string; fechaVencimiento: Date | string },
->(liqs: T[], now: Date): T | null {
-  const periodoActual = new Date(now.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 7);
-  return (
-    liqs.find((l) => liqVencida(l, now)) ??
-    liqs.find((l) => l.periodo <= periodoActual) ??
-    liqs[0] ??
-    null
-  );
-}
 
 /**
  * Núcleo de datos del panel (Fase 2): contratos, propiedades, propietarios,
@@ -489,6 +450,15 @@ export async function coreRoutes(app: FastifyInstance) {
   app.delete('/contratos/:contratoId/co-inquilinos/:id', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
+    // INVITAR Y REVOCAR NO PESAN LO MISMO. El POST hermano se deja abierto —sumar un
+    // co-inquilino es carga—, pero esto es un borrado duro que le saca el acceso a la PWA a
+    // alguien con permiso PAGAR o COMPLETO: justo el que informa los pagos. La única vuelta
+    // atrás es volver a invitarlo, y no queda rastro de quién lo sacó.
+    if (u.rol === 'CARGA') {
+      return reply
+        .code(403)
+        .send({ message: 'Solo un Admin u Operador puede sacar a un co-inquilino del contrato' });
+    }
     const { contratoId, id } = request.params as { contratoId: string; id: string };
     const co = await prisma.coInquilino.findFirst({
       where: { id, contratoId, inmobiliariaId: u.inmobiliariaId },
@@ -633,6 +603,27 @@ export async function coreRoutes(app: FastifyInstance) {
   app.put('/propiedades/:id/participaciones', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propiedades.crear');
     if (!u) return;
+
+    // CARGA NO TOCA EL REPARTO. Esto no cambia porcentajes: hace `deleteMany` + `createMany` del
+    // set completo, o sea REEMPLAZA A LOS DUEÑOS. Y el reparto es lo que decide a quién le
+    // transfiere cada rendición.
+    //
+    // `propiedades.crear` incluye a CARGA y —a diferencia de sus hermanos destructivos: el DELETE
+    // de propiedades, el DELETE y el PUT de propietarios— acá no había corte. La cadena que eso
+    // habilitaba: CARGA crea un propietario con el CBU que quiera (el alta tampoco cortaba, ver
+    // más abajo) y después reescribe el reparto de la propiedad al 100% a favor de ése. La
+    // próxima rendición transfiere ahí. Agravante: CARGA no tiene `pagos.ver`, así que movía
+    // plata que su propio rol le niega mirar.
+    //
+    // El corte es ANCHO, con el mismo criterio que ya razona el PUT de propietarios: un gate que
+    // depende de qué campos vinieron es una regla que hay que volver a pensar cada vez que
+    // alguien toca el zod.
+    if (u.rol === 'CARGA') {
+      return reply
+        .code(403)
+        .send({ message: 'Solo un Admin u Operador puede cambiar el reparto: define a quién se le rinde la plata' });
+    }
+
     const { id } = request.params as { id: string };
     const parsed = z
       .object({
@@ -909,6 +900,29 @@ export async function coreRoutes(app: FastifyInstance) {
   app.post('/propietarios', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'propietarios.crear');
     if (!u) return;
+
+    // CARGA CARGA LA FICHA; EL DESTINO DE LA PLATA LO PONE UN ADMIN.
+    //
+    // El alta de propietario es literalmente el trabajo de CARGA ("auto-onboarding: cargar la
+    // cartera real") y por eso NO se corta entera. Pero dos de estos campos no son ficha:
+    // `cbuAlias` es a dónde va la rendición, y `comisionPct` es cuánto se queda la inmobiliaria.
+    // Y a diferencia del alta de contrato, `propietarios.crear` NO tiene `rolesAprobacion`: lo
+    // que CARGA da de alta acá no lo revisa nadie.
+    //
+    // ES UNA LISTA BLANCA, NO UNA NEGRA, y eso es a propósito. El PUT de propietarios cortó ancho
+    // justamente porque un gate por campos "hay que volver a pensarlo cada vez que alguien agrega
+    // un campo al zod". Con lista blanca, el campo nuevo queda denegado por defecto: el que lo
+    // agregue decide si es ficha, y si se olvida, el error es del lado seguro.
+    if (u.rol === 'CARGA') {
+      const FICHA = new Set(['nombre', 'apellido', 'email', 'telefono', 'cuit', 'notas']);
+      const dePlata = Object.keys((request.body ?? {}) as Record<string, unknown>).filter((k) => !FICHA.has(k));
+      if (dePlata.length) {
+        return reply.code(403).send({
+          message: `Solo un Admin u Operador puede cargar ${dePlata.join(', ')}: define a dónde va la plata`,
+        });
+      }
+    }
+
     const body = z
       .object({
         nombre: z.string().trim().min(2),
@@ -1022,6 +1036,13 @@ export async function coreRoutes(app: FastifyInstance) {
         //
         // Un `''` EXPLÍCITO sí lo borra: querer sacarle el email es legítimo.
         ...(d.email !== undefined ? { email: normalizarEmail(d.email) } : {}),
+        // T-23-N2-N1 · Si el email CAMBIA, la verificación se cae. Lo que se había probado es
+        // que la casilla vieja era suya; de la nueva no se sabe nada todavía. Dejar la marca
+        // puesta sería peor que no tenerla: diría "verificado" sobre una dirección que nadie
+        // confirmó, que es exactamente el estado que esta columna vino a hacer visible.
+        ...(d.email !== undefined && normalizarEmail(d.email) !== prop.email
+          ? { emailVerificadoAt: null }
+          : {}),
         ...(d.telefono !== undefined ? { telefono: d.telefono } : {}),
         ...(d.cbuAlias !== undefined ? { cbuAlias: d.cbuAlias || null } : {}),
         ...(d.comisionPct != null ? { comisionPct: d.comisionPct } : {}),
@@ -1472,8 +1493,6 @@ export async function coreRoutes(app: FastifyInstance) {
     // no hay pre-check que lo bloquee. La única colisión posible es que ese email lo use
     // OTRA persona (distinto DNI) → la atrapa el unique de Persona (P2002, abajo).
     // Reuso (req 3): si el alta trae personaId, la Persona debe existir en ESTE tenant.
-    // (El guard de email de arriba sigue aplicando: un 2º contrato reusado no puede
-    // repetir el email de otra fila — se deja vacío o distinto; la identidad vive en Persona.)
     if (d.personaId) {
       const per = await prisma.persona.findFirst({
         where: { id: d.personaId, inmobiliariaId: u.inmobiliariaId },
@@ -1481,6 +1500,54 @@ export async function coreRoutes(app: FastifyInstance) {
       });
       if (!per) return reply.code(404).send({ message: 'La persona seleccionada no existe en tu cartera' });
     }
+
+    // EL EMAIL NO PUEDE SER EL DE OTRA PERSONA DE LA CARTERA. Un solo chequeo, ANTES de que el
+    // alta se bifurque, porque las dos ramas tenían el agujero y por motivos distintos:
+    //
+    //   · CON `personaId`: la rama hace un `findFirstOrThrow` de SOLO LECTURA sobre Persona.
+    //     Nunca la escribe, así que no ejerce el `@@unique([inmobiliariaId, email])` y no
+    //     corría ningún chequeo. El comentario que lo autorizaba —"(El guard de email de arriba
+    //     sigue aplicando…)"— citaba un guard que el multi-alquiler ya había sacado, y lo decía
+    //     doce líneas después del comentario que explica esa remoción.
+    //   · SIN `personaId`: `buscarOCrearPersona` busca por DNI PRIMERO. Con un DNI que matchea,
+    //     devuelve esa Persona y `esOtraPersona` compara DNI contra DNI: da false y pasa. O sea
+    //     que el 409 de más abajo sólo atrapa el caso "email de otro DNI, sin DNI propio que
+    //     matchee". Con DNI, el email ajeno entraba igual.
+    //
+    // QUÉ HABILITABA. El operador carga el contrato de Juan y en el campo email tipea el de
+    // Mariela —otra inquilina de la misma cartera—. Queda un `Inquilino` con el email de Mariela
+    // colgado del contrato de Juan; como el acceso a la PWA es por OTP al mail, la casilla de
+    // Mariela entra al contrato de Juan y ve monto, deuda y documentos.
+    //
+    // (Que `/auth/otp/*` busque por email SIN scope de tenant no es parte de esto: es
+    // deliberado y está documentado —"una persona, un login, varios alquileres"—, y la
+    // propiedad de seguridad se sostiene porque el OTP prueba control de la casilla.)
+    //
+    // Es como máximo una fila: `Persona` tiene `@@unique([inmobiliariaId, email])`.
+    if (emailInq) {
+      const duenioDelEmail = await prisma.persona.findFirst({
+        where: { inmobiliariaId: u.inmobiliariaId, email: emailInq },
+        select: { id: true, dni: true },
+      });
+      // Reusando una Persona, "otra" es por ID. Sin reuso, por DNI — la misma regla que ya
+      // aplicaba `esOtraPersona` adentro de la transacción, sólo que ahora también corre cuando
+      // el DNI del alta matchea con una Persona DISTINTA de la dueña del email.
+      const esDeOtro = duenioDelEmail
+        ? d.personaId
+          ? duenioDelEmail.id !== d.personaId
+          : esOtraPersona(normalizarDni(d.inquilino.dni || null), duenioDelEmail.dni)
+        : false;
+      if (esDeOtro) {
+        // MISMO texto que el 409 de la otra rama, a propósito: para el operador es el mismo
+        // problema, y dos redacciones para el mismo caso es lo que hace que un mensaje deje
+        // de ser reconocible.
+        return reply.code(409).send({
+          message:
+            'Ese email ya lo usa otra persona en tu cartera. Si es el mismo inquilino, buscalo en "¿Ya está en tu cartera?"; si no, poné otro email.',
+        });
+      }
+    }
+
     // Modo cobranza directa: el contrato apunta al dueño PRINCIPAL (mayor
     // participación). Si la propiedad no tiene dueños cargados, rechazamos acá:
     // si no, el inquilino quedaría sin cuenta real a la cual transferir y /mi-
@@ -2484,6 +2551,14 @@ export async function coreRoutes(app: FastifyInstance) {
         },
       });
       await tx.contrato.update({ where: { id }, data: { monto: b.montoNuevo, proximoAjuste: nuevoProximoAjuste } });
+      // T-61: si hay una vigencia futura (una renovación pactada por adelantado, típicamente),
+      // su `montoAnterior` acaba de quedar viejo — apunta al canon de antes de este ajuste.
+      await repararVigenciaSiguiente(tx, {
+        contratoId: id,
+        inmobiliariaId: u.inmobiliariaId,
+        desde: b.periodoDesde,
+        canonNuevo: b.montoNuevo,
+      });
       // Cuotas FUTURAS impagas (periodo >= periodoDesde, PENDIENTE, sin pagos) → nuevo canon.
       // NO se tocan las pagadas/parciales/vencidas: ya se devengaron con su monto histórico.
       //
@@ -2602,6 +2677,14 @@ export async function coreRoutes(app: FastifyInstance) {
       await tx.contrato.update({
         where: { id },
         data: { fechaFin: b.fechaFinNueva, monto: canonNuevo, ...(b.diaPago ? { diaPago: b.diaPago } : {}) },
+      });
+      // T-61: mismo motivo que en el ajuste. Una renovación con vigencia futura también deja
+      // desactualizado el `montoAnterior` de la vigencia que venga después de ella.
+      await repararVigenciaSiguiente(tx, {
+        contratoId: id,
+        inmobiliariaId: u.inmobiliariaId,
+        desde: b.montoDesde,
+        canonNuevo,
       });
       // Cuotas futuras impagas (>= montoDesde) al nuevo canon (igual que el ajuste),
       // con las expensas de CADA CUOTA y no las del contrato — mismo motivo que allá:
@@ -3840,6 +3923,16 @@ export async function coreRoutes(app: FastifyInstance) {
           creadoPorId: u.userId,
         },
       });
+      // T-61: este camino también cambia el canon, así que también ensucia el `montoAnterior`
+      // de la primera vigencia futura. La ficha de la tarea decía que el masivo "no deja fila" y
+      // por eso lo daba por afuera del problema — eso quedó viejo (la fila se agregó después), y
+      // de todos modos lo que ensucia el snapshot no es la fila: es haber movido `contrato.monto`.
+      await repararVigenciaSiguiente(tx, {
+        contratoId: contrato.id,
+        inmobiliariaId: u.inmobiliariaId,
+        desde: periodoActual,
+        canonNuevo: d.monto,
+      });
 
       // (c) RE-DEVENGO de futuras. Traemos las liqs candidatas (>= mes actual,
       // PENDIENTE/VENCIDO) con su conteo de pagos, y el filtro PURO decide cuáles
@@ -4301,9 +4394,13 @@ export async function coreRoutes(app: FastifyInstance) {
   // Editar el WhatsApp/teléfono del inquilino titular sin rehacer el contrato.
   // Antes el teléfono del inquilino SOLO se podía cargar en el alta → si quedaba
   // vacío no había forma de agregarlo, y la cobranza por WhatsApp se quedaba sin
-  // número. Scope: solo teléfono (el email es la identidad de login OTP y tiene
-  // @@unique([inmobiliariaId,email]) → no se toca acá). Sin auditoría/migración:
-  // cambiar el teléfono no rerutea plata (eso es CBU / modo de cobranza).
+  // número.
+  //
+  // ⚠️ ESTE COMENTARIO DECÍA "scope: solo teléfono (el email no se toca acá)" y "sin auditoría:
+  // cambiar el teléfono no rerutea plata". Las dos cosas dejaron de ser ciertas con T-45, que
+  // agregó el email — y el argumento que autorizaba a no tener corte de rol se quedó escrito
+  // igual. Es la forma más cara de mentira que tiene un repo: la justificación sobrevive al
+  // cambio que la invalida.
   app.patch('/contratos/:id/inquilino-contacto', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.crear');
     if (!u) return;
@@ -4321,6 +4418,27 @@ export async function coreRoutes(app: FastifyInstance) {
       })
       .safeParse(request.body ?? {});
     if (!body.success) return reply.code(400).send({ message: 'Datos de contacto inválidos', detalle: body.error.flatten() });
+
+    // T-11 · CARGA puede corregir el TELÉFONO, no la CREDENCIAL.
+    //
+    // `contratos.crear` incluye a CARGA con `rolesAprobacion: ['CARGA']`, o sea que lo que ese
+    // rol carga espera aprobación. Pero esto no es un alta: escribe directo. Y el email del
+    // inquilino no es un dato de contacto — es su LOGIN: el OTP viaja ahí. Un rol de "carga para
+    // aprobación" podía reapuntar el acceso a la app de cualquier inquilino, sin que nadie
+    // aprobara nada y sin dejar rastro.
+    //
+    // Es exactamente el mismo agujero que ya se cerró del otro lado del mostrador: `propietarios`
+    // gateaba por rol el `email` (la credencial del portal) y el `cbuAlias` porque CARGA podía
+    // redirigir la plata. Acá faltaba el gemelo. Los cuatro endpoints vecinos de edición de
+    // contrato —monto, expensas, modo de cobranza y mora— ya cortan a CARGA.
+    //
+    // El teléfono se deja: corregirlo no reapunta nada y es justo el caso que este endpoint vino
+    // a resolver.
+    if (u.rol === 'CARGA' && body.data.email !== undefined) {
+      return reply
+        .code(403)
+        .send({ message: 'Solo un Admin u Operador puede cambiar el email del inquilino: es su acceso a la app' });
+    }
 
     // Scopeado por inmobiliariaId (multi-tenant): un id ajeno => 404.
     const contrato = await prisma.contrato.findFirst({

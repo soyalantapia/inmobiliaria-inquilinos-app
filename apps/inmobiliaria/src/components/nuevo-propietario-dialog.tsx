@@ -14,7 +14,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { toast } from '@llave/ui/use-toast';
 import { apiEnabled } from '@/lib/api/client';
-import { useCrearPropietario } from '@/lib/api/hooks';
+import { useCrearPropietario, useMe } from '@/lib/api/hooks';
 import {
   type PropietarioExtra,
   agregarPropietarioExtra,
@@ -57,6 +57,12 @@ export function NuevoPropietarioDialog({
   const [comisionPct, setComisionPct] = useState('8');
   const [guardando, setGuardando] = useState(false);
   const { crear } = useCrearPropietario();
+  // CBU y comisión no son ficha: son a dónde va la plata y cuánto se queda la inmobiliaria.
+  // El server corta a CARGA en los dos (core.ts, POST /propietarios). Acá se ESCONDEN, no se
+  // deshabilitan: un campo gris que no se puede completar no explica nada, y el default de
+  // comisión —"8"— se mandaba SIEMPRE, así que sin esto CARGA no podía dar de alta a NADIE.
+  const { me, isError: meError } = useMe();
+  const puedeCargarPlata = !apiEnabled || meError || me?.rol !== 'CARGA';
 
   useEffect(() => {
     if (open) {
@@ -101,10 +107,12 @@ export function NuevoPropietarioDialog({
           ...(email.trim() ? { email: email.trim() } : {}),
           ...(telefono.trim() ? { telefono: telefono.trim() } : {}),
           ...(cuit.trim() ? { cuit: cuit.trim() } : {}),
-          ...(cbuAlias.trim() ? { cbuAlias: cbuAlias.trim() } : {}),
+          // Los dos campos de plata van SÓLO si el rol puede: mandarlos igual le daría 403 al
+          // alta entera, y el de comisión se manda siempre (su default es "8").
+          ...(puedeCargarPlata && cbuAlias.trim() ? { cbuAlias: cbuAlias.trim() } : {}),
           // Explícito aunque sea 8: que el número que se ve en pantalla sea el
           // que se guarda, en vez de depender del default del server.
-          ...(comisionPct.trim() !== '' ? { comisionPct: comisionNum } : {}),
+          ...(puedeCargarPlata && comisionPct.trim() !== '' ? { comisionPct: comisionNum } : {}),
         });
       } catch (err) {
         setGuardando(false);
@@ -235,7 +243,9 @@ export function NuevoPropietarioDialog({
           {/* La comisión NO se preguntaba acá y el server la fijaba en 8%
               (core.ts: comisionPct ?? 8). Ese porcentaje es el que usa la
               rendición para calcular cuánto se queda la inmobiliaria: se
-              decidía solo, sin avisar, y recién se descubría al rendir. */}
+              decidía solo, sin avisar, y recién se descubría al rendir.
+              Oculto para CARGA: es plata, no ficha. */}
+          {puedeCargarPlata && (
           <div className="space-y-1.5">
             <Label htmlFor="np-comision">Tu comisión sobre el alquiler</Label>
             <div className="flex items-center gap-2">
@@ -256,6 +266,7 @@ export function NuevoPropietarioDialog({
                 : 'Ingresá un número entre 0 y 100.'}
             </p>
           </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="np-email" className="flex items-center gap-1.5">
@@ -273,6 +284,8 @@ export function NuevoPropietarioDialog({
             />
           </div>
 
+          {/* Idem: el CBU es el DESTINO de la rendición. */}
+          {puedeCargarPlata && (
           <div className="space-y-1.5">
             <Label htmlFor="np-cbu" className="flex items-center gap-1.5">
               CBU / Alias del propietario (para rendirle)
@@ -295,6 +308,15 @@ export function NuevoPropietarioDialog({
               cobranza directa”.
             </p>
           </div>
+          )}
+
+          {/* Para CARGA, que no ve ninguno de los dos: que sepa que falta un paso y quién lo da. */}
+          {!puedeCargarPlata && (
+            <p className="rounded-md bg-muted px-3 py-2 text-[11px] text-muted-foreground">
+              El <strong>CBU</strong> y la <strong>comisión</strong> los carga un Admin u Operador
+              desde la ficha del propietario: definen a dónde va la plata de la rendición.
+            </p>
+          )}
 
           <div className="flex gap-2 pt-2">
             <Button

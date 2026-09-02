@@ -27,7 +27,7 @@ const PERIODO_VENCIDO = '2099-02'; // periodo distinto; lo marcamos VENCIDO a ma
 const PERIODO_FUT_CON_PAGO = '2099-03'; // cuota FUTURA con un pago RECHAZADO (regresión M4)
 
 const DEMO_CONTRATO = 'cnt_001';
-const DEMO_INQ_EMAIL = 'mariela.sosa@gmail.com';
+const DEMO_INQ_EMAIL = 'mariela.sosa@example.com';
 
 beforeAll(async () => {
   prisma = new PrismaClient();

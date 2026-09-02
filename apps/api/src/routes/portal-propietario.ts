@@ -244,8 +244,14 @@ export async function portalPropietarioRoutes(app: FastifyInstance) {
       //
       // Se marca SÓLO la cartera con la que entró, no las otras del mismo email: si un dueño
       // tiene dos y sólo abre una, decir que accedió a las dos sería mentira.
+      // Y de paso queda probado que el email es suyo (T-23-N2-N1): acaba de leer un código que
+      // sólo llegó a esa casilla. Es la misma prueba que daría un doble opt-in, sin un circuito
+      // aparte. Va en el mismo update best-effort, así que no agrega ni una query.
       await prisma.propietario
-        .update({ where: { id: elegido.id }, data: { ultimoAccesoAt: new Date() } })
+        .update({
+          where: { id: elegido.id },
+          data: { ultimoAccesoAt: new Date(), emailVerificadoAt: new Date() },
+        })
         .catch((e: unknown) => {
           app.log.warn({ propietarioId: elegido?.id, e }, 'no se pudo registrar el acceso del propietario');
         });

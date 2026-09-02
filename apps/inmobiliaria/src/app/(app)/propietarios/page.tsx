@@ -40,6 +40,7 @@ import {
   type Rendicion,
 } from '@/lib/rendiciones-storage';
 import { formatMonto } from '@/lib/format';
+import { faltaRendirle as faltaRendirleA, tieneMezclaDeMonedas } from '@/lib/falta-rendirle';
 
 // Filtros aplicables vía query param (?filtro=sin-cbu / sin-rendir).
 // Usado por los cards del dashboard "Para resolver hoy" para que el
@@ -154,14 +155,15 @@ export default function PropietariosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Ata el predicado puro al mapa de rendiciones de esta pantalla. */
+  const faltaRendirle = (p: Propietario) => faltaRendirleA(p, !!rendicionesMap[p.id]);
+
   const filtrados = useMemo(() => {
     const term = q.trim().toLowerCase();
     let base = propietarios as readonly Propietario[];
     if (filtroExtra === 'SIN_CBU') base = base.filter((p) => !p.cbuAlias);
     if (filtroExtra === 'SIN_RENDIR') {
-      base = base.filter(
-        (p) => !rendicionesMap[p.id] && p.totalRecibirMes > 0,
-      );
+      base = base.filter(faltaRendirle);
     }
     if (!term) return base;
     // El CUIT se compara en DÍGITOS de los dos lados: en la base conviven
@@ -175,7 +177,7 @@ export default function PropietariosPage() {
         (termDigitos.length > 0 && normalizarCuit(p.cuit).includes(termDigitos)) ||
         p.email.toLowerCase().includes(term),
     );
-  }, [propietarios, q, filtroExtra, rendicionesMap]);
+  }, [propietarios, q, filtroExtra, rendicionesMap, faltaRendirle]);
 
   const totalPropiedades = propietarios.reduce((acc, p) => acc + p.propiedadesIds.length, 0);
   // Por moneda: un dueño con contratos en dólares sumaba su neto a un total rotulado
@@ -190,9 +192,7 @@ export default function PropietariosPage() {
     return [...acc.entries()].sort((a, b) => (a[0] === 'ARS' ? -1 : b[0] === 'ARS' ? 1 : 0));
   })();
   const sinCbu = propietarios.filter((p) => !p.cbuAlias).length;
-  const porRendir = propietarios.filter(
-    (p) => !rendicionesMap[p.id] && p.totalRecibirMes > 0,
-  ).length;
+  const porRendir = propietarios.filter(faltaRendirle).length;
 
   return (
     <>
@@ -337,7 +337,15 @@ export default function PropietariosPage() {
               const tel = p.telefono.replace(/[^\d]/g, '');
               const rendido = rendicionesMap[p.id];
               const variasEsteMes = (cuantasRendiciones[p.id] ?? 0) > 1;
-              const necesitaRendir = !rendido && p.totalRecibirMes > 0;
+              // `monedasMes` distingue las DOS cosas que `monedaMensual === null` mezclaba:
+              // "no cobró nada" (0 monedas) y "cobró en dos" (2). El hook pone los totales en 0
+              // cuando hay mezcla —a propósito, para no mostrar una suma cruda de pesos con
+              // dólares— y esta pantalla leía ese cero defensivo como "no hay nada que rendir".
+              // Resultado: badge "Al día", botón gris y fuera del contador, en la misma tarjeta
+              // que le decía al operador "rendí cada moneda por separado". No estaba trabado:
+              // estaba invisible, y lo único imposible era EMPEZAR.
+              const mezclaDeMonedas = tieneMezclaDeMonedas(p);
+              const necesitaRendir = faltaRendirle(p);
               // Mensaje de WhatsApp contextual: rendición si ya se rindió, pedido
               // de CBU si no tiene, sino aviso de cobranza pronta.
               const mensajeWA = rendido
@@ -459,14 +467,23 @@ export default function PropietariosPage() {
                           {rendido ? 'Rendido este mes' : 'A rendir este mes'}
                         </p>
                         <p className="text-lg font-semibold">
-                          {p.monedaMensual === null
+                          {/* El "—" es SÓLO para la mezcla, donde no existe UN número que
+                              signifique algo. Sin cobros el número sí existe y es $0: mostrar
+                              un guión ahí obligaba al operador a averiguar si era "cero" o
+                              "no sé". */}
+                          {mezclaDeMonedas
                             ? '—'
                             : formatMonto(rendido?.montoNeto ?? p.totalRecibirMes, p.monedaMensual ?? 'ARS')}
                         </p>
-                        {p.monedaMensual === null && (
+                        {mezclaDeMonedas && (
                           // Cobros en dos monedas: no existe UN número que signifique algo.
                           // Antes se mostraba la suma cruda con símbolo de pesos y el operador
                           // decidía sobre eso; el server recién lo frenaba al confirmar.
+                          //
+                          // Y antes este cartel salía TAMBIÉN sin ningún cobro —mismo `null`—,
+                          // así que con el rol CARGA (403 en /liquidaciones) aparecía en TODAS
+                          // las tarjetas, siempre: un semáforo que está rojo siempre deja de
+                          // avisar.
                           <p className="text-[10px] text-muted-foreground">
                             Cobros en pesos y dólares · rendí cada moneda por separado
                           </p>
