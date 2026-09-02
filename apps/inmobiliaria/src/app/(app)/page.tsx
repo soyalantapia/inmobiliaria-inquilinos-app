@@ -38,7 +38,7 @@ import { totalGastosPendientesGlobal } from '@/lib/caja-storage';
 import { listarReclamos } from '@/lib/reclamos-store';
 import { apiEnabled } from '@/lib/api/client';
 import { useDashboard, useCobranza } from '@/lib/api/hooks';
-import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatPeriodo, periodoActualFormat } from '@/lib/format';
+import { diasHastaVencimiento, formatFechaCorta, formatMonto, formatPeriodo, formatTotalPorMoneda, periodoActualFormat } from '@/lib/format';
 
 export default function DashboardPage() {
   // Gastos de caja pendientes: se leen tras montar (localStorage) para no romper
@@ -428,7 +428,10 @@ function DashboardReal() {
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {morosos.length} contrato{morosos.length === 1 ? '' : 's'} ·{' '}
-                          {formatMonto(morosos.reduce((a, m) => a + m.monto, 0))}
+                          {/* Sumaba pesos con dólares y lo imprimía con «$»: la LISTA de abajo, en esta misma
+                              pantalla y sin scrollear, mostraba «US$ 2.000» y «$ 300.000» por separado, y este
+                              renglón decía «$ 302.000». `morosos` ya trae la moneda por fila. */}
+                          {formatTotalPorMoneda(morosos)}
                         </p>
                       </div>
                       <span className="text-3xl font-bold tabular-nums text-destructive">
@@ -605,7 +608,7 @@ function DashboardReal() {
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-muted-foreground">{formatFechaCorta(v.fecha)}</p>
-                      <p className="text-sm font-semibold tabular-nums">{formatMonto(v.monto)}</p>
+                      <p className="text-sm font-semibold tabular-nums">{formatMonto(v.monto, v.moneda)}</p>
                     </div>
                   </Link>
                 ))
