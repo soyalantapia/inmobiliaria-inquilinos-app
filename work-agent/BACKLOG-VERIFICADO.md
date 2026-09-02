@@ -270,6 +270,29 @@ edificio pueden tener regímenes distintos sin hacer nada especial.
 **Solución.** Verificar el caso E2E, prestando atención a que `montoAlquilerSegunTipo` devuelve
 **0** para `SOLO_EXPENSAS` — que es correcto, pero conviene ver qué hace la rendición con eso.
 
+### ✅ Verificado → `work-agent/T-20-REGIMEN-MIXTO.md`
+
+Funciona, y sin nada especial. E2E en `apps/api/test/consorcio-regimen-mixto.test.ts`, con las dos
+unidades colgando del mismo `Consorcio`: la alquilada devenga $400.000 de alquiler; la de sólo
+expensas devenga **$0 de alquiler** y $150.000 de total.
+
+**Y la pregunta anotada tiene respuesta:** la rendición del dueño de la unidad de sólo expensas
+devuelve **409 aunque el inquilino haya pagado todo**, porque esa plata es del consorcio. Correcto.
+El contraste está en el mismo test: la unidad alquilada del mismo consorcio sí se rinde, y con
+plata.
+
+**🟡 T-20-a (nuevo):** el 409 dice *"No hay cobros nuevos"* y sí los hubo — lo que no hay es nada
+*rendible*. Para Camila, parada frente a una unidad cuyo inquilino pagó todo, ese texto dice lo
+contrario de lo que pasó. No se arregló acá porque el 409 se lanza desde adentro de la transacción
+y se traduce ~430 líneas más abajo sin acceso a lo cobrado: distinguir los dos casos es más que un
+cambio de copy.
+
+**Y el hallazgo grande:** la plata de las expensas **entra y desaparece de la vista**. El libro del
+consorcio (`MovimientoConsorcio`, categoría `COBRANZA`) **sólo se escribe a mano**; nada conecta el
+pago del inquilino con el consorcio. Sumado a que el `expensasPeriodoActual` tampoco llega a las
+cuotas (T-19), la parte de consorcio está **construida a la mitad: la estructura existe y la plata
+no la recorre**. Todo eso es T-22, que sube de prioridad.
+
 ---
 
 # 🟢 Baratas
