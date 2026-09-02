@@ -32,6 +32,7 @@ import { parseLocal } from '@/lib/format';
 import { porcionAlquilerCobrada } from '@/lib/alquiler-cobrado';
 import { faltaRendirle } from '@/lib/falta-rendirle';
 import { cobradoRendible, plataDelContrato } from '@/lib/plata-del-contrato';
+import { gastosPendientesDeRendir } from '@/lib/gastos-que-se-rinden';
 import { reclamosAbiertosDe } from '@/lib/reclamos-abiertos';
 import { useRendidosDelPeriodo } from './use-rendiciones';
 import {
@@ -1662,11 +1663,11 @@ export function useDashboard(): DashboardData {
   // rendición (paridad con el demo `calcularDashboardStats`, que resta
   // gastosPendientes). En prod el path había quedado sin restar los gastos → el
   // número "A rendir a propietarios" salía inflado hasta que se hacía la rendición.
-  const gastosPendientes = apiEnabled
-    ? movsCaja
-        .filter((m) => m.tipo === 'GASTO' && !m.descontadoEnRendicion)
-        .reduce((a, m) => a + m.monto, 0)
-    : 0;
+  // Cuáles se descuentan de verdad vive en `lib/gastos-que-se-rinden.ts`, con su test: acá
+  // se restaban TODOS los pendientes, incluidos los que NO tienen propiedad —oficina,
+  // sueldos— que la rendición nunca toma y cuyo flag por eso nunca pasa a true. El error
+  // crecía todos los meses.
+  const gastosPendientes = apiEnabled ? gastosPendientesDeRendir(movsCaja) : 0;
   // LA BASE ES EL ALQUILER COBRADO, NO TODO LO QUE ENTRÓ.
   //
   // Salía de `cobrado`, que incluye expensas y mora. Las expensas van al consorcio y la mora es
