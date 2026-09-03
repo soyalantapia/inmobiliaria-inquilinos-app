@@ -981,6 +981,11 @@ export async function plataRoutes(app: FastifyInstance) {
             contratoId: contrato.id,
             tipo: 'INGRESO_EXTRA',
             categoria: 'OTRO',
+            // T-28-N1-N1: de qué cargo salió, igual que el hermano `POST /cargos/:id/saldar`.
+            // Sin esto el vínculo era el texto de la descripción, y con dos cargos gemelos
+            // `descobrar` desempataba por el más reciente: si el ingreso del primero ya se le
+            // rindió al dueño, deshacer ese primero le borraba el movimiento del segundo.
+            cargoId: c.id,
             descripcion: `Cobro de cargo al inquilino: ${c.concepto}`,
             monto: c.monto,
             // La moneda DEL CARGO, no el default: `MovimientoCaja.moneda` es @default(ARS) y

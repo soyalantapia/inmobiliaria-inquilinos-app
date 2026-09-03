@@ -139,6 +139,53 @@ describe('saldar-deuda registra la plata de los cargos', () => {
     expect(await ingresos()).toHaveLength(1);
   });
 
+  it('🔴 el ingreso dice de QUÉ cargo salió, no sólo su texto', async () => {
+    // T-28-N1-N1. `POST /cargos/:id/saldar` escribe `cargoId` desde el 31/08; este hermano
+    // —que salda los MISMOS cargos— no lo hacía. Es la misma asimetría que ya pasó una vez
+    // con el registro del ingreso: el arreglo llegó a una pantalla y no a la otra.
+    //
+    // Con dos cargos gemelos —igual concepto, igual monto, igual moneda— el único vínculo
+    // que quedaba era la descripción, y `descobrar` desempataba por el más reciente. Si el
+    // ingreso del primero ya se le rindió al propietario, deshacer ese primero le borraba el
+    // movimiento del SEGUNDO: el inquilino vuelve a deber la plata y al dueño se le acredita
+    // igual. Ese 409 que protege el caso sólo puede existir si la fila sabe de quién es.
+    const a = await crearCargo('Cargo gemelo');
+    const b = await crearCargo('Cargo gemelo');
+    expect((await saldar()).statusCode).toBe(200);
+
+    const movs = await ingresos();
+    expect(movs).toHaveLength(2);
+    // Con el bug: dos filas con `cargoId: null`, indistinguibles entre sí.
+    expect(new Set(movs.map((m) => m.cargoId))).toEqual(new Set([a.id, b.id]));
+  });
+
+  it('y por eso deshacer borra el movimiento del cargo correcto', async () => {
+    const a = await crearCargo('Gemelo con historia');
+    const b = await crearCargo('Gemelo con historia');
+    expect((await saldar()).statusCode).toBe(200);
+
+    // Al ingreso de `a` ya se le rindió al propietario: a partir de acá los dos movimientos
+    // dejan de ser fungibles.
+    const movA = (await ingresos()).find((m) => m.cargoId === a.id);
+    expect(movA, 'sin cargoId no se puede ni armar el escenario').toBeTruthy();
+    await prismaTest.movimientoCaja.update({
+      where: { id: movA!.id },
+      data: { descontadoEnRendicion: true },
+    });
+
+    const r = await app.inject({
+      method: 'POST',
+      url: `/cargos/${a.id}/descobrar`,
+      headers: auth(),
+    });
+    // Frena, no deshace: el ingreso de ESE cargo ya se rindió. Con el vínculo por texto,
+    // `descobrar` encontraba el de `b` —sin rendir— y lo borraba con un 200 tranquilo.
+    expect(r.statusCode).toBe(409);
+    const quedan = await ingresos();
+    expect(quedan).toHaveLength(2);
+    expect(quedan.some((m) => m.cargoId === b.id)).toBe(true);
+  });
+
   it('los cargos CONTRA DEPÓSITO no se tocan (se netean del depósito, no se cobran)', async () => {
     const contra = await prismaTest.cargoContrato.create({
       data: { inmobiliariaId, contratoId: CNT, tipo: 'REPARACION', concepto: 'Contra depósito', monto: 50_000, contraDeposito: true },
