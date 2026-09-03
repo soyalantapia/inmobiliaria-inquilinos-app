@@ -54,6 +54,32 @@ ausente pasa el zod y cae en el kill-switch. Front: `PinPromptDialog` es pass-th
 `/auth/pin/verify` y `POST /auth/pin` quedan dead pero inofensivos (ninguna UI los llama). Commit
 `614c31d`. **NO re-agregar prompts de PIN.** (Las menciones "con PIN" en docs viejos son legado.)
 
+> #### ⚠️ ENMIENDA (2026-09-03) — el PIN volvió para UNA cosa, y no es una acción
+>
+> Todo lo de arriba **sigue vigente para las ACCIONES**: `verificarPinUsuario()` sigue devolviendo
+> `{ ok: true }` siempre, y los seis endpoints de plata que la llaman siguen sin pedir nada.
+>
+> Pero desde T-25 existe **el conmutador de usuarios del mostrador**, y ése **sí** pide un PIN —el
+> suyo, con su propio lockout— para *cambiar de persona* en la máquina compartida. Está construido
+> y desplegado: `apps/api/src/auth/pin-conmutador.ts`, `POST /auth/usuario/conmutar`
+> (`routes/auth.ts:840`), `components/conmutador-usuario.tsx`, `pin-mostrador-card.tsx`,
+> `lib/sesion-limpieza.ts` con sus tests, y la migración `20260819180000_conmutador_usuarios`.
+> Por eso `me.tienePin` **volvió a ser un dato real** y ya no es un `false` fijo.
+>
+> Son dos cosas que se llaman parecido y hacen distinto:
+>
+> | | qué gatea | estado |
+> |---|---|---|
+> | `verificarPinUsuario` (`auth/pin.ts`) | ACCIONES de plata | desactivado a propósito · **NO TOCAR** |
+> | `verificarPinConmutador` (`auth/pin-conmutador.ts`) | CAMBIAR DE PERSONA | es lo único que usa el PIN hoy |
+>
+> **Por qué esta enmienda existe.** Tal como estaba escrito, este párrafo decía «NO re-agregar
+> prompts de PIN» como decisión LOCKED, y es el archivo que se lee ANTES de tocar auth. Un agente
+> disciplinado que lo respetara podía desarmar el conmutador entero creyendo que estaba limpiando
+> legado — borrando de paso una migración aplicada. El riesgo no es hipotético: la propia ficha de
+> T-25 lo dejó anotado como el paso 1, y nadie lo hizo.
+
+
 ### 8. Reclamos: "¿Quién paga?" con 3 pagadores e impacto real en la plata
 Al resolver un reclamo con costo, se define **quién paga** (`PagadorReclamo`): **PROPIETARIO**,
 **INQUILINO** o **DEPOSITO** (reemplaza a la clasificación legada de 2 valores uso-y-goce/desperfecto).
