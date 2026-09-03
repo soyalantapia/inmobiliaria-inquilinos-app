@@ -9,10 +9,62 @@
 > del día en que se escribió cada bloque, y el proyecto siguió: atacar desde ahí es trabajo
 > tirado. **Manda el código.**
 >
-> **Quedan 17 accionables, 1 a medias y 1 bloqueada.** *(31/08: T-61 cerrada, y entró T-73.)*
+> ⚠️ **Este encabezado es del 31/08 y quedó viejo.** El estado que vale está en el bloque
+> **03/09/2026 — reverificación completa**, acá abajo: de las 12 que quedaban, 6 siguen
+> abiertas y 4 de esas esperan una decisión de Alan. Lo de más abajo se conserva por la
+> evidencia, no por el estado.
 >
 > Y esta lista tampoco es eterna: cada tarea trae la evidencia con la que se la verificó, para que
 > se pueda desconfiar de ella igual que de la otra.
+
+---
+
+## 03/09/2026 — reverificación completa. **Esto manda sobre todo lo de abajo.**
+
+> Entre el 31/08 y el 02/09 se mergearon **68 PRs** y salió todo a producción. Este documento
+> quedó describiendo el día en que se escribió, que es exactamente el error contra el que él
+> mismo advierte. Se verificaron las 12 tareas que quedaban **una por una contra el código**,
+> con un segundo pase adversarial sobre cada una que se declaraba cerrada.
+>
+> **De 12: 4 cerradas hoy, 2 ya estaban hechas, 6 siguen abiertas** — y de esas 6, **4 esperan
+> una decisión tuya**, no código.
+
+### Cerradas hoy (03/09)
+
+| Tarea | Qué se hizo | Control |
+|---|---|---|
+| **T-51** dominios de correo de demo | 26 direcciones a subdominios de `example.com`. Y apareció algo peor que un mail: el legajo de screening le atribuía a **Globant** —empresa real— un CUIT, teléfonos, deuda BCRA de $145.000.000 y un LinkedIn «verificado» de un empleado que no existe, en el `mock-data.ts` **publicado**. Queda como Tecnosur. | `los-datos-de-demo-no-le-escriben-a-nadie.test.ts` — barre los 5 paquetes por complemento (todo lo que no sea un dominio reservado), como pedía la ficha. Rojo con las 26. |
+| **T-28-N1-N1** `cargoId` en saldar-deuda | La línea que faltaba en `plata.ts`. De los tres `movimientoCaja.create` de la API, sólo uno guardaba el puntero. | 2 casos nuevos, rojos con `Set{ null }`; el segundo arma el escenario caro (uno rendido, deshacer el otro) y exige el 409. |
+| **T-11** (la mitad que no esperaba decisión) | Traza de autor en `PATCH /contratos/:id/inquilino-contacto` y en el CRUD de garantes: eran las **dos únicas** ediciones de contrato sin autor. El borrado del garante es duro, así que el evento guarda lo que decía la póliza. 4 valores de enum + migración aditiva. | 4 casos sobre `cnt_001` (que tiene pagos, y un caso lo afirma). Control negativo apagando `registrarEvento`: se caen los dos 🔴 y quedan en pie los dos de control. |
+| **Las 3 mezclas de moneda** que quedaban | Card de ganancia, PDF de cobranzas y checkout del inquilino. El PDF decía «$ 2.000» sobre US$ 2.000 en un reporte que se firma. | `pagos-viajan-con-su-moneda.test.ts` (rojo: `expected undefined to be 'USD'`) + `ganancia-por-moneda.test.ts`. |
+
+### Ya estaban hechas: **T-73** y **T-34**
+
+Las dos verificadas con un segundo pase que trató de refutarlas y no pudo. T-73 se cerró con
+`26ad97a6` (PR #77): el caso se aisló **por dato**, con un propietario exclusivo que ningún
+otro test toca. T-34 con `0c4ea240` (PR #71): `payment-hero.tsx` no existe más — y ojo, el
+título de la ficha decía «en el panel» y el archivo estaba en la PWA.
+
+### Las 6 que siguen abiertas
+
+**Cuatro esperan una decisión tuya. Dos son ingeniería que nadie escribió todavía.**
+
+| Tarea | Estado | Qué falta exactamente |
+|---|---|---|
+| **T-13-N1** cierre de caja | 🔴 **viva, cero líneas escritas** | `GET /caja/cierre` recalcula en vivo y el modelo `CierreCaja` tiene **cero usos en todo el repo** (`git log -S "prisma.cierreCaja"` no devuelve un solo commit). Anular reescribe `decididoAt` y saca el pago del arqueo del día en que se cobró. **Dos falsos positivos que ya engañaron una vez:** `apps/api/src/lib/cierre-caja.ts` es sólo la aritmética extraída para poder testearla, y el `cerrarDia()` del panel escribe a `localStorage` sobre mocks y **no lo importa nadie**. Bloqueada por las 3 preguntas de `PARA-ALAN.md`. |
+| **T-37-N1** aprobación del pago manual | 🟡 **decisión** | `requiereAprobacion` sigue con **cero callers** y `POST /pagos/manual` exige `pago.conciliar` creando el pago ya CONCILIADO. Construirlo es un circuito entero (capacidad nueva, tipo de aprobación, el pago naciendo pendiente, la cola). No se arranca sin que decidas que lo querés. |
+| **T-33** ¿un informado pendiente congela el aumento? | 🟡 **decisión** | La mitad que era bug está cerrada (un RECHAZADO ya no congela nada). Lo que queda es deliberado y tiene test que lo fija. Si la respuesta es «no congela», es **un filtro más en el `_count`** en las 4 superficies. |
+| **T-23-N2-N1** verificar el mail del propietario | 🟡 **decisión** | `emailVerificadoAt` ya está en producción y se marca al entrar con el OTP. Falta decidir si al no verificado se le **cierra** el portal, sabiendo que toda la cartera existente arranca sin verificar. |
+| **T-23-N3-N1** «desde que sos dueño» | ◑ **falta la mitad que LEE** | La tabla `CambioParticipacion` se escribe y **nadie la lee**. Falla en las dos direcciones: el comprador de marzo ve enero, **y** el dueño de siempre con la unidad vacía no ve nada (`return []`). Hay que cambiar también la copy de `reclamos/page.tsx:28`, que le promete al dueño la conducta de hoy. Sigue esperando a Camila. |
+| **T-05** congelar deploys en las pruebas | 🔴 **acuerdo, no código** | Lo barato ya está (SHA en `/health` y `<meta build-commit>` en las tres fronts). Falta la ventana acordada. Y ojo: producción puede estar **partida en dos commits** —API y panel—, así que anotar un solo SHA no describe la pantalla que Camila prueba. |
+
+### Lo que quedó abierto de T-11, y por qué no lo cerré
+
+La traza ya está. Falta **recortar la capacidad «solamente a la administradora»**, que Camila
+pidió textual (55:30): hoy los tres endpoints piden `contratos.crear`, que incluye a OPERADOR y
+CARGA. No lo toqué solo porque cambia **quién puede trabajar mañana** en un sistema en uso, y
+eso es una decisión, no una tarea. Está en `PARA-ALAN.md`.
+
 
 ---
 

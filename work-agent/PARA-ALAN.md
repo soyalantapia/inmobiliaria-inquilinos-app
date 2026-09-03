@@ -515,3 +515,54 @@ de tres.
 
 Con eso, mi lectura cambia: **D primero** (barato, consistente, y saca el número falso hoy), y
 B —los dos números— cuando se quiera dar el paso completo.
+
+---
+
+## T-11 · ¿La edición del contrato la puede hacer sólo la administradora?
+
+**Estado: la traza ya está hecha. Esto es lo único que falta, y es tuyo.**
+
+### Lo que ya no hay que mirar
+
+Camila pidió (55:30) poder corregir el teléfono de un inquilino y cambiar un garante en un
+contrato con pagos, sin rescindir nada, **y que quede registrado quién lo hizo**. Las tres
+cláusulas:
+
+1. Se puede editar sin rescindir → **hecho**. Ningún endpoint corta por tener pagos.
+2. El garante se puede cambiar en un contrato vigente → **hecho**, y la UI es real (`use-garantes`
+   pega contra la API, los lápices están en la pestaña Garantes, que no está gateada por estado).
+3. Queda registrado quién lo hizo → **hecho hoy (03/09)**. Eran las dos únicas ediciones de
+   contrato sin autor. Ahora escriben `EventoAuditoria`, y como el garante se borra **duro**, el
+   evento guarda lo que decía la póliza: es el único lugar donde ese dato sobrevive.
+
+### La pregunta
+
+Camila dijo textual **«solamente la administradora»**. Hoy los tres endpoints piden la capacidad
+`contratos.crear`, que en `permisos.ts` es `['ADMIN', 'OPERADOR', 'CARGA']`. O sea que el teléfono
+lo puede editar CARGA y el garante de un contrato vigente lo puede editar OPERADOR.
+
+**¿Lo recorto a ADMIN?**
+
+### Por qué no lo hice solo
+
+Porque no agrega una capacidad: **saca** una que hoy alguien está usando. Si una operadora
+corrige teléfonos todos los días, mañana le aparece un 403 y nadie le avisó. Eso no lo puede
+decidir el que escribe el código.
+
+Y hay una versión intermedia que quizá sea la que querés: **dejar que OPERADOR corrija el
+teléfono** —que no reapunta nada, y es justo el caso que el endpoint vino a resolver— y recortar
+a ADMIN sólo **el email** (que ya está recortado para CARGA, porque es la credencial del
+inquilino) **y la garantía de un contrato vigente** (que hoy ya está recortada para CARGA por el
+estado del contrato).
+
+Tres opciones, en orden de cuánto rompen:
+
+| | Quién puede | Qué se rompe |
+|---|---|---|
+| **A. Como está** | ADMIN, OPERADOR, CARGA | nada, pero no es lo que Camila pidió |
+| **B. Intermedia** | teléfono: los tres · email y garante vigente: ADMIN | el operador pierde la garantía, que hoy toca |
+| **C. Literal** | sólo ADMIN | la operadora pierde el teléfono, que es el caso que motivó todo |
+
+Mi recomendación es **B**: cumple el espíritu —lo que da poder queda arriba— sin sacarle a nadie
+el trabajo del día. Pero decidilo vos.
+
