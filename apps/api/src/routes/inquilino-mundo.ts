@@ -13,6 +13,7 @@ import { CAMPOS_VISITA_INQUILINO } from '../lib/visita-campos.js';
 import {
   exigirContratoActivo,
   requireAuth,
+  requireAuthVigente,
   requireContratoAcceso,
   requireInquilino,
   requireUsuario,
@@ -1133,8 +1134,15 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
 
   // ===== Reportes piloto — tracking ABSOLUTO server-side =====
   app.post('/reportes', async (request, reply) => {
-    // Cualquier autenticado: usuario del panel O inquilino.
-    const payload = await requireAuth(request, reply);
+    // Cualquier autenticado: usuario del panel O inquilino — pero VIGENTE.
+    //
+    // Antes era `requireAuth` pelado, la única puerta del repo que no revalida contra la tabla.
+    // El token dura 15 días, así que un empleado dado de baja, uno al que le bajaron el rol o
+    // un co-inquilino al que le revocaron el acceso seguían escribiendo acá. Y lo que se
+    // guardaba era peor que el acceso: `rol` salía del JWT, o sea que la fila quedaba firmada
+    // con el rol viejo —`GET /reportes` lo muestra tal cual— y `inmobiliariaId` también, así
+    // que alguien movido de inmobiliaria escribía en el tenant anterior.
+    const payload = await requireAuthVigente(request, reply);
     if (!payload) return;
     const body = z
       .object({
