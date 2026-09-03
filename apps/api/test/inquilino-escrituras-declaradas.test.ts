@@ -131,8 +131,15 @@ function cuerpoDelHandler(src: string, desdeIdx: number): string {
 
 /** Acepta la ruta entre comillas simples O backticks (anuncios.ts registra en un loop). */
 const RE_HANDLER = /app\.(post|put|patch|delete)\(\s*['`]([^'`]+)['`]/g;
-/** Guards que un token de inquilino puede atravesar. `requireAuth` pelado también. */
-const ALCANZA_INQUILINO = /require(Inquilino|ContratoAcceso|Auth)\(|requireAuthOProfesional\(/;
+/**
+ * Guards que un token de inquilino puede atravesar. `requireAuth` pelado también.
+ *
+ * `AuthVigente` va ANTES que `Auth` en la alternancia: al revés, `Auth` matchea primero y exige
+ * un `(` que no está, así que `requireAuthVigente(` no entraba. Pasó de verdad — `POST /reportes`
+ * cambió de `requireAuth` a `requireAuthVigente` y este archivo dejó de verlo: la cuenta bajó de
+ * 17 a 16 y la tabla lo reportó como ruta muerta. Los dos casos hicieron su trabajo.
+ */
+const ALCANZA_INQUILINO = /require(Inquilino|ContratoAcceso|AuthVigente|Auth)\(|requireAuthOProfesional\(/;
 /** Guards de otros kinds. Si el handler usa uno de éstos y ninguno de inquilino, no aplica. */
 const OTRO_KIND = /requireUsuario\(|requirePropietario\(|requireProfesionalVisita\(|requirePersona\(/;
 

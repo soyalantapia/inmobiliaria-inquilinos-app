@@ -154,7 +154,7 @@ async function requireAuthOProfesional(
     // cerrara o al reclamo terminado.
     const visita = await prisma.visitaProfesional.findUnique({
       where: { id: asProf.data.visitaId },
-      select: { listoAt: true, inmobiliariaId: true, reclamo: { select: { estado: true, createdAt: true } } },
+      select: { estado: true, listoAt: true, inmobiliariaId: true, reclamo: { select: { estado: true, createdAt: true } } },
     });
     // LA MISMA REGLA QUE EL CANJE DEL LINK Y QUE `requireProfesionalVisita`, que es de lo que
     // este archivo carecía. La copia de acá tenía dos de las tres reglas y le faltaba la
@@ -163,11 +163,21 @@ async function requireAuthOProfesional(
     // subir y BAJAR archivos del tenant para siempre — y `GET /uploads/:t/:n` acepta el token
     // por query, así que alcanza con pegar la URL en el navegador.
     //
-    // Al unificar también se AFLOJA una: antes cortaba en seco al pasar a LISTO y ahora rige
-    // la gracia de 48 h. Es lo correcto y no un descuido: `requireProfesionalVisita` ya deja
-    // escribir en esa ventana, así que el profesional podía cerrar la visita pero no subir la
-    // foto que se le había olvidado.
-    const cerrada = !visita || visita.inmobiliariaId !== asProf.data.inmobiliariaId || linkDeVisitaVencido(visita);
+    // Y ACÁ SE ES MÁS ESTRICTO QUE LA REGLA COMPARTIDA, a propósito: al pasar a LISTO se corta
+    // en seco, sin la gracia de 48 h. Esa gracia existe para que el profesional VEA la
+    // confirmación de su trabajo, no para que siga escribiendo archivos en el tenant después de
+    // haberlo cerrado. Lo fija `acceso-revalidado.test.ts` («cerrada la visita, el MISMO token
+    // ya no sirve para subir archivos»), escrito para tapar justo ese agujero.
+    //
+    // La primera versión de este arreglo unificó las dos reglas en la MÁS FLOJA, «por
+    // coherencia», y ese test se puso rojo en CI. Tenía razón él: compartir una regla no es
+    // tener una sola regla para todos — es escribir la parte común una vez y DECLARAR lo que se
+    // endurece encima, como acá.
+    const cerrada =
+      !visita ||
+      visita.inmobiliariaId !== asProf.data.inmobiliariaId ||
+      visita.estado === 'LISTO' ||
+      linkDeVisitaVencido(visita);
     if (cerrada) {
       await reply.code(401).send({ message: 'Esta visita ya está cerrada.' });
       return null;
