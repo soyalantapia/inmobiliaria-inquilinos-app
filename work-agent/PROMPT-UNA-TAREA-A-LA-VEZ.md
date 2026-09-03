@@ -367,3 +367,44 @@ Ninguno de esos falló ruidosamente. Todos **dijeron que sí** cuando la respues
 
 Antes de dar una tarea por cerrada, preguntate qué tendría que haber pasado si tu arreglo no
 anduviera — y comprobá que efectivamente no pasa.
+
+---
+
+## Trampas nuevas (03/09/2026)
+
+**Un control que lee el fuente crudo se rompe con su propia explicación.** Tres veces en un día,
+en tres archivos distintos. Acá los comentarios cuentan la historia de la pantalla, así que un
+detector que busque `<Proximamente`, `if (apiEnabled)` o una frase vieja la va a encontrar en la
+prosa que documenta el arreglo — y va a marcar como roto algo que anda. La salida barata es
+borrar la explicación, que es lo contrario de lo que hace falta. Dos reglas: **filtrar los
+comentarios antes de buscar** (incluidos los bloques `{/* … */}` de JSX, que no empiezan por `//`
+ni por `*`), y sobre documentos **afirmar en positivo lo que TIENE que decir**, no negar la frase
+vieja.
+
+**Una regla nueva puede quedar verde por casualidad.** Al extender un detector, reescribí de paso
+el comentario que había motivado el arreglo, y la regla nueva se quedó sin nada que la pusiera en
+rojo. Lo agarré corriendo el negativo, no leyendo. **Un control nuevo no está terminado hasta que
+lo viste en rojo por el motivo que decís.**
+
+**`if (!x) return` adentro de un test es un semáforo apagado.** Un caso que se saltea solo cuando
+el dato no está no protege de nada: calla el día que el dato desaparece, que es justo el día que
+había que enterarse. Va `findFirstOrThrow` y que reviente.
+
+**Una razón escrita envejece peor que el código.** El borrado de documentos al rechazar un
+contrato se sostenía en un comentario que citaba un `@@unique` retirado hacía meses. Nadie
+re-mide una justificación: se lee, se cree y se sigue. **Cuando un comentario justifica algo
+destructivo citando una restricción, andá a verificar que la restricción siga existiendo.**
+
+**Compartir una regla no es tener una sola regla para todos.** Unifiqué la vigencia del link
+mágico «por coherencia» y con eso aflojé un corte que un test protegía a propósito
+(`expected 406 to be 401` en CI). Lo correcto es escribir la parte común una vez y **declarar lo
+que se endurece encima**, con el motivo al lado.
+
+**Antes de tomar una tarea del tablero, medir el SÍNTOMA.** El backlog miente en las dos
+direcciones: hoy una tarea figuraba abierta y estaba cerrada con tests, y cuatro figuraban rotas
+y estaban arregladas. Cargar el caso y mirar qué pasa cuesta menos que leer la ficha.
+
+**Ramas: `git checkout -b` desde un árbol sucio te apila sobre la rama anterior.** El
+`git checkout main` falla, el `-b` funciona igual, y el PR sale con el trabajo de otra tarea
+adentro. Verificá `git diff --stat $(git merge-base origin/main HEAD) HEAD` antes de abrir el PR
+— no `git diff origin/main HEAD`, que miente cuando main se movió.

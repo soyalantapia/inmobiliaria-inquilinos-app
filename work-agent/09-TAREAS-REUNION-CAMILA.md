@@ -6367,3 +6367,51 @@ del tenant viejo. Se verificó que los dos arreglos del archivo sobrevivieran.
 **Dato operativo:** entre empezar a verificar y pushear, `main` se movió **cuatro veces** en dos
 tandas. El push tuvo que rebotar, re-mergear y re-verificar. Es la misma presión que hace falta
 para T-05: no hay ventana tranquila si nadie la acuerda.
+
+---
+
+# Cierre del 03/09/2026 — lo que se cerró en esta tanda, y con qué se midió
+
+Siete cosas, todas con control negativo corrido a mano antes de commitear. Se anotan acá con el
+rojo textual porque un «✅ hecho» sin el rojo no se distingue de un «✅ hecho» que nunca midió
+nada — y este documento ya tuvo las dos clases adentro.
+
+| tarea | qué se cerró | el rojo que lo prueba |
+|---|---|---|
+| **T-17** (campana) | el rechazo de un reclamo le llega al inquilino, **con el motivo** que la inmobiliaria tuvo que escribir | `expected undefined to be truthy` |
+| **T-17** (bis) | las cuotas atrasadas dejaron de tapar el feed entero | `to have a length of 1 but got 8` |
+| **T-23-N4** | `POST /reportes` revalida contra la tabla; `uploads.ts` aplica el tope de 60 días del link mágico | `expected 'ADMIN' to be 'LECTURA'` · `expected 404 to be 401` |
+| **P2** | caja explica por qué está en cero en vez de dejar concluir que el pago se perdió | `expected { …(2) } to be null` |
+| **T-25** | `05-DECISIONES §7` deja de contradecir al conmutador que está construido | `expected '### 7. El PIN…' to match /conmutador/i` |
+| **T-01-N1-N13** | rechazar un borrador ya no borra el DNI ni los recibos | `expected null not to be null` |
+| **T-01-N1-N7** | dar de baja a un propietario se puede hacer desde el panel | `expected 200 to be 401` |
+| **C3** | los datos para transferir tienen control (el pedido nunca fue ficha) | `expected { modo: 'INMOBILIARIA', …(5) } to be null` |
+
+## Las tres cosas que costaron más de lo que valían, anotadas para el próximo
+
+**1. Un control que lee el fuente crudo se rompe con su propia explicación.** Pasó TRES veces en
+un día, en tres archivos distintos. En este repo los comentarios cuentan la historia de la
+pantalla, así que un detector que busque `<Proximamente` o una frase vieja va a encontrarla en la
+prosa que documenta el arreglo. La salida barata es borrar la explicación, que es exactamente lo
+contrario de lo que hace falta. **Dos reglas que salieron de ahí:** filtrar comentarios antes de
+buscar (incluidos los bloques `{/* … */}` de JSX, que no empiezan por `//` ni por `*`), y afirmar
+en POSITIVO lo que el documento TIENE que decir en vez de negar la frase vieja.
+
+**2. Una regla nueva puede quedar verde por casualidad.** Al extender `soloCodigo` para los
+bloques JSX, reescribí de paso el comentario que había motivado el arreglo — y con eso la regla
+nueva se quedó sin nada que la pusiera en rojo. Lo agarré corriendo el control negativo
+(desactivé la regla y el test siguió pasando 6/6), no leyendo. **Un control nuevo no está
+terminado hasta que lo viste en rojo por el motivo que decís.**
+
+**3. Un `if (!x) return` adentro de un test es un semáforo apagado.** Escribí
+`if (!carga) return` para el caso del rol CARGA «por si el seed no lo trae». El seed lo trae
+(`prisma/seed.ts:71`). Ese `return` no protege de nada y calla el caso entero el día que alguien
+le cambie el rol a Camila Acosta. Va `findFirstOrThrow`.
+
+## Y una del proceso, que ahorró un día
+
+**El backlog miente en las dos direcciones, y hoy se comprobó en ambas.** T-61 figuraba abierta
+en el relevamiento del crítico y está cerrada de verdad (`lib/liquidaciones.ts` +
+`canon-vigencia-reparada.test.ts`, 9/9). Al revés, cuatro fichas figuraban rotas y estaban
+arregladas. **Antes de tomar una tarea del tablero, medir el SÍNTOMA**: si no aparece, es tiempo
+ahorrado; si aparece, ya está escrito el rojo.
