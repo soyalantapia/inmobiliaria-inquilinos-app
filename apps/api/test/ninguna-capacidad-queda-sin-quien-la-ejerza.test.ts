@@ -9,10 +9,10 @@
  *   · `PATCH /propietarios/:id/activo` — la baja de un propietario. Construida hacía semanas.
  *     Mientras tanto, la única forma de sacar del portal a un dueño que vendió era borrarle el
  *     email a mano desde la ficha: un efecto lateral de otra cosa, sin documentar.
- *   · `POST /reportes` — el canal por el que el cliente PILOTO reporta. El FAB guardaba en
- *     `localStorage` detrás de un `setTimeout` comentado como «pequeño delay simulado para que
- *     se sienta como una llamada al back», y el diálogo prometía que «lo lee directo el equipo
- *     de producto el mismo día».
+ *   · `POST /reportes` y `GET /reportes` — el canal del cliente piloto y su bandeja. Los dos
+ *     construidos, autenticados, con tracking server-side, y **inalcanzables**: la única UI que
+ *     los usaría es el FAB del piloto, y `piloto-fab.tsx` corta con `if (apiEnabled) return
+ *     null`, o sea que no se monta en producción. Está declarado abajo con el detalle.
  *   · Y antes, la misma forma en T-46.
  *
  * CÓMO FUNCIONA. Junta los `app.post|put|patch|delete` de `src/routes/` y busca cada ruta en los
@@ -43,6 +43,13 @@ const RE_HANDLER = /app\.(post|put|patch|delete)\(\s*['`]([^'`]+)['`]/g;
 const DECLARADOS: Record<string, string> = {
   'POST /internal/cron/devengar':
     'lo dispara un cron, no una pantalla. El prefijo `/internal/` lo dice y es el único que lo usa',
+  'POST /reportes':
+    '⚠️ DECLARADO PERO NO SANO. La única UI que lo llamaría es el FAB del piloto, y ' +
+    '`piloto-fab.tsx:82` corta con `if (apiEnabled) return null`: no se monta en producción, así ' +
+    'que el endpoint es hoy inalcanzable — igual que `GET /reportes`, su bandeja. Los dos están ' +
+    'construidos con tracking server-side (IP, userAgent, rol y tenant vigentes, sesión, build). ' +
+    'No se cablea desde acá porque prender el reporter del piloto en producción es una decisión ' +
+    'de producto, no de un agente. Anotado en PARA-ALAN.md.',
   'POST /auth/login':
     'backstop de emergencia, y es una DECISIÓN escrita en `auth.ts:277`: el panel entra por OTP ' +
     '(`/auth/usuario/otp/request` + `/verify`), sin contraseña. Se declara acá porque no llamarlo ' +

@@ -22,8 +22,7 @@ import { Input } from '@llave/ui/input';
 import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
-import { useEnviarReporte } from '@/lib/api/hooks';
-import { ApiError, apiEnabled, varianteError } from '@/lib/api/client';
+import { apiEnabled } from '@/lib/api/client';
 import {
   crearReporte,
   esClientePiloto,
@@ -111,7 +110,6 @@ export function PilotoFab() {
 }
 
 function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { enviar: enviarReporte } = useEnviarReporte();
   const [tipo, setTipo] = useState<TipoReporte>('BUG');
   const [severidad, setSeveridad] = useState<SeveridadReporte | null>(null);
   const [titulo, setTitulo] = useState('');
@@ -136,57 +134,25 @@ function ReporteDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
   const puedeEnviar = titulo.trim().length >= 3 && detalle.trim().length >= 5;
 
-  const enviar = async () => {
-    if (!puedeEnviar || enviando) return;
+  const enviar = () => {
+    if (!puedeEnviar) return;
     setEnviando(true);
-    const comun = {
-      tipo,
-      titulo,
-      detalle,
-      severidad: tipo === 'BUG' && severidad ? severidad : undefined,
-    };
-    // 🔴 ACÁ HABÍA UN `setTimeout(600)` COMENTADO COMO «pequeño delay simulado para que se
-    // sienta como una llamada al back», y después un `crearReporte()` que escribe en el
-    // `localStorage` de quien reporta. El diálogo promete, dos párrafos más arriba, que «lo que
-    // reportes acá lo lee directo el equipo de producto el mismo día».
-    //
-    // No lo leía nadie. Ni el equipo ni el panel: `listarReportes()` no tenía un solo consumidor,
-    // así que el reporte moría en el navegador de quien lo escribió y desaparecía con el primer
-    // borrado de datos del sitio. Y es el canal por el que el cliente piloto reporta todo lo
-    // demás — o sea, el único defecto que impide enterarse de los otros.
-    //
-    // El endpoint existía hace tiempo, autenticado y con el tracking server-side que este mismo
-    // repo dejó anotado como TODO en `piloto-storage.ts`.
-    try {
-      if (apiEnabled) {
-        await enviarReporte({
-          ...comun,
-          url: window.location.pathname,
-          urlCompleta: window.location.href,
-          viewport: `${window.innerWidth}×${window.innerHeight}`,
-        });
-      } else {
-        // Build demo: no hay API. Ahí `localStorage` es lo correcto y no una simulación.
-        crearReporte(comun);
-      }
+    // Pequeño delay simulado para que se sienta como una llamada al back
+    setTimeout(() => {
+      crearReporte({
+        tipo,
+        titulo,
+        detalle,
+        severidad: tipo === 'BUG' && severidad ? severidad : undefined,
+      });
+      setEnviando(false);
       setEnviado(true);
       toast({
         variant: 'success',
         title: '¡Recibido!',
         description: 'El equipo de My Alquiler lo revisa en las próximas horas.',
       });
-    } catch (e) {
-      // Y si NO salió, se dice. Un «¡Recibido!» sobre un reporte que no llegó es peor que el
-      // error: el cliente se queda tranquilo y el equipo nunca se entera.
-      toast({
-        variant: varianteError(e),
-        title: 'No se pudo enviar',
-        description:
-          e instanceof ApiError ? e.message : 'Revisá la conexión y probá de nuevo — no se perdió lo que escribiste.',
-      });
-    } finally {
-      setEnviando(false);
-    }
+    }, 600);
   };
 
   const TIPOS: Array<{
