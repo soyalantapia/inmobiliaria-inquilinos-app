@@ -3244,7 +3244,7 @@ export async function coreRoutes(app: FastifyInstance) {
     });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
-      tipo: 'GARANTE_AGREGADO',
+      tipo: 'GARANTIA_AGREGADA',
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: id,
@@ -3299,7 +3299,7 @@ export async function coreRoutes(app: FastifyInstance) {
     // nadie: por eso el evento guarda las DOS versiones, no sólo la nueva.
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
-      tipo: 'GARANTE_EDITADO',
+      tipo: 'GARANTIA_EDITADA',
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: id,
@@ -3347,7 +3347,7 @@ export async function coreRoutes(app: FastifyInstance) {
     if (del.count === 0) return reply.code(404).send({ message: 'Garante inexistente' });
     await registrarEvento({
       inmobiliariaId: u.inmobiliariaId,
-      tipo: 'GARANTE_ELIMINADO',
+      tipo: 'GARANTIA_ELIMINADA',
       autorId: u.userId,
       rolAutor: u.rol,
       entidadId: id,
@@ -4873,7 +4873,7 @@ export async function coreRoutes(app: FastifyInstance) {
       if (cambios.length > 0) {
         await registrarEvento({
           inmobiliariaId: u.inmobiliariaId,
-          tipo: 'INQUILINO_CONTACTO_CAMBIADO',
+          tipo: 'INQUILINO_CONTACTO_EDITADO',
           autorId: u.userId,
           rolAutor: u.rol,
           entidadId: contrato.id,

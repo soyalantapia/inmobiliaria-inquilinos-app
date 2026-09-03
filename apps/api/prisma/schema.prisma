@@ -376,13 +376,13 @@ enum TipoEventoAuditoria {
   // El email del inquilino no es un dato de contacto: es su LOGIN, porque el OTP viaja ahí.
   // Es el gemelo exacto de `PROPIETARIO_CUENTA_CAMBIADA`, que existe por el mismo motivo del
   // otro lado del mostrador.
-  INQUILINO_CONTACTO_CAMBIADO
-  GARANTE_AGREGADO
-  GARANTE_EDITADO
+  INQUILINO_CONTACTO_EDITADO
+  GARANTIA_AGREGADA
+  GARANTIA_EDITADA
   // `Garante` no tiene baja lógica: el DELETE es borrado duro. Sin este evento, de una
   // garantía borrada no quedaba NI quién la sacó NI qué decía — y el `detalle` de este evento
   // es el único lugar donde sobrevive lo que la póliza decía antes.
-  GARANTE_ELIMINADO
+  GARANTIA_ELIMINADA
 }
 
 enum GrupoCapacidad {

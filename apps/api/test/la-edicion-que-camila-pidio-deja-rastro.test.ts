@@ -89,7 +89,7 @@ describe('el contacto del inquilino deja rastro', () => {
     expect(r.statusCode, r.body.slice(0, 200)).toBe(200);
 
     // Con el bug: cero eventos. La edición pasaba y no quedaba nadie.
-    const evs = await eventos('INQUILINO_CONTACTO_CAMBIADO');
+    const evs = await eventos('INQUILINO_CONTACTO_EDITADO');
     expect(evs).toHaveLength(1);
     expect(evs[0]!.autorId).toBe(adminId);
     expect(evs[0]!.rolAutor).toBe('ADMIN');
@@ -104,7 +104,7 @@ describe('el contacto del inquilino deja rastro', () => {
       where: { id: CNT },
       select: { inquilinoTitular: { select: { telefono: true } } },
     });
-    const cuantos = (await eventos('INQUILINO_CONTACTO_CAMBIADO')).length;
+    const cuantos = (await eventos('INQUILINO_CONTACTO_EDITADO')).length;
     const r = await app.inject({
       method: 'PATCH',
       url: `/contratos/${CNT}/inquilino-contacto`,
@@ -112,7 +112,7 @@ describe('el contacto del inquilino deja rastro', () => {
       payload: { telefono: actual.inquilinoTitular!.telefono },
     });
     expect(r.statusCode).toBe(200);
-    expect(await eventos('INQUILINO_CONTACTO_CAMBIADO')).toHaveLength(cuantos);
+    expect(await eventos('INQUILINO_CONTACTO_EDITADO')).toHaveLength(cuantos);
   });
 });
 
@@ -134,7 +134,7 @@ describe('la garantía deja rastro, incluso cuando se borra', () => {
     expect(alta.statusCode, alta.body.slice(0, 200)).toBe(200);
     const creado = alta.json() as { id: string };
 
-    expect(await eventos('GARANTE_AGREGADO')).toHaveLength(1);
+    expect(await eventos('GARANTIA_AGREGADA')).toHaveLength(1);
 
     const edicion = await app.inject({
       method: 'PUT',
@@ -144,7 +144,7 @@ describe('la garantía deja rastro, incluso cuando se borra', () => {
     });
     expect(edicion.statusCode, edicion.body.slice(0, 200)).toBe(200);
 
-    const editados = await eventos('GARANTE_EDITADO');
+    const editados = await eventos('GARANTIA_EDITADA');
     expect(editados).toHaveLength(1);
     // Reescribirle el número de póliza al garante de un contrato en curso no lo nota nadie:
     // por eso el evento guarda las DOS versiones.
@@ -160,7 +160,7 @@ describe('la garantía deja rastro, incluso cuando se borra', () => {
 
     // La fila ya no existe: `Garante` no tiene `deletedAt`. Esto es lo único que queda.
     expect(await prisma.garante.findUnique({ where: { id: creado.id } })).toBeNull();
-    const borrados = await eventos('GARANTE_ELIMINADO');
+    const borrados = await eventos('GARANTIA_ELIMINADA');
     expect(borrados).toHaveLength(1);
     expect(borrados[0]!.autorId).toBe(adminId);
     // Lo que decía la póliza sobrevive sólo acá.

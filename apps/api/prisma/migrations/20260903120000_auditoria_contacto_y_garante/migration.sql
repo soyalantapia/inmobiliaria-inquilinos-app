@@ -6,7 +6,13 @@
 -- sacó ni qué decía la póliza.
 --
 -- IF NOT EXISTS porque el deploy puede reintentar; ADD VALUE es aditivo y no reescribe filas.
-ALTER TYPE "TipoEventoAuditoria" ADD VALUE IF NOT EXISTS 'INQUILINO_CONTACTO_CAMBIADO';
-ALTER TYPE "TipoEventoAuditoria" ADD VALUE IF NOT EXISTS 'GARANTE_AGREGADO';
-ALTER TYPE "TipoEventoAuditoria" ADD VALUE IF NOT EXISTS 'GARANTE_EDITADO';
-ALTER TYPE "TipoEventoAuditoria" ADD VALUE IF NOT EXISTS 'GARANTE_ELIMINADO';
+--
+-- LOS NOMBRES COINCIDEN CON LOS DE LA OTRA RAMA A PROPÓSITO. Esta tarea se estaba haciendo
+-- en paralelo en otra sesión, con `GARANTIA_EDITADA` / `GARANTIA_ELIMINADA` /
+-- `INQUILINO_CONTACTO_EDITADO`. Se adoptaron esos nombres para que, si entran las dos, el
+-- enum no termine con ocho valores para cuatro acciones: los tres compartidos quedan en
+-- no-op y sólo se agrega `GARANTIA_AGREGADA`, que la otra rama no tiene.
+ALTER TYPE "TipoEventoAuditoria" ADD VALUE IF NOT EXISTS 'INQUILINO_CONTACTO_EDITADO';
+ALTER TYPE "TipoEventoAuditoria" ADD VALUE IF NOT EXISTS 'GARANTIA_AGREGADA';
+ALTER TYPE "TipoEventoAuditoria" ADD VALUE IF NOT EXISTS 'GARANTIA_EDITADA';
+ALTER TYPE "TipoEventoAuditoria" ADD VALUE IF NOT EXISTS 'GARANTIA_ELIMINADA';
