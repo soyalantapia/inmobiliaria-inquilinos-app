@@ -16,7 +16,7 @@ import type { PrismaClient } from '@prisma/client';
 export async function seedOperacion(prisma: PrismaClient, tid: string) {
   // ===== Profesionales (profesionalesAdminMock) =====
   const profesionales = [
-    { id: 'prof_001', nombre: 'Sergio Almeida', categoria: 'PLOMERO' as const, zona: 'Palermo, Villa Crespo', telefono: '+54 9 11 4421 8830', email: 'sergio.almeida@plomeria.example.com', rating: 4.8, cantTrabajos: 24, ultimoTrabajo: '2026-04-30', verificado: true, notas: 'Llega en el día, factura A', activo: true },
+    { id: 'prof_001', nombre: 'Sergio Almeida', categoria: 'PLOMERO' as const, zona: 'Palermo, Villa Crespo', telefono: '+54 9 11 4421 8830', email: 'sergio.almeida@example.com', rating: 4.8, cantTrabajos: 24, ultimoTrabajo: '2026-04-30', verificado: true, notas: 'Llega en el día, factura A', activo: true },
     { id: 'prof_002', nombre: 'Diego Ferrari', categoria: 'ELECTRICISTA' as const, zona: 'Palermo, Recoleta', telefono: '+54 9 11 6502 7714', email: 'diego@ferrari-elec.example.com', rating: 4.9, cantTrabajos: 31, ultimoTrabajo: '2026-05-02', verificado: true, notas: 'Matriculado, presupuesto sin cargo', activo: true },
     { id: 'prof_003', nombre: 'Luciana Pérez', categoria: 'GASISTA' as const, zona: 'CABA', telefono: '+54 9 11 5567 2118', email: null, rating: 4.7, cantTrabajos: 18, ultimoTrabajo: '2026-03-14', verificado: true, notas: 'Matriculada ENARGAS', activo: true },
     { id: 'prof_004', nombre: 'Pablo Cerrajería 24hs', categoria: 'CERRAJERO' as const, zona: 'CABA, GBA Norte', telefono: '+54 9 11 3399 4422', email: null, rating: 4.6, cantTrabajos: 12, ultimoTrabajo: '2026-02-21', verificado: true, notas: null, activo: true },

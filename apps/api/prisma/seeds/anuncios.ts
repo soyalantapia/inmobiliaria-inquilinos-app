@@ -102,10 +102,10 @@ export async function seedAnuncios(prisma: PrismaClient, tid: string) {
 
   // ===== Acuses reales de otros inquilinos (Mariela queda libre para la demo) =====
   const emails = [
-    'juan.perez@inquilino.demo',
-    'laura.gimenez@inquilino.demo',
-    'carlos.romero@inquilino.demo',
-    'ana.pereyra@inquilino.demo',
+    'juan.perez@inquilino.example.com',
+    'laura.gimenez@inquilino.example.com',
+    'carlos.romero@inquilino.example.com',
+    'ana.pereyra@inquilino.example.com',
   ];
   const inquilinos = await prisma.inquilino.findMany({
     where: { inmobiliariaId: tid, email: { in: emails } },
@@ -115,13 +115,13 @@ export async function seedAnuncios(prisma: PrismaClient, tid: string) {
 
   const acuses = [
     // anu_seed_2 (CBU): 4 leídos, 2 confirmados
-    { anuncioId: 'anu_seed_2', email: 'juan.perez@inquilino.demo', leidoAt: '2026-05-15T16:02:00-03:00', confirmadoAt: '2026-05-15T16:03:00-03:00' },
-    { anuncioId: 'anu_seed_2', email: 'laura.gimenez@inquilino.demo', leidoAt: '2026-05-15T18:40:00-03:00', confirmadoAt: null },
-    { anuncioId: 'anu_seed_2', email: 'carlos.romero@inquilino.demo', leidoAt: '2026-05-16T09:12:00-03:00', confirmadoAt: '2026-05-16T09:12:30-03:00' },
-    { anuncioId: 'anu_seed_2', email: 'ana.pereyra@inquilino.demo', leidoAt: '2026-05-17T11:25:00-03:00', confirmadoAt: null },
+    { anuncioId: 'anu_seed_2', email: 'juan.perez@inquilino.example.com', leidoAt: '2026-05-15T16:02:00-03:00', confirmadoAt: '2026-05-15T16:03:00-03:00' },
+    { anuncioId: 'anu_seed_2', email: 'laura.gimenez@inquilino.example.com', leidoAt: '2026-05-15T18:40:00-03:00', confirmadoAt: null },
+    { anuncioId: 'anu_seed_2', email: 'carlos.romero@inquilino.example.com', leidoAt: '2026-05-16T09:12:00-03:00', confirmadoAt: '2026-05-16T09:12:30-03:00' },
+    { anuncioId: 'anu_seed_2', email: 'ana.pereyra@inquilino.example.com', leidoAt: '2026-05-17T11:25:00-03:00', confirmadoAt: null },
     // anu_seed_3 (recordatorio): 2 leídos, 1 confirmado
-    { anuncioId: 'anu_seed_3', email: 'juan.perez@inquilino.demo', leidoAt: '2026-05-02T10:05:00-03:00', confirmadoAt: null },
-    { anuncioId: 'anu_seed_3', email: 'laura.gimenez@inquilino.demo', leidoAt: '2026-05-02T12:30:00-03:00', confirmadoAt: '2026-05-02T12:31:00-03:00' },
+    { anuncioId: 'anu_seed_3', email: 'juan.perez@inquilino.example.com', leidoAt: '2026-05-02T10:05:00-03:00', confirmadoAt: null },
+    { anuncioId: 'anu_seed_3', email: 'laura.gimenez@inquilino.example.com', leidoAt: '2026-05-02T12:30:00-03:00', confirmadoAt: '2026-05-02T12:31:00-03:00' },
   ];
   for (const ac of acuses) {
     const inquilinoId = idDe(ac.email);

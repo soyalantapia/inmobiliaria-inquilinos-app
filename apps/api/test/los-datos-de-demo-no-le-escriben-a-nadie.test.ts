@@ -7,10 +7,10 @@
  * > nombre argentino común genera una casilla que EXISTE y es de otra persona — y esta demo
  * > está publicada.»
  *
- * Lo que faltaba era que la cumpliera todo el resto. El seed tenía `carlos.mendez@gmail.com`,
- * `mariana.mendez@hotmail.com`, `roberto.mendez@yahoo.com.ar` y hasta `rrhh@globant.com` —una
- * empresa que existe—; y `referidos-storage.ts`, que se publica en Pages, mostraba cuatro
- * colegas inventados con dominios de inmobiliaria plausibles.
+ * Lo que faltaba era que la cumpliera todo el resto. `referidos-storage.ts`, que se publica en
+ * GitHub Pages, mostraba cuatro colegas inventados con dominios de inmobiliaria plausibles, y
+ * el legajo de screening del panel le atribuía a una empresa REAL un CUIT, una deuda BCRA de
+ * $145.000.000 y un LinkedIn «verificado» de alguien que no existe.
  *
  * POR QUÉ IMPORTA MÁS QUE LA ESTÉTICA. El sistema MANDA MAILS: rendiciones al propietario,
  * códigos de acceso al portal, avisos al inquilino. Un dato de demo que se cuela en un
@@ -49,8 +49,16 @@ const EXCEPCIONES = new Set([
 ]);
 
 const RAIZ = join(import.meta.dirname, '..', '..', '..');
+/**
+ * El SEED lo cubre `el-seed-no-le-escribe-a-nadie-de-verdad.test.ts`, que llegó a main el mismo
+ * día por otra mano. No se repite acá: dos barridos sobre los mismos archivos es una copia que
+ * se va a desincronizar. Éste mira lo que aquél no ve —los datos de demo de los tres fronts,
+ * que son los que se PUBLICAN— y el código de la API.
+ *
+ * Tampoco mira `apps/api/test`: los fixtures de un test viven en una base efímera que no
+ * manda un solo mail, así que pedir que cambien no protege a nadie y sí agrega ruido.
+ */
 const PAQUETES = [
-  'apps/api/prisma',
   'apps/api/src',
   'apps/inmobiliaria/src',
   'apps/inquilino/src',

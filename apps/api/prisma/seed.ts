@@ -204,12 +204,12 @@ export async function seedBase(prisma: PrismaClient) {
   // ===== Inquilinos (titulares 1:1 con su contrato) =====
   const inquilinos = [
     { email: 'mariela.sosa@example.com', nombre: 'Mariela', apellido: 'Sosa', telefono: '+5491145678900', dni: '32456789', contratoId: 'cnt_001' },
-    { email: 'juan.perez@inquilino.demo', nombre: 'Juan', apellido: 'Pérez', contratoId: 'cnt_002' },
-    { email: 'laura.gimenez@inquilino.demo', nombre: 'Laura', apellido: 'Giménez', contratoId: 'cnt_003' },
-    { email: 'carlos.romero@inquilino.demo', nombre: 'Carlos', apellido: 'Romero', contratoId: 'cnt_004' },
-    { email: 'ana.pereyra@inquilino.demo', nombre: 'Ana', apellido: 'Pereyra', contratoId: 'cnt_005' },
-    { email: 'tomas.bravo@inquilino.demo', nombre: 'Tomás', apellido: 'Bravo', contratoId: 'cnt_006' },
-    { email: 'lucia.fernandez@inquilino.demo', nombre: 'Lucía', apellido: 'Fernández', contratoId: 'cnt_008' },
+    { email: 'juan.perez@inquilino.example.com', nombre: 'Juan', apellido: 'Pérez', contratoId: 'cnt_002' },
+    { email: 'laura.gimenez@inquilino.example.com', nombre: 'Laura', apellido: 'Giménez', contratoId: 'cnt_003' },
+    { email: 'carlos.romero@inquilino.example.com', nombre: 'Carlos', apellido: 'Romero', contratoId: 'cnt_004' },
+    { email: 'ana.pereyra@inquilino.example.com', nombre: 'Ana', apellido: 'Pereyra', contratoId: 'cnt_005' },
+    { email: 'tomas.bravo@inquilino.example.com', nombre: 'Tomás', apellido: 'Bravo', contratoId: 'cnt_006' },
+    { email: 'lucia.fernandez@inquilino.example.com', nombre: 'Lucía', apellido: 'Fernández', contratoId: 'cnt_008' },
   ];
   for (const i of inquilinos) {
     // Upsert por contratoId (1:1 @unique): el email ya no es único a nivel Inquilino

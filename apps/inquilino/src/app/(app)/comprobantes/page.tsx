@@ -26,6 +26,7 @@ import {
   totalCargosExtra,
 } from '@/lib/cross-app-inmo';
 import { diasHastaVencimiento, formatFecha, formatFechaCorta, formatMonto, formatPeriodo } from '@/lib/format';
+import { mostrarFilaAlquiler } from '@/lib/tipo-contrato';
 import { descargarCsv } from '@/lib/csv-export';
 import type { Comprobante, Liquidacion, PagoDeLiquidacion } from '@/lib/types';
 import { apiEnabled } from '@/lib/api/client';
@@ -864,12 +865,18 @@ function PagoUrgenteCard({ mov }: { mov: Movimiento }) {
             Antes solo se mostraba el total, lo que generaba la pregunta
             "¿por qué pago más que mi alquiler vigente?". */}
         <div className="space-y-1.5 rounded-md border bg-background/60 p-3 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Alquiler</span>
-            <span className="font-medium tabular-nums">
-              {formatMonto(mov.liq.montoAlquiler, mov.liq.moneda)}
-            </span>
-          </div>
+          {/* La fila de Alquiler sólo si HAY alquiler. En un SOLO_EXPENSAS el canon es 0 a
+              propósito —lo arregla el propietario por fuera— y esta card le decía «Alquiler $0» a
+              alguien que no alquila. El helper ya lo resuelve en las otras dos pantallas del mismo
+              desglose; /comprobantes fue la superficie que la tanda de T-21 no tocó. */}
+          {mostrarFilaAlquiler(mov.liq) && (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Alquiler</span>
+              <span className="font-medium tabular-nums">
+                {formatMonto(mov.liq.montoAlquiler, mov.liq.moneda)}
+              </span>
+            </div>
+          )}
           {mov.liq.montoExpensas ? (
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Expensas</span>

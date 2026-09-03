@@ -184,7 +184,7 @@ describe('Co-inquilinos — invitación, permisos y aceptación demo', () => {
       method: 'POST',
       url: '/co-inquilinos',
       headers: auth(tokenMariela),
-      payload: { nombre: 'Federico Sosa', dni: '35111222', email: 'fede.sosa@gmail.com', telefono: '+5491155667788', relacion: 'Hermano', permiso: 'VER' },
+      payload: { nombre: 'Federico Sosa', dni: '35111222', email: 'fede.sosa@example.com', telefono: '+5491155667788', relacion: 'Hermano', permiso: 'VER' },
     });
     expect(res.statusCode).toBe(201);
     const co = res.json();
@@ -200,7 +200,7 @@ describe('Co-inquilinos — invitación, permisos y aceptación demo', () => {
       method: 'POST',
       url: '/co-inquilinos',
       headers: auth(tokenMariela),
-      payload: { nombre: 'Federico Sosa', email: 'fede.sosa@gmail.com', relacion: 'Hermano', permiso: 'VER' },
+      payload: { nombre: 'Federico Sosa', email: 'fede.sosa@example.com', relacion: 'Hermano', permiso: 'VER' },
     });
     expect(res.statusCode).toBe(409);
   });
