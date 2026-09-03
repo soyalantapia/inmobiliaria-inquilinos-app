@@ -95,6 +95,7 @@ export function usePropiedadTimeline(id: string) {
 export interface GastoItem {
   id: string;
   categoria: string;
+  moneda: Moneda;
   descripcion: string;
   monto: number;
   fecha: string;
@@ -103,9 +104,12 @@ export interface GastoItem {
   comprobanteUrl: string | null;
 }
 export interface Gastos {
-  total: number;
+  /** Un total POR MONEDA. `total` ya no existe: sumaba pesos con dólares y el panel lo
+   *  imprimía con `formatMonto(..., 'ARS')`. */
+  totalesPorMoneda: { moneda: Moneda; monto: number }[];
   cantidad: number;
-  porCategoria: Record<string, { monto: number; cantidad: number }>;
+  /** La clave es `categoria|moneda`: la misma categoría en dos monedas son dos chips. */
+  porCategoria: Record<string, { monto: number; cantidad: number; moneda: Moneda }>;
   gastos: GastoItem[];
 }
 export function usePropiedadGastos(id: string) {
