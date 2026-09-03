@@ -276,6 +276,64 @@ export async function requireProfesionalVisita(
 }
 
 /**
+ * Revalida contra la DB un payload YA PARSEADO, sea del kind que sea.
+ *
+ * POR QUÉ EXISTE. `requireAuth` sólo verifica la firma y el shape: devuelve lo que el token
+ * dice, y el token dura 15 días (`TOKEN_TTL`). Todos los guards de este archivo revalidan
+ * después contra la tabla — y por eso dar de baja a un empleado, bajarle el rol o revocarle el
+ * acceso a un co-inquilino surte efecto al instante. `requireAuth` a secas es la única puerta
+ * que NO lo hace, así que llamarlo y usar su resultado es quedarse con la foto de hace 15 días.
+ *
+ * Se separa del `jwtVerify` a propósito para que `uploads.ts` la pueda usar: ese archivo no
+ * puede ARRANCAR con `requireAuth` —también acepta el token del profesional, y una reply no se
+ * manda dos veces—, así que parsea primero y revalida después. Antes tenía su propia copia de
+ * este dispatch; una segunda copia se desincroniza de la original, que es exactamente cómo
+ * nació el bug que ese archivo documenta.
+ *
+ * Devuelve el payload (con el `rol` VIGENTE de la tabla si es un usuario, no el del token) o
+ * null habiendo respondido ya.
+ */
+export async function revalidarPayload(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  p: JwtPayload,
+): Promise<JwtPayload | null> {
+  // Se DELEGA en los guards que ya hacen la revalidación en vez de copiarla. Es seguro aunque
+  // arranquen con su propio `jwtVerify`: es idempotente —relee el header y vuelve a poblar
+  // `request.user`—. Y no manda dos replies: acá ya sabemos qué `kind` es, así que ninguno
+  // puede cortar antes de llegar a su propia revalidación.
+  if (p.kind === 'usuario') return requireUsuario(request, reply);
+  // El titular NO pasa por `exigirContratoActivo`, y eso es a propósito: un ex-inquilino tiene
+  // que poder seguir leyendo lo suyo. Lo que sí se corta es la fila borrada o reasignada.
+  if (p.kind === 'inquilino') return requireInquilino(request, reply);
+  const co = await prisma.coInquilino.findUnique({ where: { id: p.coInquilinoId } });
+  if (
+    !co ||
+    co.estado !== 'ACEPTADO' ||
+    co.inmobiliariaId !== p.inmobiliariaId ||
+    co.contratoId !== p.contratoId
+  ) {
+    await reply.code(401).send({ message: 'Tu acceso fue revocado' });
+    return null;
+  }
+  return p;
+}
+
+/**
+ * `requireAuth` + la revalidación contra la DB. Es lo que hay que usar en un endpoint abierto a
+ * cualquier autenticado —sea usuario del panel, inquilino o co-inquilino—; `requireAuth` pelado
+ * queda para quien vaya a revalidar por su cuenta (`/auth/me`, que arma la sesión).
+ */
+export async function requireAuthVigente(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<JwtPayload | null> {
+  const p = await requireAuth(request, reply);
+  if (!p) return null;
+  return revalidarPayload(request, reply, p);
+}
+
+/**
  * Exige un token de "persona" (el que emite /auth/otp/verify tras el OTP). Solo
  * habilita listar y elegir alquileres de ese email — NO da acceso a datos de
  * contrato (eso lo gatea requireInquilino con el JwtInquilino de /elegir).

@@ -6,11 +6,12 @@ import os from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { JwtPayloadSchema, JwtProfesionalSchema, type JwtPayload, type JwtProfesional } from '@llave/shared';
-import { requireInquilino, requireUsuario } from '../auth/guards.js';
+import { requireUsuario, revalidarPayload } from '../auth/guards.js';
 import { prisma } from '../db.js';
 import { resolverUploadsDir } from '../lib/donde-viven-los-archivos.js';
 import { cuotaBytes, registrarSubida, usoDelTenant } from '../lib/cuota-uploads.js';
 import { inquilinoRevocado } from '../auth/guards.js';
+import { linkDeVisitaVencido } from '../lib/vigencia-link-visita.js';
 import { puedeLeerArchivo, actorDeJwt } from '../lib/acceso-archivos.js';
 
 /**
@@ -141,46 +142,42 @@ async function requireAuthOProfesional(
     //   - lo mismo, más chico, para un inquilino cuya fila se borró o cuyo contrato se
     //     reasignó a otro.
     //
-    // Se DELEGA en los guards que ya hacen esa revalidación en vez de copiarla acá: una
-    // segunda copia se desincroniza de la original, que es exactamente cómo nació este bug
-    // (el arreglo del co-inquilino se escribió acá y no alcanzó a los otros dos kinds).
-    // Delegar es seguro aunque los guards arranquen con su propio `jwtVerify`: es idempotente
-    // —relee el header y vuelve a poblar `request.user`—. Y NO manda dos replies: la
-    // advertencia del comentario de arriba sobre requireAuth vale para llamarlo A CIEGAS, y
-    // acá ya sabemos que el shape matchea JwtPayloadSchema y qué `kind` es, así que ninguno
-    // de los dos puede cortar antes de llegar a la revalidación.
-    const p = asPayload.data;
-    // requireUsuario devuelve el rol y el inmobiliariaId VIGENTES de la tabla, no los del
-    // token: además de cortar al dado de baja, evita que `tenantDe` elija la carpeta del
-    // Volume por el tenant congelado en el JWT si al usuario lo movieron de inmobiliaria.
-    if (p.kind === 'usuario') return requireUsuario(request, reply);
-    // El titular NO pasa por exigirContratoActivo, y eso es a propósito (ver guards.ts): un
-    // ex-inquilino tiene que poder seguir bajando sus comprobantes viejos.
-    if (p.kind === 'inquilino') return requireInquilino(request, reply);
-    // Co-inquilino: la única rama que ya revalidaba. No se delega en requireContratoAcceso
-    // porque ese guard devuelve un ContratoAcceso y acá hace falta el payload para `tenantDe`.
-    const co = await prisma.coInquilino.findUnique({ where: { id: p.coInquilinoId } });
-    if (!co || co.estado !== 'ACEPTADO' || co.inmobiliariaId !== p.inmobiliariaId) {
-      await reply.code(401).send({ message: 'Tu acceso fue revocado' });
-      return null;
-    }
-    return p;
+    // Se DELEGA en `revalidarPayload` (guards.ts) en vez de copiar el dispatch acá. Este mismo
+    // comentario decía por qué —«una segunda copia se desincroniza de la original, que es
+    // exactamente cómo nació este bug»— y después el archivo se quedó con la copia igual. Se
+    // cumplió de nuevo: `POST /reportes` nació sin revalidar ninguna de las tres ramas.
+    return revalidarPayload(request, reply, asPayload.data);
   }
   const asProf = JwtProfesionalSchema.safeParse(request.user);
   if (asProf.success) {
     // Idem para el link mágico: la sesión dura días y sobrevivía a que la visita se
-    // cerrara o al reclamo terminado, así que un profesional que ya no trabaja para la
-    // inmobiliaria seguía pudiendo subir archivos con el token viejo.
+    // cerrara o al reclamo terminado.
     const visita = await prisma.visitaProfesional.findUnique({
       where: { id: asProf.data.visitaId },
-      select: { estado: true, inmobiliariaId: true, reclamo: { select: { estado: true } } },
+      select: { estado: true, listoAt: true, inmobiliariaId: true, reclamo: { select: { estado: true, createdAt: true } } },
     });
+    // LA MISMA REGLA QUE EL CANJE DEL LINK Y QUE `requireProfesionalVisita`, que es de lo que
+    // este archivo carecía. La copia de acá tenía dos de las tres reglas y le faltaba la
+    // tercera: el TOPE DURO DE 60 DÍAS (`VIDA_MAX_LINK_MS`). O sea que un link de una visita
+    // que nadie marcó LISTO, sobre un reclamo que quedó EN_CURSO, seguía sirviendo para
+    // subir y BAJAR archivos del tenant para siempre — y `GET /uploads/:t/:n` acepta el token
+    // por query, así que alcanza con pegar la URL en el navegador.
+    //
+    // Y ACÁ SE ES MÁS ESTRICTO QUE LA REGLA COMPARTIDA, a propósito: al pasar a LISTO se corta
+    // en seco, sin la gracia de 48 h. Esa gracia existe para que el profesional VEA la
+    // confirmación de su trabajo, no para que siga escribiendo archivos en el tenant después de
+    // haberlo cerrado. Lo fija `acceso-revalidado.test.ts` («cerrada la visita, el MISMO token
+    // ya no sirve para subir archivos»), escrito para tapar justo ese agujero.
+    //
+    // La primera versión de este arreglo unificó las dos reglas en la MÁS FLOJA, «por
+    // coherencia», y ese test se puso rojo en CI. Tenía razón él: compartir una regla no es
+    // tener una sola regla para todos — es escribir la parte común una vez y DECLARAR lo que se
+    // endurece encima, como acá.
     const cerrada =
       !visita ||
       visita.inmobiliariaId !== asProf.data.inmobiliariaId ||
       visita.estado === 'LISTO' ||
-      visita.reclamo.estado === 'CERRADO' ||
-      visita.reclamo.estado === 'RECHAZADO';
+      linkDeVisitaVencido(visita);
     if (cerrada) {
       await reply.code(401).send({ message: 'Esta visita ya está cerrada.' });
       return null;

@@ -23,9 +23,44 @@
 >   migraciones al arrancar, así que volver el código **no vuelve el esquema**.
 > - **Logs:** dashboard del servicio → *Logs*. No hay `railway logs`.
 >
+> ### Cómo saber si un servicio está atrasado (y por qué el SHA solo no alcanza)
+>
+> Los tres servicios se despliegan **por separado**, así que tener **tres SHA distintos es lo
+> normal** y no dice nada. Medido el 03/09: la API servía `9919fd8`, la PWA `9919fd8` y el panel
+> `ee02dac`. La lectura ingenua —«el panel está atrasado»— era **falsa**: `ee02dac` es *posterior*
+> a `9919fd8`, y el único servicio realmente atrasado era **la PWA**, que es el que compartía SHA
+> con la API.
+>
+> Lo que se compara es el **árbol de ese servicio**, no el orden de los commits:
+>
+> ```bash
+> SHA=$(curl -s https://myalq-api.onrender.com/health | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
+> git diff --stat "$SHA" origin/main -- apps/api packages          # API
+> # panel:  <meta build-commit> de admin.myalquiler.com  vs  apps/inmobiliaria apps/propietario packages
+> # PWA:    <meta build-commit> de app.myalquiler.com    vs  apps/inquilino packages
+> ```
+>
+> **Vacío = al día.** Cualquier otra cosa es lo que le falta a ese servicio.
+>
+> Esto es lo que separa «está en `main`» de «Camila lo tiene». Con `autoDeploy` en **no**, mergear
+> ya no despliega: antes de decirle a alguien que algo está resuelto, se mira el árbol del
+> servicio, no el `git log`.
+>
 > El expediente de la migración vive fuera del repo, en `deenex-infra` (`MYALQ.md`).
 
 # Deploy y operación — My Alquiler
+
+---
+
+# 🗄️ DE ACÁ PARA ABAJO: ARCHIVO HISTÓRICO DE RAILWAY
+
+Nada de lo que sigue se puede ejecutar hoy. Se conserva porque explica **por qué** algunas cosas
+del repo están como están (los `railway up` que aparecen en scripts y notas viejas, el patrón de
+pollear 404→401, la advertencia del árbol sucio). En particular, **cada vez que abajo se lee
+«push a `main` ES el deploy» hay que leer lo contrario**: en Render `autoDeploy` está en `no` y
+el deploy se dispara a mano.
+
+---
 
 ## Railway
 
