@@ -88,7 +88,10 @@ const RESPUESTAS: RespuestaTemplate[] = [
         `Hoy no podemos decirte el número exacto porque el ICL se calcula al ` +
         `mes de aplicar el ajuste. Las estimaciones de mercado para el próximo ` +
         `ajuste van entre +14% y +18% trimestral. Cuando el BCRA publique el ` +
-        `índice oficial, te llega un aviso por WhatsApp con el monto nuevo.`,
+        // Decía "te llega un aviso por WhatsApp". No hay ningún canal de WhatsApp en la app: el
+        // aviso de ajuste sale por MAIL (`enviarAvisoAjusteAlquiler`) y se ve acá. Es la cuarta
+        // promesa de WhatsApp del mismo lote, y la única que quedaba.
+        `índice oficial, te avisamos por mail y lo ves acá con el monto nuevo.`,
       citas: [
         {
           referencia: 'Cláusula 7 · Actualización del canon locativo',
