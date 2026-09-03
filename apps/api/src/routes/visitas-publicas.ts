@@ -8,6 +8,7 @@ import { dinero } from '../lib/monto.js';
 import { puedeAdjuntar } from '../lib/acceso-archivos.js';
 import { linkDeVisitaVencido } from '../lib/vigencia-link-visita.js';
 import { CAMPOS_VISITA_PANEL } from '../lib/visita-campos.js';
+import { avisarAlInquilinoDelReclamo } from '../lib/avisos-reclamo.js';
 
 /**
  * Flujo del profesional asignado a un reclamo, vía link mágico (/p/:token en
@@ -286,6 +287,14 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
     //
     // Con todo adentro, o queda todo o no queda nada, y el reintento vuelve a intentarlo.
     const ahora = new Date();
+    // ¿ESTE /listo fue el que cerró el reclamo? Lo necesitamos AFUERA para avisarle al
+    // inquilino recién después del commit —el aviso es best-effort y no puede voltear un
+    // cierre— y sólo cuando el cierre pasó de verdad: un doble-tap, un reintento o un cierre
+    // ganado por el panel no tienen que mandar un segundo mail.
+    // Va en un objeto y no en un `let` suelto: TypeScript no ve la asignación de adentro del
+    // callback y da por sentado que la variable sigue en `null`, así que la lectura de abajo
+    // quedaría en `never`. La propiedad de un objeto sí se re-analiza después del `await`.
+    const cierre: { avisar: { reclamoId: string; nota: string } | null } = { avisar: null };
     try {
       await prisma.$transaction(async (tx) => {
       const trans = await tx.visitaProfesional.updateMany({
@@ -353,6 +362,7 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
       // El updateMany condicionado por estado es el lock: si no pegó, otro cerró primero →
       // no re-contamos el trabajo ni re-imputamos.
       if (cerrado.count === 0) return;
+      cierre.avisar = { reclamoId: visita!.reclamoId, nota: body.data.notaFinal };
 
       await tx.profesional.update({
         where: { id: acc.profesionalId },
@@ -397,6 +407,29 @@ export async function visitasPublicasRoutes(app: FastifyInstance): Promise<void>
       // LISTO y el reintento vuelve a intentar el cierre entero.
       if (e instanceof ReclamoNoReimputable) return reply.code(409).send({ message: e.message });
       throw e;
+    }
+    // EL MAIL DE "RECLAMO RESUELTO" TAMBIÉN SALE POR ACÁ, y ésta es la corrección.
+    //
+    // El aviso se construyó para `POST /reclamos/:id/resolver`, el camino del panel. Pero un
+    // reclamo se cierra por DOS puertas, y ésta —el profesional apretando "Listo" en su link
+    // mágico— es la que más se usa cuando hay un profesional asignado. Por acá el reclamo
+    // quedaba RESUELTO y al inquilino no le llegaba nada: sólo el aviso in-app "Calificá tu
+    // última reparación", de severidad baja, que además exige que entre a la app.
+    //
+    // Es el patrón de siempre en este repo: se arregla un endpoint y se olvida el otro.
+    //
+    // Va DESPUÉS del commit y con la misma regla que el del panel: best-effort, no puede
+    // voltear un cierre que ya pasó. Y sólo si fue ESTE llamado el que cerró — el doble-tap
+    // sale por `VisitaSinCambios` y el cierre ganado por el panel deja `cerrado.count` en 0.
+    if (cierre.avisar) {
+      const aviso = cierre.avisar;
+      void avisarAlInquilinoDelReclamo({
+        inmobiliariaId: acc.inmobiliariaId,
+        reclamoId: aviso.reclamoId,
+        evento: { tipo: 'RESUELTO', notas: aviso.nota },
+      }).catch((e) =>
+        app.log.warn({ err: e, reclamoId: aviso.reclamoId }, '[visitas] no se pudo avisar la resolución'),
+      );
     }
     return visitaActualDe(acc.visitaId);
   });
