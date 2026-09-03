@@ -16,6 +16,21 @@
 > **Y lo más importante:** en las 24-36 h siguientes a la reunión entraron 8 commits que atacan
 > varios de estos puntos (`898e451`, `e0dd7a8`, `a3921e8`, `2c81a2f`, `0427afa`, `9b21af0`,
 > `fffe826`, `26fdfa6`). **Antes de trabajar cualquier ítem hay que confirmar si ya está cerrado.**
+>
+> ---
+>
+> **📍 ESTADO AL 03/09/2026.** Un mes después, todo esto se volvió a medir contra `main`, tarea
+> por tarea. **Este documento es el backlog crudo del día de la reunión y no se actualizó**: lo
+> que dice acá abajo describe el código de agosto. El estado real vive en
+> [`09-TAREAS-REUNION-CAMILA.md`](./09-TAREAS-REUNION-CAMILA.md), en la tabla «Dónde quedó
+> todo», y las preguntas que frenan una tarea en [`PARA-ALAN.md`](./PARA-ALAN.md).
+>
+> El resumen: de 40 tareas, 20 cerradas, 5 operativas, 5 esperando una decisión tuya, 1 obsoleta.
+> Las 9 que estaban a medias se trabajaron el 03/09 y quedaron 6 cerradas.
+>
+> Y una corrección al párrafo de arriba: **el equipo ya no puede deployar en vivo sin querer.**
+> Desde la migración a Render del 29/08 los tres servicios tienen `autoDeploy: no`, así que
+> mergear a `main` no despliega. El «blanco móvil» de la reunión no se puede repetir solo.
 
 ---
 
