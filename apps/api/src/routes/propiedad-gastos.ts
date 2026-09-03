@@ -29,6 +29,7 @@ export async function propiedadGastosRoutes(app: FastifyInstance) {
         categoria: true,
         descripcion: true,
         monto: true,
+        moneda: true,
         fecha: true,
         proveedor: true,
         contratoId: true,
@@ -37,26 +38,32 @@ export async function propiedadGastosRoutes(app: FastifyInstance) {
       orderBy: { fecha: 'desc' },
     });
 
-    let total = 0;
-    const porCategoria = new Map<string, { monto: number; cantidad: number }>();
+    // POR MONEDA, no un solo número. Antes `total` y `porCategoria` sumaban pesos con dólares
+    // —el `select` ni siquiera traía `moneda`— y el panel lo imprimía con `formatMonto(..., 'ARS')`:
+    // una plomería de US$ 800 y una expensa de $ 45.000 salían como «$ 45.800».
+    // Mismo formato que `propiedad-ganancias.ts`, que ya devuelve `totalesPorMoneda`.
+    const porMoneda = new Map<string, number>();
+    const porCategoria = new Map<string, { monto: number; cantidad: number; moneda: string }>();
     for (const m of movimientos) {
       const monto = Number(m.monto);
-      total += monto;
-      const cat = porCategoria.get(m.categoria) ?? { monto: 0, cantidad: 0 };
+      porMoneda.set(m.moneda, (porMoneda.get(m.moneda) ?? 0) + monto);
+      const clave = `${m.categoria}|${m.moneda}`;
+      const cat = porCategoria.get(clave) ?? { monto: 0, cantidad: 0, moneda: m.moneda };
       cat.monto += monto;
       cat.cantidad += 1;
-      porCategoria.set(m.categoria, cat);
+      porCategoria.set(clave, cat);
     }
 
     return {
-      total: r2c(total),
+      totalesPorMoneda: [...porMoneda.entries()].map(([moneda, monto]) => ({ moneda, monto: r2c(monto) })),
       cantidad: movimientos.length,
       porCategoria: Object.fromEntries(
-        [...porCategoria.entries()].map(([cat, v]) => [cat, { monto: r2c(v.monto), cantidad: v.cantidad }]),
+        [...porCategoria.entries()].map(([clave, v]) => [clave, { monto: r2c(v.monto), cantidad: v.cantidad, moneda: v.moneda }]),
       ),
       gastos: movimientos.map((m) => ({
         id: m.id,
         categoria: m.categoria,
+        moneda: m.moneda,
         descripcion: m.descripcion,
         monto: Number(m.monto),
         fecha: m.fecha,

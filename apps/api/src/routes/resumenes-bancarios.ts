@@ -41,7 +41,19 @@ async function candidatosVigentes(inmobiliariaId: string): Promise<{ pagos: Cand
       // va a la cuenta del dueño y NUNCA puede aparecer en el extracto de la inmo —
       // ofrecerla como candidata permitía marcar paga una deuda ajena con la
       // transferencia de otro inquilino (mismo filtro que /caja/cierre y /rendiciones).
-      where: { inmobiliariaId, estado: 'INFORMADO', contrato: { modoCobranza: 'INMOBILIARIA' } },
+      // Y SÓLO ARS, por el MISMO motivo que la rama de liquidaciones de acá abajo: el extracto
+      // no declara moneda. Un pago informado contra una cuota en dólares se ofrecía igual, con
+      // confianza ALTA («Monto y titular coinciden»), y al hacer clic el conciliar contestaba
+      // 409 —el guard de la línea ~348, que sí está—. O sea: la plata nunca corrió peligro,
+      // pero el panel sugería con seguridad algo que el propio sistema rechaza, y encima con
+      // el nombre de un inquilino que no es. La regla estaba escrita diez líneas más abajo y
+      // esta rama no la aplicaba.
+      where: {
+        inmobiliariaId,
+        estado: 'INFORMADO',
+        contrato: { modoCobranza: 'INMOBILIARIA' },
+        liquidacion: { moneda: 'ARS' },
+      },
       select: {
         id: true,
         monto: true,

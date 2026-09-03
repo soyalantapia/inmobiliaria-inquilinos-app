@@ -172,6 +172,58 @@ describe('ni una cuota de un contrato que cobra directo al propietario', () => {
   });
 });
 
+/**
+ * Y EL OTRO LADO DEL MISMO GUARD: que ni siquiera lo SUGIERA.
+ *
+ * `candidatosVigentes` arma lo que el panel ofrece por cada crédito del extracto. Su rama de
+ * liquidaciones filtra `moneda: 'ARS'` con el motivo escrito —«el extracto no declara moneda»—
+ * y la de PAGOS INFORMADOS no filtraba nada. Un pago informado contra una cuota en dólares se
+ * ofrecía igual, con confianza ALTA («Monto y titular coinciden»), y recién al hacer clic el
+ * conciliar contestaba 409.
+ *
+ * La plata nunca corrió peligro: el guard de arriba está y estos tests lo prueban. Lo que se
+ * arregla acá es que el panel deje de sugerir con seguridad algo que el propio sistema rechaza
+ * —y con el nombre de un inquilino que no es—.
+ */
+describe('el extracto no sugiere un pago informado en dólares', () => {
+  async function conPagoInformado(moneda: 'ARS' | 'USD') {
+    await armar({ contratoId: CNT_INMO, moneda, monto: 500_000 });
+    await prisma.pago.create({
+      data: {
+        id: `${P}pago-informado`,
+        inmobiliariaId,
+        contratoId: CNT_INMO,
+        liquidacionId: `${P}liq`,
+        periodo: PERIODO,
+        // MISMO monto que el crédito del extracto: es lo que dispara la confianza ALTA.
+        monto: 500_000,
+        tipo: 'TOTAL',
+        metodo: 'TRANSFERENCIA',
+        estado: 'INFORMADO',
+        fechaTransferencia: new Date('2098-11-06T00:00:00.000Z'),
+      },
+    });
+    const r = await app.inject({ method: 'GET', url: `/resumenes-bancarios/${P}res`, headers: auth() });
+    expect(r.statusCode).toBe(200);
+    const credito = (r.json().creditos as { id: string; sugerido: { pagoId: string | null } }[]).find(
+      (c) => c.id === `${P}credito`,
+    );
+    expect(credito, 'el crédito del fixture tiene que estar en el detalle').toBeTruthy();
+    return credito!.sugerido;
+  }
+
+  it('🔴 con la cuota en USD, el pago informado NO se ofrece', async () => {
+    const sugerido = await conPagoInformado('USD');
+    // Con el bug: pagoId = `${P}pago-informado` y confianza ALTA.
+    expect(sugerido.pagoId).not.toBe(`${P}pago-informado`);
+  });
+
+  it('CONTROL POSITIVO — en pesos sí se ofrece, que es para lo que existe la sugerencia', async () => {
+    const sugerido = await conPagoInformado('ARS');
+    expect(sugerido.pagoId).toBe(`${P}pago-informado`);
+  });
+});
+
 describe('CONTROL POSITIVO — en pesos y por cuenta recaudadora sí concilia', () => {
   it('crea el pago CONCILIADO y deja la liquidación paga', async () => {
     // Sin este caso, los dos de arriba pasarían igual con un endpoint que rechaza todo.
