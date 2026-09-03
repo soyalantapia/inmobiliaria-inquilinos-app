@@ -30,6 +30,8 @@ import {
   EditarPropietarioTrigger,
 } from '@/components/editar-propietario-trigger';
 import { EliminarPropietarioButton } from '@/components/eliminar-propietario-button';
+import { BajaPropietarioButton } from '@/components/baja-propietario-button';
+import { accionDePropietario } from '@/lib/acciones-de-propietario';
 import { Topbar } from '@/components/topbar';
 import { apiEnabled } from '@/lib/api/client';
 import { usePropietario } from '@/lib/api/use-propietario';
@@ -134,9 +136,14 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0 space-y-1">
-                <h1 className="text-2xl font-semibold">
-                  {propietario.nombre} {propietario.apellido}
-                </h1>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-semibold">
+                    {propietario.nombre} {propietario.apellido}
+                  </h1>
+                  {/* Sin esto la ficha de un dado de baja se ve igual que la de uno activo, y la
+                      única pista es que el botón cambió de texto. Alguien vuelve a intentarlo. */}
+                  {propietario.activo === false && <Badge variant="secondary">Dado de baja</Badge>}
+                </div>
                 <p className="text-sm text-muted-foreground">CUIT {propietario.cuit || '—'}</p>
                 <div className="flex flex-wrap gap-3 pt-2 text-xs">
                   <span className="flex items-center gap-1 text-muted-foreground">
@@ -170,12 +177,40 @@ export default function DetallePropietarioPage({ params }: { params: { id: strin
                     Editar
                   </Button>
                 )}
-                {apiEnabled && (propietario.propiedadesIds?.length ?? 0) === 0 && (
-                  <EliminarPropietarioButton
-                    propietarioId={propietario.id}
-                    nombre={`${propietario.nombre} ${propietario.apellido ?? ''}`.trim()}
-                  />
-                )}
+                {/* 🔴 ANTES ACÁ SÓLO ESTABA «Eliminar», y sólo cuando el propietario NO tiene
+                    propiedades — el caso que no importa, porque el backend además exige que no
+                    tenga contratos ni rendiciones: sirve para limpiar un alta duplicada.
+
+                    Al dueño que VENDIÓ su departamento —el que tiene historial, el que hay que
+                    sacar del portal— la pantalla no le ofrecía nada, y `PATCH
+                    /propietarios/:id/activo` existía sin que ningún archivo del panel lo
+                    llamara. La única forma de cortarle el acceso era borrarle el email a mano
+                    desde la ficha: un efecto lateral de otra cosa, sin documentar.
+
+                    Cuál de los dos sale lo decide `accionDePropietario`, que tiene sus casos.
+                    Nunca los dos juntos: dos palabras parecidas con consecuencias muy distintas,
+                    y la que suena más suave es la que borra. */}
+                {apiEnabled &&
+                  (() => {
+                    const accion = accionDePropietario({
+                      propiedades: propietario.propiedadesIds?.length ?? 0,
+                      activo: propietario.activo,
+                    });
+                    const nombreCompleto = `${propietario.nombre} ${propietario.apellido ?? ''}`.trim();
+                    if (accion === 'ELIMINAR') {
+                      return <EliminarPropietarioButton propietarioId={propietario.id} nombre={nombreCompleto} />;
+                    }
+                    if (accion === 'DAR_DE_BAJA' || accion === 'REACTIVAR') {
+                      return (
+                        <BajaPropietarioButton
+                          propietarioId={propietario.id}
+                          nombre={nombreCompleto}
+                          activo={accion === 'DAR_DE_BAJA'}
+                        />
+                      );
+                    }
+                    return null;
+                  })()}
               </div>
             </div>
 
