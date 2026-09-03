@@ -40,11 +40,34 @@ function rutaDe(archivo: string): string {
 }
 
 /**
+ * Las líneas que son ENTERAMENTE comentario, afuera.
+ *
+ * Sin esto el detector lee los comentarios como código, y en este repo los comentarios hablan
+ * justo de esto: una pantalla que explique en su docblock que «antes acá había un
+ * `<Proximamente>` detrás de `if (apiEnabled)`» quedaría contada como gateada, y el tour se
+ * comería un rojo por un CTA que funciona.
+ *
+ * NO se hace strip de `//` a fin de línea, a propósito: una línea como
+ * `if (apiEnabled) { // ver nota` perdería el gate real, y ese error va para el lado peligroso
+ * —una pantalla gateada que el detector no ve, y el CTA roto pasa—. Los comentarios sueltos
+ * que queden son inofensivos.
+ */
+function soloCodigo(src: string): string {
+  return src
+    .split(/\r?\n/)
+    .filter((l) => {
+      const t = l.trim();
+      return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+    })
+    .join('\n');
+}
+
+/**
  * Las rutas que producción tapa con un «Próximamente». Se piden las DOS marcas juntas —el gate
  * por `apiEnabled` y el componente— para no contar una pantalla que sólo lo importe de paso.
  */
 const GATEADAS = paginas(APP)
-  .map((archivo) => ({ archivo, src: readFileSync(archivo, 'utf8') }))
+  .map((archivo) => ({ archivo, src: soloCodigo(readFileSync(archivo, 'utf8')) }))
   .filter(({ src }) => src.includes('<Proximamente') && src.includes('if (apiEnabled)'))
   .map(({ archivo }) => rutaDe(archivo));
 
@@ -84,6 +107,27 @@ describe('el tour no promete pantallas vacías', () => {
       .flatMap((p) => p.bullets)
       .filter((b) => !enDemo.has(b));
     expect(soloEnProd).toEqual([]);
+  });
+
+  it('el detector lee CÓDIGO, no comentarios', () => {
+    // El caso que lo motivó: en este repo los comentarios cuentan la historia de la pantalla,
+    // así que un docblock que diga «acá había un <Proximamente> detrás de if (apiEnabled)» hacía
+    // que el detector la contara como gateada — y el tour se comía un rojo por un CTA que anda.
+    const conMarcasSoloEnComentarios = [
+      '// antes esto devolvía <Proximamente /> cuando if (apiEnabled)',
+      '/**',
+      ' * y el docblock lo vuelve a nombrar: <Proximamente> con if (apiEnabled).',
+      ' */',
+      'export default function Pantalla() { return <Real />; }',
+    ].join('\n');
+    expect(soloCodigo(conMarcasSoloEnComentarios)).not.toContain('<Proximamente');
+    expect(soloCodigo(conMarcasSoloEnComentarios)).not.toContain('if (apiEnabled)');
+
+    // Y el gate de verdad sobrevive, incluso con un comentario pegado al final de la línea:
+    // perderlo sería el error peligroso —una pantalla gateada que el detector no ve—.
+    const gateReal = ['if (apiEnabled) { // ver nota de arriba', '  return <Proximamente />;', '}'].join('\n');
+    expect(soloCodigo(gateReal)).toContain('if (apiEnabled)');
+    expect(soloCodigo(gateReal)).toContain('<Proximamente');
   });
 
   it('las marcas `soloDemo` corresponden a una pantalla realmente gateada', () => {
