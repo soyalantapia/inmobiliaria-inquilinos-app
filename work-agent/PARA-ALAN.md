@@ -518,6 +518,206 @@ B —los dos números— cuando se quiera dar el paso completo.
 
 ---
 
+## T-17 · ¿Qué eventos avisan por mail, y a quién?
+
+**Fecha:** 03/09/2026 · **Bloquea:** el punto 1 de T-17, que es el que quedó abierto.
+
+### Lo que ya está resuelto
+
+Camila lo pidió así: *«tiene que notificarle también los reclamos, tiene todo por email y por
+la plataforma, por si no no está enterada»*. Los reclamos ya están cerrados de punta a punta:
+
+| evento | a quién | desde |
+|---|---|---|
+| reclamo nuevo | a la inmobiliaria (a la casilla que ella configure) | T-17 |
+| profesional asignado | al inquilino titular | T-17 |
+| reclamo resuelto — desde el panel | al inquilino titular | T-17 |
+| reclamo resuelto — **desde el link del profesional** | al inquilino titular | #158, hoy |
+
+Esa última faltaba, y era la que más se usa: el profesional cerraba el trabajo, el reclamo
+quedaba resuelto y al inquilino no le llegaba nada.
+
+### Lo que falta, y es una decisión tuya
+
+El requerimiento original pedía «hacer el inventario de qué eventos disparan mail». Ese
+inventario **no está escrito ni decidido**, y el mailer hoy no tiene nada para:
+
+- **pago informado** (el inquilino subió el comprobante) → ¿le avisa a la inmobiliaria? ¿a qué
+  casilla, la de reclamos o la general?
+- **pago validado** → ¿al inquilino? Hoy lo ve en la app si entra.
+- **pago rechazado** → éste es el más fuerte: el inquilino cree que pagó y no pagó.
+- **contrato pendiente de aprobación** → ¿al que aprueba, o alcanza con la campana del panel?
+- **vencimiento próximo** → el recordatorio antes del día de pago. Es el único de la lista que
+  necesita algo que hoy no existe: un disparador por tiempo, no por acción.
+
+### Por qué no lo decidí solo
+
+Porque cada mail de más es una razón para que alguien mande todo a spam, y ahí se pierden los
+que sí importan. La pregunta no es técnica: es **cuántos mails tolera por mes un inquilino
+tuyo**. Escribir los cinco es una tarde; elegir cuáles, no.
+
+### La pregunta
+
+¿Cuáles de esos cinco van, y a quién? Con una lista alcanza. Mi lectura, como punto de partida:
+**pago rechazado** sí —el inquilino está en falta y no lo sabe— y **vencimiento próximo** sí,
+que es el que evita la mora. Los otros tres ya los cubre la app.
+
+---
+
+## T-22 · El consorcio no tiene a quién mandarle el mail
+
+**Fecha:** 03/09/2026 · **Bloquea:** la segunda mitad de T-22.
+
+### Lo que está hecho
+
+Camila carga la expensa del período desde la ficha del consorcio: lápiz sobre el stat «Expensa
+del mes», elige período e importe, y sale un `PUT /consorcios/:id`. Eso ya funciona (entró como
+T-47).
+
+### El hecho
+
+**No hay ninguna dirección de correo a la que avisarles.** `UnidadFuncional` tiene `titular` y
+`telefono`, y **no tiene email**. En concreto:
+
+- la audiencia `TODOS_CONSORCIOS` de `POST /anuncios` cuenta destinatarios, manda **cero** mails
+  y lo loguea;
+- la única audiencia que sí manda mail al consorcio —`INQUILINOS_CONSORCIO`— resuelve por
+  `propiedad.consorcioId` y sólo alcanza a inquilinos con contrato ACTIVO cargado. O sea que
+  **no llega al titular de una unidad que la inmobiliaria sólo administra**, que es exactamente
+  el caso que planteó Camila;
+- lo único que ofrece la ficha para avisar es un enlace `wa.me` **sin número de destino**: abre
+  WhatsApp con el texto y sin destinatario;
+- y los dos flujos están desconectados: cargar la expensa no dispara ningún aviso.
+
+### Lo que hay que construir, medido
+
+1. **Email en `UnidadFuncional`** (o un vínculo UF → persona), con su alta y edición en el panel.
+   Es un cambio de modelo, y por eso no lo hice: CLAUDE.md pide consultarte antes.
+2. Que la audiencia de consorcio **incluya a los titulares de UF**, no sólo a inquilinos.
+3. El gesto «cargué la expensa del mes → avisales», reusando `enviarAnuncioEmail`.
+
+### La pregunta
+
+Dos, y la segunda depende de la primera:
+
+- **¿Le agregamos email a la unidad funcional?** Es la única forma de que esto exista. Si va, el
+  resto es trabajo mecánico.
+- **¿Quién carga esos mails?** Porque el punto 1 sin el 2 es una columna vacía. Si la
+  inmobiliaria los tiene en una planilla, conviene pensar una importación; si no los tiene, esto
+  no se resuelve con código.
+
+---
+
+## T-13 · Mover plata entre cuentas de caja
+
+**Fecha:** 03/09/2026 · **Bloquea:** el punto 3 de T-13. Los puntos 1 y 2 ya están cerrados.
+
+### El hecho
+
+`TipoMovimientoCaja` tiene dos valores: `GASTO` e `INGRESO_EXTRA`. No hay traspaso. Hoy la única
+forma de pasar plata de una cuenta a otra es **cargar una salida y una entrada sueltas**, y si
+alguien anula una, **la otra queda colgada**: la caja queda descuadrada y nada avisa.
+
+### Lo que hay que construir
+
+Un tipo de movimiento de traspaso (o un par vinculado) en `MovimientoCaja`, su endpoint, y la UI
+en `/caja`. Toca el modelo de datos: por eso está acá y no hecho.
+
+### La pregunta
+
+¿Traspaso como **un** movimiento con cuenta origen y destino, o como **dos** movimientos
+vinculados por un id común? Los dos andan; la diferencia es qué pasa cuando alguien anula.
+
+Mi lectura: **un solo movimiento** con las dos cuentas. Es la única forma de que el estado a
+medias no pueda existir, que es justo el problema que la tarea vino a resolver.
+
+---
+
+## T-23-N2-N1 · El propietario que nunca entra al portal
+
+**Fecha:** 03/09/2026 · **Bloquea:** los puntos 2 y 3 de la ficha. El punto 1 ya está (#162).
+
+### Lo que ya está
+
+`emailVerificadoAt` existe, se sella al canjear el OTP, se cae sola si alguien edita el email, y
+desde hoy **se ve en el panel**: el propietario que entró alguna vez y después quedó con un mail
+que nadie probó aparece con «Mail sin confirmar». Eso era el «primero se mide» que la ficha
+pedía y que no se podía hacer desde el producto.
+
+### Los dos que quedan
+
+1. **No hay circuito para el que NUNCA entra.** La única vía de verificación es completar un
+   OTP. O sea que justamente la población riesgosa —el typo, el mail de placeholder— queda sin
+   verificar **para siempre**, y sin forma de invitarla a probarlo. Un doble opt-in explícito
+   («confirmá tu mail») es una decisión de producto y de tono: sería el primer mail que le
+   mandamos a un dueño que quizá ni sabe que existimos.
+
+2. **¿Se bloquea a los no verificados?** Está abierta a propósito. Hay un test que existe
+   justamente para impedir que alguien la «complete» cerrando la puerta sin esta decisión, y no
+   lo toqué. Bloquear protege de mandarle plata al mail equivocado; también deja afuera a un
+   dueño legítimo que no revisa el correo.
+
+### La pregunta
+
+¿Mandamos un mail de confirmación a los propietarios que nunca entraron? Y si sí, ¿una vez, o
+cada tanto hasta que confirme?
+
+---
+
+## T-11 · El depósito de garantía no se puede corregir
+
+**Fecha:** 03/09/2026 · **Bloquea:** nada urgente. Es un hueco chico que quedó abierto.
+
+`Contrato.depositoGarantia` **sólo se escribe en el alta**. No hay ningún endpoint que lo toque
+después. Si se cargó mal, la única salida es rehacer el contrato — que es la rescisión falsa de
+la que se queja Camila, y es justo lo que T-11 vino a evitar.
+
+`montoExpensas`, que la ficha ponía en el mismo renglón, ya se cerró (`PATCH
+/contratos/:id/expensas`). Éste quedó.
+
+### La pregunta
+
+¿Lo puede corregir un ADMIN, o el depósito es intocable una vez firmado? Es plata que el
+inquilino entregó: cambiarlo cambia cuánto se le devuelve al final. Si va, va con rastro de
+auditoría y probablemente sólo para ADMIN.
+
+---
+
+## Lo que no es una decisión: cuatro cosas que sólo podés hacer vos
+
+**Fecha:** 03/09/2026
+
+No son preguntas: son tareas de la reunión que **no se resuelven con código** y que quedan
+esperando que alguien las haga a mano. Las dejo acá para que no se pierdan en el backlog.
+
+- **T-03 · Poner en rol CAJA a quien atienda el mostrador.** La cadena está verificada de punta
+  a punta: el panel ofrece CAJA, el `PUT /usuarios/:id` lo acepta, el enum de Postgres lo tiene
+  y la matriz le da conciliar/rechazar. Falta el gesto humano, en Configuración → Equipo.
+  **Avisale a Camila antes**: desde ese cambio un OPERADOR ya no puede confirmar un pago, y
+  enterarse en el mostrador es un mal momento.
+
+- **T-04 · La consulta contra producción.** Hay que mirar si existe algún pago `CONCILIADO` con
+  `decididoPorId` en null, y escribir cuál de las tres hipótesis era. Dos advertencias: (a) el
+  bloqueo que la propia tarea imponía —«ninguna tarea puede tocar el flujo de pagos antes de que
+  ésta cierre»— ya se violó de hecho: 54 commits tocaron `plata.ts` desde el 01/08 y salieron a
+  producción el 02/09, así que la hipótesis del «estado intermedio de deploy» es hoy más difícil
+  de descartar, no menos; (b) si aparece uno, antes de declararlo bug grave conviene mirar si
+  viene de `aplicar-deposito.ts`, que acepta `usuarioId` null por firma aunque hoy ningún
+  llamador lo ejerza.
+
+- **T-05 · La sesión de prueba con Camila.** La nota vieja decía que «cada merge a main sale a
+  la producción de la clienta cero sin ningún portón». **Eso ya no es cierto**: se escribió
+  cuando producción estaba en Railway y `git push` era el deploy. Desde la migración a Render
+  del 29/08 los tres servicios tienen `autoDeploy: no` — mergear a main **no** despliega, hay
+  que apretar Deploy a mano. O sea que el riesgo de moverle el piso sin querer ya no existe.
+  Queda el acuerdo humano: durante la sesión nadie toca Deploy. Y conviene anotar al empezar el
+  SHA que devuelve `curl -s https://myalq-api.onrender.com/health`, para poder descartar después
+  los reportes de una ventana con un deploy en el medio.
+
+- **T-19 · Monedas.** Lo de código está cerrado (T-57 y T-58). Lo que queda de esta tarea es
+  operativo.
+---
+
 ## T-11 · ¿La edición del contrato la puede hacer sólo la administradora?
 
 **Estado: la traza ya está hecha. Esto es lo único que falta, y es tuyo.**

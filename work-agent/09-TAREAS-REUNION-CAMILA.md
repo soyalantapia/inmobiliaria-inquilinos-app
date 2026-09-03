@@ -15,6 +15,85 @@
 
 ---
 
+## 📍 Dónde quedó todo — medido el 03/09/2026 contra `main`
+
+> **Leé esto antes que el cuerpo del documento.** Cada tarea de abajo se midió de nuevo contra
+> el `main` de hoy, endpoint por endpoint y archivo por archivo. Muchas de las secciones que
+> siguen se escribieron el 03/08 y **quedaron viejas**: describen como pendiente algo que ya
+> está, o dan por inexistente algo que se construyó. Donde el cuerpo y esta tabla no coincidan,
+> **manda la tabla**.
+>
+> Las preguntas que frenan una tarea viven en [`PARA-ALAN.md`](./PARA-ALAN.md), con el contexto
+> mínimo para contestarlas sin volver a investigar.
+
+**El resumen:** de 40 tareas, **20 están cerradas**, 5 son operativas (no se resuelven con
+código), 5 esperan una decisión, 1 quedó obsoleta y **9 estaban a medias** — de esas nueve,
+seis se cerraron hoy.
+
+| # | Estado | Dónde quedó |
+|---|---|---|
+| T-03 | 🧑 operativa | La cadena entera está verificada: el panel ofrece CAJA, el endpoint lo acepta, el enum lo tiene y la matriz le da conciliar/rechazar. Falta el gesto humano: pasar a CAJA a quien atienda el mostrador, y **avisarle a Camila antes**. |
+| T-04 | 🧑 operativa | Las cinco afirmaciones del doc siguen ciertas. Falta la consulta de sólo lectura contra producción y escribir cuál de las tres hipótesis era. |
+| T-05 | 🧑 operativa | La nota de «cada merge sale a producción» **quedó vieja**: desde Render (29/08) los tres servicios tienen `autoDeploy: no`. Queda el acuerdo humano de no tocar Deploy durante la sesión. |
+| T-06 | ✅ | |
+| T-07 | ✅ | |
+| T-08 | ✅ | La barra existe, el sticky no está muerto (ningún ancestro con `overflow-hidden`, el Topbar no es sticky) y no desaparece por paginado. |
+| T-09 | ✅ | Sólo `nombre` es obligatorio; el WhatsApp y las fotos del DNI no bloquean, y el expediente los muestra como pendientes. |
+| T-10 | ✅ | «Cargar inquilino» ya no dice Próximamente y el wizard salta al paso 2 con la propiedad elegida. |
+| T-11 | ⚠️ → ✅ | Los endpoints y la capacidad acotada ya estaban; faltaba la traza. Cerrada hoy (#157: auditoría de garantes y del contacto del inquilino). Quedan dos cosas en PARA-ALAN: si la edición se recorta a la administradora —recortarla **saca** una capacidad que OPERADOR y CARGA usan hoy—, y que `depositoGarantia` no tiene camino de edición. |
+| T-13 | ⚠️ | Puntos 1 y 2 cerrados. Falta mover plata entre cuentas: toca el modelo → PARA-ALAN. |
+| T-13-N1 | ⛔ decisión | Cierre de caja. Tres preguntas sin las cuales no se puede construir. **No borrar la tabla `CierreCaja` mientras tanto.** |
+| T-14 | ✅ | |
+| T-15 | ✅ | |
+| T-16 | ✅ | |
+| T-17 | ⚠️ → ✅ | Los tres avisos de reclamo estaban; faltaba el mail cuando **el profesional** cierra desde su link mágico. Cerrado hoy (#158). Queda el inventario de qué otros eventos avisan → PARA-ALAN. |
+| T-18 | ⚠️ → ✅ | Los copys de WhatsApp y el registro del diálogo ya estaban. Faltaba el tour de onboarding, que vendía calendario, profesionales, renovación, la línea de tiempo y el link del garante — todo «Próximamente» o sólo-demo. Cerrado hoy (#154), con un guard que cruza los CTA contra las pantallas gateadas. |
+| T-19 | 🧑 operativa | Lo de código está cerrado (T-57, T-58). |
+| T-20 | ⛔ decisión | El caso mixto E2E está cerrado con test de integración. Lo abierto no es código: **cuánto cobra la inmobiliaria por administrar una unidad de solo expensas**. Hoy el sistema contesta «cero, y no se rinde nada» — coherente, pero nadie lo decidió. |
+| T-21 | ⚠️ → ✅ | Cuatro pantallas ya decidían por `tipoContrato`. Faltaba la quinta: la card de `/comprobantes` imprimía «Alquiler $0» a un ocupante de solo expensas, y el contrato descargable le ponía el ajuste de un canon que no existe. Cerrado hoy (#149). |
+| T-21-N1 | ✅ | |
+| T-21-N1-N1 | ✅ | |
+| T-21-N1-N2 | ✅ | |
+| T-21-N2 | ⚠️ → ✅ | El guard del alta (400 si SOLO_EXPENSAS trae monto) estaba vivo, pero **sin un solo test**. Cerrado hoy (#152), con los dos caminos: ADMIN y la puerta de CARGA. |
+| T-21-N3 | ✅ | |
+| T-21-N3-N1 | ⛔ decisión | Cero SDK de LLM en el monorepo, confirmado. La mitad accionable —que el documento no afirme como implementado algo que no existe— ya está hecha. Falta decidir cuáles de esas capacidades se construyen. |
+| T-22 | ⚠️ | Cargar la expensa del período está (entró como T-47). Avisar por mail **no se puede**: `UnidadFuncional` no tiene email → PARA-ALAN. |
+| T-23 | ✅ | |
+| T-23-N2 | ✅ | |
+| T-23-N2-N1 | ⚠️ → ✅ | La columna `emailVerificadoAt` existía y **nadie la leía**: no estaba en ningún tipo del panel ni en ninguna pantalla. Cerrado hoy (#162). Quedan dos decisiones —el doble opt-in para el que nunca entra, y si se bloquea a los no verificados— → PARA-ALAN. |
+| T-23-N3-N1 | ⛔ decisión | La escritura está hecha y verificada (`CambioParticipacion`, dentro de la transacción del PUT). Falta decidir dónde se lee ese historial. |
+| T-23-N3-N2 | 🗑 obsoleta | Hacer lo que la ficha pide sería una **regresión**. Los filtros están sin `gte` a propósito: el anti-doble no es la fecha, es `descontadoEnRendicion`. La ventana estricta se sacó porque dejaba huérfano un gasto cargado tarde. |
+| T-23-N4 | ✅ | |
+| T-24 | ✅ | |
+| T-32 | ✅ | |
+| T-37-N1 | ⛔ decisión | El circuito entero de aprobación del pago manual. Ninguno de los 62 PRs del 02/09 lo tocó. |
+| T-51 | ⚠️ → ✅ | La mitad publicada estaba; el seed de la API no. Diez contactos ficticios en dominios que existen —dos gmail, un yahoo, un hotmail y `rrhh@globant.com`—. Cerrado hoy (#151), con un guard que exige dominio reservado o excepción declarada. |
+| T-57 | ✅ | |
+| T-58 | ✅ | |
+| T-61 | ✅ | |
+| T-72 | 🧑 operativa | |
+
+### Lo que cambió hoy, 03/09
+
+Seis tareas parciales cerradas, todas con control negativo corrido:
+
+| PR | Qué cierra |
+|---|---|
+| #149 | T-21 · la fila de «Alquiler» que un solo-expensas no debe ver |
+| #151 | T-51 · el seed le escribía a dominios que existen |
+| #152 | T-21-N2 · el freno del solo-expensas no tenía red |
+| #154 | T-18 · el tour vendía pantallas vacías |
+| #158 | T-17 · el profesional cerraba y al inquilino no le llegaba nada |
+| #162 | T-23-N2-N1 · el panel muestra al propietario cuyo mail nadie confirmó |
+| #157 | T-11 · la traza de quién tocó la garantía y el contacto del inquilino (de otra sesión) |
+
+Y uno de higiene: **#161**, porque el detector del guard de #154 leía los comentarios como
+código y le pintaba un rojo ajeno a quien tocara cerca.
+
+---
+
+---
+
 ## Cómo leer una tarea
 
 Cada una trae:
