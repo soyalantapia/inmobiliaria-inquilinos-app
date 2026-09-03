@@ -1415,6 +1415,14 @@ export interface PagoInformado {
   comprobanteUrl: string; // dataURL o URL al pdf/img
   notaInquilino: string | null;
   liquidacionId: string;
+  /**
+   * La de la LIQUIDACIÓN, que congela la del período: un contrato que después cambia de
+   * moneda no puede reescribir lo que se cobró el año pasado.
+   *
+   * Opcional porque los mocks de la demo son todos en pesos y `formatMonto` ya cae en ARS.
+   * En prod la manda siempre `GET /pagos`.
+   */
+  moneda?: Moneda;
 }
 
 export const pagosInformadosMock: PagoInformado[] = [

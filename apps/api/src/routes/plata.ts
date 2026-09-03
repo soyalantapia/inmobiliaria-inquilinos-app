@@ -347,6 +347,10 @@ export async function plataRoutes(app: FastifyInstance) {
             fechaVencimiento: true,
             fechaPago: true,
             montoPunitorioManual: true,
+            // La liq CONGELA la moneda del período (mismo criterio que el asiento de auditoría
+            // de más abajo). Sin esto el panel no tenía de dónde sacarla y caía al default ARS
+            // de `formatMonto`: el PDF de cobranzas escribía «$ 2.000» sobre US$ 2.000.
+            moneda: true,
           },
         },
       },
@@ -387,6 +391,7 @@ export async function plataRoutes(app: FastifyInstance) {
           id: p.liquidacion.id,
           periodo: p.liquidacion.periodo,
           estado: p.liquidacion.estado,
+          moneda: p.liquidacion.moneda,
           montoTotal: Math.round((base + punitorio) * 100) / 100,
           montoPunitorio: punitorio,
           montoPagado,
