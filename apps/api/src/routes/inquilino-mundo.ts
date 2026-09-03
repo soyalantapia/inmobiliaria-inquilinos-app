@@ -918,6 +918,16 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       where: { contratoId, estado: { in: ['PENDIENTE', 'VENCIDO', 'PARCIAL'] } },
       orderBy: { fechaVencimiento: 'asc' },
     });
+    // Las cuotas atrasadas se ACUMULAN y salen en UN solo aviso.
+    //
+    // 🔴 Antes se empujaba una por cuota, con severidad `critica`. El feed corta en 8 y ordena
+    // por severidad, así que un inquilino con ocho meses de atraso veía OCHO renglones
+    // idénticos —«Tu alquiler está atrasado», sólo cambia el período— y **nada más**: ni que
+    // le rechazaron un reclamo, ni que le asignaron un profesional, ni que le subieron el
+    // alquiler. Medido con el inquilino de la demo: 8 de 8 notificaciones eran la misma.
+    //
+    // Y no le decía lo que de verdad necesita saber, que es CUÁNTO debe en total.
+    const atrasadas: typeof liqs = [];
     for (const liq of liqs) {
       const informado = await prisma.pago.findFirst({
         where: { liquidacionId: liq.id, estado: 'INFORMADO' },
@@ -941,15 +951,8 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
       if (!contratoActivo) continue;
       const dias = diasHasta(liq.fechaVencimiento);
       if (liq.estado === 'VENCIDO' || dias < 0) {
-        out.push({
-          id: `pago-venc-${liq.id}`,
-          titulo: 'Tu alquiler está atrasado',
-          detalle: `Período ${liq.periodo} · pagá cuanto antes para no sumar punitorios.`,
-          href: `/pago/${liq.id}`,
-          cuando: `venció ${new Date(liq.fechaVencimiento).toLocaleDateString('es-AR')}`,
-          icono: 'pago_vencido',
-          severidad: 'critica',
-        });
+        // Se juntan y se empujan DESPUÉS del loop, en un solo aviso. Ver el porqué abajo.
+        atrasadas.push(liq);
       } else if (dias <= 5) {
         out.push({
           id: `pago-prox-${liq.id}`,
@@ -961,6 +964,49 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
           severidad: 'alta',
         });
       }
+    }
+
+    // 1.a) LO ATRASADO, EN UN SOLO RENGLÓN Y CON EL TOTAL.
+    //
+    // Una sola cuota conserva el aviso de siempre, con su link directo a pagarla. Dos o más
+    // se juntan: lo que el inquilino necesita saber es cuánto debe y desde cuándo, no leer
+    // ocho veces la misma frase.
+    if (atrasadas.length === 1) {
+      const liq = atrasadas[0]!;
+      out.push({
+        id: `pago-venc-${liq.id}`,
+        titulo: 'Tu alquiler está atrasado',
+        detalle: `Período ${liq.periodo} · pagá cuanto antes para no sumar punitorios.`,
+        href: `/pago/${liq.id}`,
+        cuando: `venció ${new Date(liq.fechaVencimiento).toLocaleDateString('es-AR')}`,
+        icono: 'pago_vencido',
+        severidad: 'critica',
+      });
+    } else if (atrasadas.length > 1) {
+      // `liqs` viene ordenada por vencimiento ascendente, así que la primera es la más vieja.
+      const masVieja = atrasadas[0]!;
+      // Lo que falta, no el total de las cuotas: un PARCIAL ya tiene plata puesta y decirle
+      // que debe el total sería cobrárselo dos veces en el aviso. `Liquidacion` no guarda lo
+      // pagado —sale de los `Pago` CONCILIADOS—, así que se suma con una sola consulta.
+      const conciliados = await prisma.pago.groupBy({
+        by: ['liquidacionId'],
+        where: { liquidacionId: { in: atrasadas.map((x) => x.id) }, estado: 'CONCILIADO' },
+        _sum: { monto: true },
+      });
+      const pagadoPorLiq = new Map(conciliados.map((c) => [c.liquidacionId, Number(c._sum.monto ?? 0)]));
+      const deuda = atrasadas.reduce(
+        (a, x) => a + Math.max(0, Number(x.montoTotal) - (pagadoPorLiq.get(x.id) ?? 0)),
+        0,
+      );
+      out.push({
+        id: `pago-venc-${atrasadas.length}-${masVieja.id}`,
+        titulo: `Tenés ${atrasadas.length} cuotas atrasadas`,
+        detalle: `${fmtMonedaContrato(deuda)} en total, desde ${masVieja.periodo} · pagá cuanto antes para no sumar punitorios.`,
+        href: '/pagos',
+        cuando: `la más vieja venció ${new Date(masVieja.fechaVencimiento).toLocaleDateString('es-AR')}`,
+        icono: 'pago_vencido',
+        severidad: 'critica',
+      });
     }
 
     // 1.b) AJUSTES DE ALQUILER recientes.
@@ -1109,6 +1155,35 @@ export async function inquilinoMundoRoutes(app: FastifyInstance) {
             href: `/reclamos/${r.id}`,
             cuando: 'reciente',
             icono: 'profesional',
+            severidad: 'alta',
+          });
+        }
+      }
+      // 🔴 EL RECHAZO TENÍA QUE LLEGARLE, Y NO LLEGABA POR NINGÚN LADO.
+      //
+      // `POST /reclamos/:id/rechazar` le EXIGE a la inmobiliaria un motivo, y el mensaje de
+      // error dice para qué: «Contale al inquilino por qué se rechaza». Después el reclamo se
+      // iba a «archivados» en la PWA sin un solo aviso, y el corte de acá arriba
+      // —`CERRADOS` incluye RECHAZADO— lo dejaba afuera del feed. O sea que ese motivo se
+      // escribía para alguien que nunca lo leía.
+      //
+      // Sale del EVENTO y no de `resolucion` por dos razones: el evento trae CUÁNDO —`rechazar`
+      // no toca `resueltoAt`— y sobrevive a una reapertura posterior, que sí pisa `resolucion`.
+      //
+      // La ventana de 60 días es la misma que ya usan los ajustes de alquiler unas líneas más
+      // arriba: un rechazo de hace un año no es una novedad, y este feed se deriva en cada
+      // lectura, así que no hay «marcar como leído» que lo saque.
+      if (r.estado === 'RECHAZADO') {
+        const rechazo = [...r.eventos].reverse().find((e) => e.tipo === 'RECHAZADO');
+        if (rechazo && rechazo.fecha.getTime() >= ahora - 60 * 86400000) {
+          out.push({
+            id: `rechazo-${r.id}-${rechazo.fecha.toISOString()}`,
+            titulo: 'Rechazaron tu reclamo',
+            // El motivo es el punto entero del aviso: sin él sólo se dice «no».
+            detalle: rechazo.contenido?.slice(0, 70) || 'Abrilo para ver el motivo.',
+            href: `/reclamos/${r.id}`,
+            cuando: relativo(rechazo.fecha),
+            icono: 'reclamo_inmo',
             severidad: 'alta',
           });
         }
