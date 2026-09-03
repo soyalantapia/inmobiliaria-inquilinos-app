@@ -42,7 +42,7 @@ export async function seedBase(prisma: PrismaClient) {
       data: {
         nombre: 'Inmobiliaria del Sol',
         cuit: '30-71234567-1',
-        email: 'contacto@inmosol.com.ar',
+        email: 'contacto@inmosol.example.com',
         telefono: '+54 11 4532 1100',
         matricula: 'CUCICBA 5872',
         direccionCalle: 'Av. Santa Fe',
@@ -83,7 +83,7 @@ export async function seedBase(prisma: PrismaClient) {
     {
       id: 'soc_001', razonSocial: 'Inmobiliaria del Sol S.R.L.', nombreComercial: 'Inmobiliaria del Sol',
       cuit: '30-71234567-8', condicionFiscal: 'RESPONSABLE_INSCRIPTO' as const,
-      domicilioFiscal: 'Av. Santa Fe 2890, 5°B, CABA', email: 'contacto@inmosol.com.ar', telefono: '+54 11 4532 1100',
+      domicilioFiscal: 'Av. Santa Fe 2890, 5°B, CABA', email: 'contacto@inmosol.example.com', telefono: '+54 11 4532 1100',
       cuentaCobranza: { banco: 'Banco Galicia', titular: 'Inmobiliaria del Sol S.R.L.', cbu: '0070100120000018273645', alias: 'delsol.cobranzas', cuit: '30-71234567-8' },
       afip: { conectado: true, puntoVenta: '0003', tipoComprobante: 'FACTURA_B', conectadoDesde: '2025-03-12' },
       esPrincipal: true,
@@ -91,7 +91,7 @@ export async function seedBase(prisma: PrismaClient) {
     {
       id: 'soc_002', razonSocial: 'Sol Comercial S.A.', nombreComercial: 'Sol Comercial',
       cuit: '30-72345678-9', condicionFiscal: 'RESPONSABLE_INSCRIPTO' as const,
-      domicilioFiscal: 'Av. Santa Fe 2890, 5°B, CABA', email: 'admin@solcomercial.com.ar', telefono: '+54 11 4532 1100',
+      domicilioFiscal: 'Av. Santa Fe 2890, 5°B, CABA', email: 'admin@solcomercial.example.com', telefono: '+54 11 4532 1100',
       cuentaCobranza: { banco: 'Banco Macro', titular: 'Sol Comercial S.A.', cbu: '2850001230094523456789', alias: 'solcomercial.cob', cuit: '30-72345678-9' },
       afip: { conectado: true, puntoVenta: '0001', tipoComprobante: 'FACTURA_A', conectadoDesde: '2025-06-20' },
       esPrincipal: false,
@@ -99,7 +99,7 @@ export async function seedBase(prisma: PrismaClient) {
     {
       id: 'soc_003', razonSocial: 'Fideicomiso Iglesias - Castro', nombreComercial: 'Fideicomiso I-C',
       cuit: '33-71456789-2', condicionFiscal: 'EXENTO' as const,
-      domicilioFiscal: 'Av. Santa Fe 2890, 5°B, CABA', email: 'fideicomiso@inmosol.com.ar', telefono: '+54 11 4532 1100',
+      domicilioFiscal: 'Av. Santa Fe 2890, 5°B, CABA', email: 'fideicomiso@inmosol.example.com', telefono: '+54 11 4532 1100',
       cuentaCobranza: undefined, afip: { conectado: false }, esPrincipal: false,
     },
   ];

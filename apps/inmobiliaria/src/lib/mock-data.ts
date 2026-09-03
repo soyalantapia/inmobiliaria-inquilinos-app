@@ -310,12 +310,12 @@ export const screeningMock: ScreeningResultado = {
 
   empleador: {
     cuit: '30-71234567-9',
-    razonSocial: 'Globant Argentina S.A.',
+    razonSocial: 'Tecnosur Argentina S.A.',
     ciiu: '620100',
     actividad: 'Servicios de consultores en informática',
     telefonos: ['+54 11 4014 4040', '+54 11 4014 4041'],
     email: 'rrhh@example.com',
-    paginaWeb: 'https://www.globant.com',
+    paginaWeb: 'https://www.tecnosur.example.com',
     tipoEmpresa: 'Sociedad Anónima',
     artVigente: true,
     bcra: {
@@ -359,14 +359,14 @@ export const screeningMock: ScreeningResultado = {
     perfiles: [
       {
         plataforma: 'LINKEDIN',
-        handle: 'carlos-mendez-globant',
-        url: 'https://linkedin.com/in/carlos-mendez-globant',
+        handle: 'carlos-mendez-tecnosur',
+        url: 'https://linkedin.com/in/carlos-mendez-tecnosur',
         verificado: true,
         estado: 'ACTIVO',
         seguidores: 1840,
         ultimaActividad: '2026-05-08T14:32:00-03:00',
         notas:
-          'Senior Software Engineer en Globant desde 2019. Historial laboral coherente con la declaración. 6 recomendaciones.',
+          'Senior Software Engineer en Tecnosur desde 2019. Historial laboral coherente con la declaración. 6 recomendaciones.',
       },
       {
         plataforma: 'INSTAGRAM',
@@ -431,7 +431,7 @@ export const screeningMock: ScreeningResultado = {
       {
         plataforma: 'GOOGLE',
         handle: null,
-        url: 'https://www.google.com/search?q=Carlos+Mendez+Globant',
+        url: 'https://www.google.com/search?q=Carlos+Mendez+Tecnosur',
         verificado: false,
         estado: 'ACTIVO',
         seguidores: null,

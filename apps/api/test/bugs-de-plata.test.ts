@@ -43,7 +43,7 @@ beforeAll(async () => {
   await seedBase(prisma);
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
-  tid = (await prisma.inmobiliaria.findFirstOrThrow({ where: { email: 'contacto@inmosol.com.ar' } })).id;
+  tid = (await prisma.inmobiliaria.findFirstOrThrow({ where: { email: 'contacto@inmosol.example.com' } })).id;
 });
 
 afterAll(async () => {

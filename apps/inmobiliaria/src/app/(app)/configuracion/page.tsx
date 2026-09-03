@@ -84,21 +84,21 @@ const equipoInicial: Miembro[] = [
   {
     id: '1',
     nombre: 'Roberto Tapia',
-    email: 'roberto@inmosol.com.ar',
+    email: 'roberto@inmosol.example.com',
     rol: 'ADMIN',
     ultimoAcceso: '2026-05-11T10:14:00-03:00',
   },
   {
     id: '2',
     nombre: 'Luciana Vidal',
-    email: 'luciana@inmosol.com.ar',
+    email: 'luciana@inmosol.example.com',
     rol: 'OPERADOR',
     ultimoAcceso: '2026-05-10T18:42:00-03:00',
   },
   {
     id: '3',
     nombre: 'Sergio Almeida',
-    email: 'sergio@inmosol.com.ar',
+    email: 'sergio@inmosol.example.com',
     rol: 'OPERADOR',
     ultimoAcceso: '2026-05-11T09:05:00-03:00',
   },
@@ -115,7 +115,7 @@ const equipoInicial: Miembro[] = [
   {
     id: '5',
     nombre: 'Camila Acosta (admin. asistente)',
-    email: 'camila.acosta@inmosol.com.ar',
+    email: 'camila.acosta@inmosol.example.com',
     rol: 'CARGA',
     ultimoAcceso: '2026-05-11T16:30:00-03:00',
   },
@@ -1019,7 +1019,7 @@ export default function ConfiguracionPage() {
                 autoComplete="email"
                 value={nuevoEmail}
                 onChange={(e) => setNuevoEmail(e.target.value)}
-                placeholder="persona@inmosol.com.ar"
+                placeholder="persona@inmosol.example.com"
                 required
                 aria-required="true"
                 aria-invalid={
