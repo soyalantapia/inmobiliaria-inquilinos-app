@@ -95,6 +95,7 @@ interface PropietarioDetalleApi {
   cbuAlias: string | null;
   comisionPct: number | null;
   notas: string | null;
+  activo?: boolean;
   createdAt: string;
   participaciones: ParticipacionApi[];
   arca?: ArcaApi | null;
@@ -214,6 +215,10 @@ function mapDetalle(d: PropietarioDetalleApi): PropietarioDetalle {
     cbuAlias: d.cbuAlias,
     comisionPct: d.comisionPct ?? 0,
     notas: d.notas,
+    // `?? true`: una respuesta vieja sin el campo se lee como activo. Al revés —tratar la
+    // ausencia como baja— la ficha diría «Inactivo» de todos los propietarios de una versión
+    // anterior de la API, que es la clase de falso positivo que apaga un aviso para siempre.
+    activo: d.activo ?? true,
     createdAt: (d.createdAt ?? '').slice(0, 10),
     propiedadesIds: participaciones.map((part) => part.propiedadId),
     // Mensual esperado según canon vigente (ver arriba). Si no hay contratos

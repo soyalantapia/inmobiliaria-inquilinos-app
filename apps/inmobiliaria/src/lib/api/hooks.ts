@@ -1546,6 +1546,33 @@ export function useEliminarPropietario(): { eliminar: (id: string) => Promise<vo
   };
 }
 
+/**
+ * Baja / alta lógica de un propietario. Es lo que le corta el acceso al portal a un ex-dueño
+ * conservando su historial contable — el `DELETE` de arriba no sirve para eso, porque el backend
+ * sólo lo deja proceder cuando NO hay historial.
+ *
+ * Invalida `propietario` además de `propietarios`: la ficha abierta tiene que dejar de decir
+ * «Activo» sin que haga falta recargar.
+ */
+export function useBajaPropietario(): {
+  cambiar: (id: string, activo: boolean, motivo?: string) => Promise<void>;
+} {
+  const qc = useQueryClient();
+  return {
+    cambiar: async (id, activo, motivo) => {
+      await ensureApiSession();
+      await apiFetch(`/propietarios/${id}/activo`, {
+        method: 'PATCH',
+        body: JSON.stringify(motivo ? { activo, motivo } : { activo }),
+      });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['propietarios'] }),
+        qc.invalidateQueries({ queryKey: ['propietario'] }),
+      ]);
+    },
+  };
+}
+
 // ===== Dashboard (agregados reales para el home) =====
 
 export interface DashboardData {

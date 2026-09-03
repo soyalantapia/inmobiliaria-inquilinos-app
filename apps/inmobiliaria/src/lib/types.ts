@@ -209,6 +209,11 @@ export interface Propietario {
   comisionPct: number;
   notas: string | null;
   /**
+   * Baja lógica. `false` = sin acceso al portal y sin avisos, con el historial contable intacto.
+   * Opcional porque la demo no modela el campo; ausente se trata como activo.
+   */
+  activo?: boolean;
+  /**
    * Última vez que entró a su portal. `null` = nunca entró.
    *
    * Contesta la pregunta que hoy no tenía respuesta: "¿le llegó el acceso a este dueño?".
