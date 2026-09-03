@@ -1166,6 +1166,8 @@ interface PropietarioApi {
   notas: string | null;
   /** Última vez que entró al portal. `null` = nunca entró (o el backend es viejo). */
   ultimoAccesoAt?: string | null;
+  /** Cuándo se probó que el mail de hoy es suyo. `null` = nunca (o el backend es viejo). */
+  emailVerificadoAt?: string | null;
   createdAt: string;
   participaciones: Array<{ propiedadId: string; porcentaje: number }>;
 }
@@ -1300,7 +1302,13 @@ export function usePropietarios(): {
       email: o.email ?? '',
       telefono: o.telefono ?? '',
       cbuAlias: o.cbuAlias,
-      ultimoAccesoAt: o.ultimoAccesoAt ?? null,
+      // SIN `?? null`, y es a propósito. Los tres estados son distintos: una fecha (entró /
+      // se verificó), `null` (no pasó nunca) y `undefined` (el backend no lo manda). El
+      // `?? null` que había acá aplastaba el tercero contra el segundo, y la pantalla —que
+      // dice por escrito que con `undefined` no afirma nada— iba a rotular "Nunca entró al
+      // portal" sobre TODOS los dueños si un día el backend dejara de mandar el campo.
+      ultimoAccesoAt: o.ultimoAccesoAt,
+      emailVerificadoAt: o.emailVerificadoAt,
       comisionPct: o.comisionPct ?? 0,
       notas: o.notas,
       createdAt: (o.createdAt ?? '').slice(0, 10),

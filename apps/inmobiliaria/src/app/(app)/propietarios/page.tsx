@@ -42,6 +42,7 @@ import {
 import { formatMonto } from '@/lib/format';
 import { faltaRendirle as faltaRendirleA, tieneMezclaDeMonedas } from '@/lib/falta-rendirle';
 import { usePuede } from '@/lib/use-puede';
+import { accesoDelPropietario as acceso } from '@/lib/acceso-del-propietario';
 
 // Filtros aplicables vía query param (?filtro=sin-cbu / sin-rendir).
 // Usado por los cards del dashboard "Para resolver hoy" para que el
@@ -403,9 +404,22 @@ export default function PropietariosPage() {
                               `undefined` (backend viejo) no dice nada: afirmar que nunca entró
                               sin saberlo haría que Camila persiga a alguien que sí usa el
                               portal. */}
-                          {p.ultimoAccesoAt === null && (
+                          {acceso(p) === 'nunca-entro' && (
                             <p className="whitespace-nowrap text-xs text-muted-foreground">
                               Nunca entró al portal
+                            </p>
+                          )}
+                          {/* EL OTRO CASO, que no tenía cómo verse: entró alguna vez y DESPUÉS
+                              le cambiaron el mail. Ahí la verificación se cae sola y queda un
+                              dueño activo con una casilla que nadie probó nunca — que es
+                              justo donde vive el typo, y el único que no se delata solo. Un
+                              mail equivocado no rebota: la rendición "se mandó" y del otro
+                              lado no hay nadie.
+                              Dice "sin confirmar" y no "mal": lo que sabemos es que no hay
+                              prueba de que esa casilla sea suya, no que esté equivocada. */}
+                          {acceso(p) === 'mail-sin-verificar' && (
+                            <p className="whitespace-nowrap text-xs text-amber-600">
+                              Mail sin confirmar
                             </p>
                           )}
                         </div>
