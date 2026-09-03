@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   ArrowRight,
-  CalendarDays,
   CheckCircle2,
   CreditCard,
   FileText,
@@ -82,11 +81,20 @@ const STEPS: Step[] = [
     icon: FileText,
     iconBg: 'from-primary to-primary/70',
     titulo: 'Conocé tu contrato',
-    descripcion: 'Datos clave, próximos ajustes, evolución del alquiler y estado del depósito.',
+    // Los TRES bullets anteriores —«Línea de tiempo del contrato», «Cuánto vas a recuperar del
+    // depósito» y «Compartilo con tu garante con un link»— nombraban `ContratoTimeline`,
+    // `DepositoTracker` y `CompartirGarante`, y los tres viven del lado DEMO de
+    // `contrato/page.tsx:62` (`if (apiEnabled) return <ContratoReal />`). Un inquilino real
+    // abría la pantalla y no encontraba ninguna de las tres. Lo mismo la descripción: «próximos
+    // ajustes» y «evolución del alquiler» son `HistorialAjustes`, también de la demo.
+    //
+    // Esto es lo que la pantalla SÍ muestra en producción: Datos clave (día de pago, índice,
+    // depósito con su estado, mascotas), Reglas de convivencia y Quién administra.
+    descripcion: 'Datos clave, reglas de la propiedad, estado del depósito y quién lo administra.',
     bullets: [
-      'Línea de tiempo del contrato',
-      'Cuánto vas a recuperar del depósito',
-      'Compartilo con tu garante con un link',
+      'Día de pago, índice de ajuste y hasta cuándo va',
+      'Cuánto dejaste de depósito y en qué estado está',
+      'El WhatsApp de tu inmobiliaria, a un toque',
     ],
     cta: { label: 'Abrir mi contrato', href: '/contrato' },
   },
@@ -127,27 +135,25 @@ const STEPS: Step[] = [
     ],
     cta: { label: 'Ver comprobantes', href: '/comprobantes' },
   },
-  {
-    icon: CalendarDays,
-    iconBg: 'from-primary to-primary/70',
-    titulo: 'Mi calendario',
-    descripcion: 'Todo lo que va a pasar con tu alquiler: pagos, ajustes, vencimientos.',
-    bullets: [
-      'Vista unificada de eventos',
-      'No te olvides de nada importante',
-      'Con los vencimientos a la vista',
-    ],
-    cta: { label: 'Ver mi calendario', href: '/calendario' },
-  },
+  // ⛔ ACÁ HABÍA UN SLIDE «Mi calendario», con el CTA «Ver mi calendario» a /calendario.
+  //
+  // En producción esa ruta es un cartel de «Disponible pronto»: el calendario se arma con mocks
+  // y `calendario/page.tsx:55` lo gatea con `if (apiEnabled) return <Proximamente …>`. O sea que
+  // el onboarding le dedicaba una pantalla entera a una capacidad que no existe, y el botón
+  // llevaba al cartel. Es el mismo caso del slide del Asistente que se sacó más arriba.
+  //
+  // Vuelve cuando haya un endpoint de eventos, con lo que muestre y no con lo que quisiéramos.
   {
     icon: Users,
     iconBg: 'from-primary to-primary/70',
     titulo: 'Y mucho más',
-    descripcion: 'Profesionales, co-inquilinos, documentos, renovación — todo desde Mi Cuenta.',
+    // Se sacaron «Profesionales» y «renovación»: `/profesionales` y `/contrato/renovacion` son
+    // las dos carteles de «Disponible pronto» en producción. Quedan las tres que sí funcionan.
+    descripcion: 'Co-inquilinos, documentos y tus otros alquileres — todo desde Mi Cuenta.',
     bullets: [
-      'Plomero, electricista y técnicos recomendados',
       'Compartí el contrato con tu pareja o familia',
-      'DNI y recibos guardados para renovar fácil',
+      'DNI y recibos guardados en un solo lugar',
+      'Cambiá de alquiler si tenés más de uno',
     ],
     cta: { label: 'Explorar Mi Cuenta', href: '/cuenta' },
   },
