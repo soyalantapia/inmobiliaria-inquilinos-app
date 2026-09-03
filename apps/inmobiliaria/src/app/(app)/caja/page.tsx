@@ -35,6 +35,7 @@ import { Label } from '@llave/ui/label';
 import { Textarea } from '@llave/ui/textarea';
 import { toast } from '@llave/ui/use-toast';
 import { MoneyInput } from '@/components/money-input';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@llave/ui/tabs';
 import { Topbar } from '@/components/topbar';
@@ -47,7 +48,8 @@ import {
 } from '@/lib/caja-storage';
 import { useCaja, useMe, usePropiedades } from '@/lib/api/hooks';
 import { useCuentas } from '@/lib/api/use-cuentas';
-import { type CierreCajaItem, useAnularPago, useCierreCaja } from '@/lib/api/use-pagos';
+import { type CierreCajaItem, useAnularPago, useCierreCaja, usePagosInformados } from '@/lib/api/use-pagos';
+import { avisoDePagosEsperando } from '@/lib/aviso-de-pagos-esperando';
 import { rolTienePermiso } from '@/lib/permisos';
 import { normalizarRol } from '@/lib/rol-storage';
 import { apiEnabled, subirArchivo } from '@/lib/api/client';
@@ -89,6 +91,8 @@ interface PropiedadOpcion {
 
 export default function CajaPage() {
   const { movimientos, crearGasto, eliminarGasto, refrescar } = useCaja();
+  const { pagos: informados, isError: informadosFallo } = usePagosInformados();
+  const avisoPagos = avisoDePagosEsperando({ cantidad: informados.length, fallo: informadosFallo });
   // En prod las propiedades salen del API real (usePropiedades): así el select
   // y los chips usan ids/direcciones/contratoActualId reales y el alta de gasto
   // NO postea un propiedadId mock (FK rota). En demo seguimos con el mock.
@@ -185,6 +189,32 @@ export default function CajaPage() {
           </Button>
         </div>
 
+        {/* 🔴 P2 — «si voy a caja, movimiento cero, no tengo tu pago» (Camila, 03/08, repetido
+            dos veces). Su pago existía y estaba INFORMADO esperando validación; caja es de
+            GASTOS y no lo muestra hasta que se concilia. El comportamiento es correcto: lo que
+            faltaba era que la pantalla lo dijera. Sin este cartel, la operadora ve un cero y
+            saca la única conclusión disponible, que es que el pago se perdió.
+
+            El texto vive en `lib/aviso-de-pagos-esperando.ts`, con sus casos: ahí está la regla
+            de que con la query caída NO se afirma nada —`pagos: []` con `isError` no significa
+            «bandeja vacía»— que es fácil de perder de vista escribiendo JSX. */}
+        {avisoPagos && (
+          <Card className="border-amber-500/40 bg-amber-500/5 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <Banknote className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div>
+                  <p className="text-sm font-medium">{avisoPagos.titulo}</p>
+                  <p className="text-xs text-muted-foreground">{avisoPagos.detalle}</p>
+                </div>
+              </div>
+              <Button size="sm" variant="outline" asChild>
+                <Link href="/pagos">Ir a Pagos</Link>
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {/* KPIs — solo lo del gasto a descontar (el cierre diario y la caja
             por propietario se sacaron: se pisaban con Pagos/Rendiciones y
             mareaban con tarjetas en $0). */}
@@ -270,6 +300,15 @@ export default function CajaPage() {
             <p className="mt-2 text-sm font-medium">Sin movimientos</p>
             <p className="text-xs text-muted-foreground">
               Cargá un gasto cuando le pagues a un proveedor por una propiedad.
+            </p>
+            {/* El vacío por sí solo no dice nada, y lo que se concluye mirándolo es lo que
+                concluyó Camila: que el pago del inquilino se perdió. Acá se dice adónde ir. */}
+            <p className="mt-2 text-xs text-muted-foreground">
+              Los pagos de tus inquilinos no se cargan acá:{' '}
+              <Link href="/pagos" className="font-medium text-primary hover:underline">
+                se validan en Pagos
+              </Link>
+              .
             </p>
           </Card>
         ) : (
