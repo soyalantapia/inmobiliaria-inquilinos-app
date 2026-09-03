@@ -26,7 +26,7 @@ export const DATOS_EMPRESA_DEFAULT: DatosEmpresa = {
   // anterior (30-71234567-9) era inválido y nadie se daba cuenta
   // porque no había validación. Ahora que la hay, usamos uno real.
   cuit: '30-71234567-1',
-  email: 'contacto@inmosol.com.ar',
+  email: 'contacto@inmosol.example.com',
   telefono: '+54 11 4532 1100',
   matricula: 'CUCICBA 5872',
   direccionCalle: 'Av. Santa Fe',

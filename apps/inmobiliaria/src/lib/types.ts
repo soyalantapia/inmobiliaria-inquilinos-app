@@ -216,6 +216,13 @@ export interface Propietario {
    * alguien pregunta quién entró y cuándo.
    */
   ultimoAccesoAt?: string | null;
+  /**
+   * Cuándo se probó que el mail que tiene HOY es suyo. `null` = nunca.
+   *
+   * Se sella cuando canjea un OTP —acaba de leer un código que sólo llegó a esa casilla— y
+   * se cae sola si alguien le edita el email. Ver `lib/acceso-del-propietario.ts`.
+   */
+  emailVerificadoAt?: string | null;
   createdAt: string;
   // métricas derivadas para el listado/detalle (en backend real se calculan)
   propiedadesIds: string[]; // FK a Propiedad.id (no a Contrato)

@@ -25,9 +25,13 @@ export interface GananciaContratoItem {
 }
 
 export interface GananciasPropiedad {
-  moneda: Moneda;
   tasaComision: number;
-  total: { ganado: number; proyeccion: number; faltaGanar: number };
+  /**
+   * Un renglón por moneda. La API TAMBIÉN manda `total` y `moneda`, pero son los de la moneda
+   * principal y no la suma —su propio test lo afirma con un `not.toBeCloseTo`—, así que acá no
+   * se declaran: lo que el tipo no nombra, la card no lo puede pintar como «total».
+   */
+  totalesPorMoneda: { moneda: Moneda; ganado: number; proyeccion: number; faltaGanar: number }[];
   contratos: GananciaContratoItem[];
 }
 

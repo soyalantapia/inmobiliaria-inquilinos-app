@@ -33,6 +33,7 @@ import { toast } from '@llave/ui/use-toast';
 import { contratoMock, liquidacionesMock } from '@/lib/mock-data';
 import { datosBancariosMock, proximoCambioVigente } from '@/lib/datos-bancarios';
 import { formatFecha, formatMonto, formatPeriodo } from '@/lib/format';
+import type { Moneda } from '@/lib/types';
 import { montoMensualDeReferencia } from '@/lib/tipo-contrato';
 import { resolverMontos } from '@/lib/punitorios';
 import {
@@ -450,6 +451,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
             {saldo > alquilerVigente * 1.2 && (!apiEnabled || inmobiliariaTelefono) && (
               <HintNegociarPagos
                 saldo={saldo}
+                moneda={liq.moneda}
                 alquilerVigente={alquilerVigente}
                 inmobiliariaTelefono={inmobiliariaTelefono}
               />
@@ -484,6 +486,7 @@ export default function CheckoutPage({ params }: { params: { liqId: string } }) 
           <StepSubirComprobante
             liqId={liq.id}
             monto={montoActual}
+            moneda={liq.moneda}
             tipo={cubreTodo ? 'TOTAL' : 'PARCIAL'}
             // En prod la persistencia es el POST real /pagos/informar; en la
             // demo offline seguimos guardando en pago-storage local.
@@ -644,17 +647,20 @@ function ParcialesAnteriores({
  */
 function HintNegociarPagos({
   saldo,
+  moneda,
   alquilerVigente,
   inmobiliariaTelefono,
 }: {
   saldo: number;
+  /** La de la liquidación. Sin esto el mensaje decía «una deuda de $1.200» por US$ 1.200. */
+  moneda: Moneda;
   alquilerVigente: number;
   /** Teléfono real de la inmobiliaria (prod). null en demo. */
   inmobiliariaTelefono: string | null;
 }) {
   const multiplo = (saldo / alquilerVigente).toFixed(1);
   const mensaje = encodeURIComponent(
-    `Hola, tengo una deuda de ${formatMonto(saldo)} (${multiplo}× mi alquiler). ¿Podemos pactar un plan de cuotas?`,
+    `Hola, tengo una deuda de ${formatMonto(saldo, moneda)} (${multiplo}× mi alquiler). ¿Podemos pactar un plan de cuotas?`,
   );
   // En prod usamos el teléfono real de la inmo (el call-site no renderiza este
   // hint si no hay teléfono). En demo cae al número demo del WhatsappFab.
@@ -1147,6 +1153,7 @@ function CopyRow({
 function StepSubirComprobante({
   liqId,
   monto,
+  moneda,
   tipo,
   informarPagoApi,
   onAtras,
@@ -1154,6 +1161,8 @@ function StepSubirComprobante({
 }: {
   liqId: string;
   monto: number;
+  /** La de la liquidación que se está pagando. El comprobante es de ESE cobro. */
+  moneda: Moneda;
   tipo: 'TOTAL' | 'PARCIAL';
   /**
    * En prod: POST real `/pagos/informar`. Devuelve el Pago creado con el `tipo`
@@ -1479,7 +1488,7 @@ function StepSubirComprobante({
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
-              <DetalleIA label="Monto" valor={formatMonto(extraccion.monto)} match />
+              <DetalleIA label="Monto" valor={formatMonto(extraccion.monto, moneda)} match />
               <DetalleIA
                 label="Fecha"
                 valor={new Date(extraccion.fechaTransferencia).toLocaleDateString('es-AR')}

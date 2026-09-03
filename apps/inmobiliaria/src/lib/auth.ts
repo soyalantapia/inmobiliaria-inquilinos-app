@@ -13,7 +13,7 @@ export const mockUser = {
     firstName: 'Roberto',
     lastName: 'Tapia',
     fullName: 'Roberto Tapia',
-    primaryEmailAddress: { emailAddress: 'roberto@inmosol.com.ar' },
+    primaryEmailAddress: { emailAddress: 'roberto@inmosol.example.com' },
     imageUrl: '',
   },
 } as const;

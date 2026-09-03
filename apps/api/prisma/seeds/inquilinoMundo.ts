@@ -180,10 +180,10 @@ export async function seedInquilinoMundo(prisma: PrismaClient, tid: string) {
         ],
       },
       empleador: {
-        cuit: '30-71234567-9', razonSocial: 'Globant Argentina S.A.', ciiu: '620100',
+        cuit: '30-71234567-9', razonSocial: 'Tecnosur Argentina S.A.', ciiu: '620100',
         actividad: 'Servicios de consultores en informática',
         telefonos: ['+54 11 4014 4040', '+54 11 4014 4041'],
-        email: 'rrhh@globant.example.com', paginaWeb: 'https://www.globant.com',
+        email: 'rrhh@tecnosur.example.com', paginaWeb: 'https://www.tecnosur.example.com',
         tipoEmpresa: 'Sociedad Anónima', artVigente: true,
         bcra: {
           entidadesCount: 6, deudaTomada: 145000000, deudaEnMora: 0, riesgo: 'bajo',
@@ -204,14 +204,14 @@ export async function seedInquilinoMundo(prisma: PrismaClient, tid: string) {
       huellaDigital: {
         scoreCoherencia: 'alta', antiguedadAnios: 14, mencionesGoogle: 12, emailEnSitios: 23,
         perfiles: [
-          { plataforma: 'LINKEDIN', handle: 'carlos-mendez-globant', url: 'https://linkedin.com/in/carlos-mendez-globant', verificado: true, estado: 'ACTIVO', seguidores: 1840, ultimaActividad: '2026-05-08T14:32:00-03:00', notas: 'Senior Software Engineer en Globant desde 2019. Historial laboral coherente con la declaración. 6 recomendaciones.' },
+          { plataforma: 'LINKEDIN', handle: 'carlos-mendez-tecnosur', url: 'https://linkedin.com/in/carlos-mendez-tecnosur', verificado: true, estado: 'ACTIVO', seguidores: 1840, ultimaActividad: '2026-05-08T14:32:00-03:00', notas: 'Senior Software Engineer en Tecnosur desde 2019. Historial laboral coherente con la declaración. 6 recomendaciones.' },
           { plataforma: 'INSTAGRAM', handle: '@carlos.mendez85', url: 'https://instagram.com/carlos.mendez85', verificado: false, estado: 'ACTIVO', seguidores: 1247, ultimaActividad: '2026-05-09T20:14:00-03:00', notas: 'Cuenta personal. Fotos de viajes, familia y deporte. Sin contenido marcado.' },
           { plataforma: 'FACEBOOK', handle: 'carlos.mendez.eduardo', url: 'https://facebook.com/carlos.mendez.eduardo', verificado: false, estado: 'INACTIVO', seguidores: 432, ultimaActividad: '2024-08-12T10:00:00-03:00', notas: 'Cuenta vieja, sin actividad reciente. Foto de perfil pública.' },
           { plataforma: 'X', handle: '@cmendez_dev', url: 'https://x.com/cmendez_dev', verificado: false, estado: 'ACTIVO', seguidores: 320, ultimaActividad: '2026-04-22T11:05:00-03:00', notas: 'Comparte contenido técnico. Tono profesional.' },
           { plataforma: 'THREADS', handle: '@carlos.mendez85', url: 'https://threads.net/@carlos.mendez85', verificado: false, estado: 'INACTIVO', seguidores: 89, ultimaActividad: '2024-12-10T19:00:00-03:00', notas: null },
           { plataforma: 'TIKTOK', handle: null, url: null, verificado: false, estado: 'NO_ENCONTRADO', seguidores: null, ultimaActividad: null, notas: null },
           { plataforma: 'YOUTUBE', handle: null, url: null, verificado: false, estado: 'NO_ENCONTRADO', seguidores: null, ultimaActividad: null, notas: null },
-          { plataforma: 'GOOGLE', handle: null, url: 'https://www.google.com/search?q=Carlos+Mendez+Globant', verificado: false, estado: 'ACTIVO', seguidores: null, ultimaActividad: null, notas: '12 menciones: 8 técnicas (charlas, blogs, repos GitHub), 4 de eventos comunitarios.' },
+          { plataforma: 'GOOGLE', handle: null, url: 'https://www.google.com/search?q=Carlos+Mendez+Tecnosur', verificado: false, estado: 'ACTIVO', seguidores: null, ultimaActividad: null, notas: '12 menciones: 8 técnicas (charlas, blogs, repos GitHub), 4 de eventos comunitarios.' },
         ],
         hallazgos: [
           { tipo: 'positivo', texto: 'Identidad coherente cross-plataforma. LinkedIn confirma empleador y antigüedad declarados.' },

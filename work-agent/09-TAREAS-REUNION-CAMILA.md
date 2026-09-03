@@ -40,7 +40,7 @@ seis se cerraron hoy.
 | T-08 | ✅ | La barra existe, el sticky no está muerto (ningún ancestro con `overflow-hidden`, el Topbar no es sticky) y no desaparece por paginado. |
 | T-09 | ✅ | Sólo `nombre` es obligatorio; el WhatsApp y las fotos del DNI no bloquean, y el expediente los muestra como pendientes. |
 | T-10 | ✅ | «Cargar inquilino» ya no dice Próximamente y el wizard salta al paso 2 con la propiedad elegida. |
-| T-11 | ⚠️ → ✅ | Los endpoints y la capacidad acotada ya estaban; faltaba la traza. Cerrada hoy (auditoría de garantes y del contacto del inquilino). Queda abierto un hueco chico: `depositoGarantia` no tiene camino de edición → PARA-ALAN. |
+| T-11 | ⚠️ → ✅ | Los endpoints y la capacidad acotada ya estaban; faltaba la traza. Cerrada hoy (#157: auditoría de garantes y del contacto del inquilino). Quedan dos cosas en PARA-ALAN: si la edición se recorta a la administradora —recortarla **saca** una capacidad que OPERADOR y CARGA usan hoy—, y que `depositoGarantia` no tiene camino de edición. |
 | T-13 | ⚠️ | Puntos 1 y 2 cerrados. Falta mover plata entre cuentas: toca el modelo → PARA-ALAN. |
 | T-13-N1 | ⛔ decisión | Cierre de caja. Tres preguntas sin las cuales no se puede construir. **No borrar la tabla `CierreCaja` mientras tanto.** |
 | T-14 | ✅ | |
@@ -85,6 +85,7 @@ Seis tareas parciales cerradas, todas con control negativo corrido:
 | #154 | T-18 · el tour vendía pantallas vacías |
 | #158 | T-17 · el profesional cerraba y al inquilino no le llegaba nada |
 | #162 | T-23-N2-N1 · el panel muestra al propietario cuyo mail nadie confirmó |
+| #157 | T-11 · la traza de quién tocó la garantía y el contacto del inquilino (de otra sesión) |
 
 Y uno de higiene: **#161**, porque el detector del guard de #154 leía los comentarios como
 código y le pintaba un rojo ajeno a quien tocara cerca.

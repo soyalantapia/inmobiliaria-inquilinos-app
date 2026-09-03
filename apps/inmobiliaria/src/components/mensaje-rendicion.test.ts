@@ -22,7 +22,7 @@ const duenio = (extra: Partial<Propietario> = {}): Propietario =>
     nombre: 'Martín Ariel',
     apellido: 'Bravo',
     cuit: '20-56789012-6',
-    email: 'martin@ejemplo.com',
+    email: 'martin@example.com',
     telefono: '1100000000',
     cbuAlias: 'bravo.martin.usd',
     comisionPct: 8,

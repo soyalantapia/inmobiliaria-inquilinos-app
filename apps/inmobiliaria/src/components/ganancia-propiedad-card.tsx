@@ -10,6 +10,7 @@ import { Badge } from '@llave/ui/badge';
 import { apiEnabled } from '@/lib/api/client';
 import { usePropiedadGanancias } from '@/lib/api/use-propiedad-ganancias';
 import { formatMonto } from '@/lib/format';
+import { gananciaParaMostrar } from '@/lib/ganancia-por-moneda';
 
 function titulo(estado: string) {
   return estado.charAt(0) + estado.slice(1).toLowerCase();
@@ -18,7 +19,9 @@ function titulo(estado: string) {
 export function GananciaPropiedadCard({ propiedadId }: { propiedadId: string }) {
   const { ganancias } = usePropiedadGanancias(propiedadId);
   if (!apiEnabled || !ganancias || ganancias.contratos.length === 0) return null;
-  const m = ganancias.moneda;
+  // Una propiedad puede haber estado alquilada en pesos y después en dólares: se muestran
+  // las dos, sin sumarlas (no hay cotización en el sistema).
+  const total = gananciaParaMostrar(ganancias.totalesPorMoneda);
 
   return (
     <Card>
@@ -31,11 +34,11 @@ export function GananciaPropiedadCard({ propiedadId }: { propiedadId: string }) 
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-md border p-3">
             <p className="text-xs text-muted-foreground">Ya ganado (rendido)</p>
-            <p className="text-lg font-semibold">{formatMonto(ganancias.total.ganado, m)}</p>
+            <p className="text-lg font-semibold">{total.ganado}</p>
           </div>
           <div className="rounded-md border p-3">
             <p className="text-xs text-muted-foreground">Proyección total</p>
-            <p className="text-lg font-semibold">{formatMonto(ganancias.total.proyeccion, m)}</p>
+            <p className="text-lg font-semibold">{total.proyeccion}</p>
           </div>
         </div>
 

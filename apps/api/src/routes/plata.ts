@@ -347,6 +347,10 @@ export async function plataRoutes(app: FastifyInstance) {
             fechaVencimiento: true,
             fechaPago: true,
             montoPunitorioManual: true,
+            // La liq CONGELA la moneda del período (mismo criterio que el asiento de auditoría
+            // de más abajo). Sin esto el panel no tenía de dónde sacarla y caía al default ARS
+            // de `formatMonto`: el PDF de cobranzas escribía «$ 2.000» sobre US$ 2.000.
+            moneda: true,
           },
         },
       },
@@ -387,6 +391,7 @@ export async function plataRoutes(app: FastifyInstance) {
           id: p.liquidacion.id,
           periodo: p.liquidacion.periodo,
           estado: p.liquidacion.estado,
+          moneda: p.liquidacion.moneda,
           montoTotal: Math.round((base + punitorio) * 100) / 100,
           montoPunitorio: punitorio,
           montoPagado,
@@ -976,6 +981,11 @@ export async function plataRoutes(app: FastifyInstance) {
             contratoId: contrato.id,
             tipo: 'INGRESO_EXTRA',
             categoria: 'OTRO',
+            // T-28-N1-N1: de qué cargo salió, igual que el hermano `POST /cargos/:id/saldar`.
+            // Sin esto el vínculo era el texto de la descripción, y con dos cargos gemelos
+            // `descobrar` desempataba por el más reciente: si el ingreso del primero ya se le
+            // rindió al dueño, deshacer ese primero le borraba el movimiento del segundo.
+            cargoId: c.id,
             descripcion: `Cobro de cargo al inquilino: ${c.concepto}`,
             monto: c.monto,
             // La moneda DEL CARGO, no el default: `MovimientoCaja.moneda` es @default(ARS) y

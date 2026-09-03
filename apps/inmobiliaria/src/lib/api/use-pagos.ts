@@ -16,6 +16,7 @@ import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-quer
 import { API_URL, apiEnabled, apiFetch, getToken } from './client';
 import { ensureApiSession } from './session';
 import { pagosInformadosMock, type PagoInformado } from '@/lib/mock-data';
+import type { Moneda } from '@/lib/types';
 import { estadoDePago } from '@/lib/conciliacion-storage';
 
 // Shape de cada pago que devuelve GET /pagos (handler en apps/api/src/routes/plata.ts).
@@ -54,6 +55,8 @@ interface PagoApi {
     montoPagado?: string | number | null;
     saldo?: string | number | null;
     estado: string;
+    /** Congelada por período. Es la que hay que mostrar, no la del contrato de hoy. */
+    moneda?: Moneda;
   } | null;
 }
 
@@ -114,6 +117,7 @@ function mapPago(p: PagoApi): PagoInformadoApi {
     comprobanteUrl: urlComprobante(p.comprobanteUrl),
     notaInquilino: p.notaInquilino,
     liquidacionId: p.liquidacion?.id ?? '',
+    ...(p.liquidacion?.moneda ? { moneda: p.liquidacion.moneda } : {}),
     // Saldo REAL de la liquidación (base + mora al día − conciliados). Antes el
     // panel lo calculaba contra mocks (los ids reales nunca matcheaban) → mostraba
     // deuda fantasma ignorando parciales ya conciliados y la mora.

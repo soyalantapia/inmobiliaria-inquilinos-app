@@ -43,6 +43,10 @@ export const TIPO_LABEL: Record<string, string> = {
   PROPIETARIO_CONFIRMO_RECIBO: 'Propietario confirmó',
   MODO_COBRANZA_CAMBIADO: 'Modo de cobranza',
   PROPIETARIO_CUENTA_CAMBIADA: 'Cuenta del propietario',
+  INQUILINO_CONTACTO_EDITADO: 'Contacto del inquilino',
+  GARANTIA_AGREGADA: 'Garantía agregada',
+  GARANTIA_EDITADA: 'Garantía editada',
+  GARANTIA_ELIMINADA: 'Garantía eliminada',
   MORA_EDITADA: 'Mora editada',
   MOVIMIENTO_CONSORCIO_ELIMINADO: 'Movimiento de consorcio eliminado',
   RECLAMO_CLASIFICADO: 'Reclamo clasificado',
@@ -78,11 +82,17 @@ export const TIPO_VARIANT: Record<string, 'success' | 'destructive' | 'warning' 
   MOVIMIENTO_CONSORCIO_ELIMINADO: 'destructive',
   CONMUTACION_RECHAZADA: 'destructive',
   PIN_ELIMINADO: 'destructive',
+  // Borrado duro: `Garante` no tiene baja lógica y el detalle del evento es lo único
+  // que queda de lo que la póliza decía.
+  GARANTIA_ELIMINADA: 'destructive',
   // En amarillo lo que cambia una regla de plata o quién está operando: no está mal, pero es
   // lo que el ADMIN quiere ver de un vistazo cuando revisa el rastro.
   MORA_EDITADA: 'warning',
   MODO_COBRANZA_CAMBIADO: 'warning',
   PROPIETARIO_CUENTA_CAMBIADA: 'warning',
+  // El email del inquilino es su credencial: reapuntarlo reapunta el acceso a la app.
+  INQUILINO_CONTACTO_EDITADO: 'warning',
+  GARANTIA_EDITADA: 'warning',
   SESION_CONMUTADA: 'warning',
   PIN_DESBLOQUEADO: 'warning',
   PROPIETARIO_CONFIRMO_RECIBO: 'success',
