@@ -101,7 +101,12 @@ beforeAll(async () => {
   inmobiliariaId = base.inmobiliariaId;
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
-  const prop = await prisma.propiedad.findFirstOrThrow({ select: { id: true } });
+  // 🔴 SCOPEADO AL TENANT DEL SEED. Estaba SIN `where`: agarraba la primera propiedad de
+  // CUALQUIER inmobiliaria. Mientras la base sólo tuvo el tenant del seed no se notó, pero
+  // basta con que otro archivo cree una propiedad ajena —cosa legítima, es como se prueba el
+  // aislamiento— para que este test la agarre y el endpoint conteste 404 con el token del
+  // seed. El rojo aparece acá y la causa está en el archivo de al lado.
+  const prop = await prisma.propiedad.findFirstOrThrow({ where: { inmobiliariaId }, select: { id: true } });
   propiedadId = prop.id;
 
   // 1 · el del neteo: $100.000 de depósito contra $70.000 de deuda exigible.
