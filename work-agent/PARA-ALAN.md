@@ -326,60 +326,74 @@ Mi lectura: **la primera**. Es lo que la pantalla ya insinuaba, es lo que sirve 
 y no compromete nada de plata. Pero decidilo vos, porque las otras dos no se agregan
 después sin rehacer esto.
 
-## Rechazar un contrato borra los documentos del inquilino
+## ~~Rechazar un contrato borra los documentos del inquilino~~ → HECHO, queda media pregunta
 
-**Fecha:** 02/09/2026 · **Bloquea:** sí — hay que decidir antes de que alguien rechace un
-contrato con documentos cargados. Hoy no hay datos en producción, así que el reloj todavía no
-corre.
+**Fecha:** 02/09/2026 · **Actualizado:** 03/09/2026 (PR #163) · **Bloquea:** ya no.
 
-### El hecho
+### Qué era
 
-Cuando se **rechaza** un contrato desde la bandeja de aprobaciones, el sistema borra al
-inquilino y, antes, a todos sus hijos: los códigos de OTP, los acuses de anuncios, **los
-documentos que subió** y **sus certificados**. Está en `plata.ts:3311-3317`.
+Rechazar un contrato desde la bandeja borraba al inquilino y, antes, a sus hijos: códigos de OTP,
+acuses de anuncios, **los documentos que subió** y **sus certificados**. El motivo escrito en el
+código era que si no «su email queda tomado» por un `@@unique([inmobiliariaId, email])`. **Ese
+unique ya no existe** — el schema de hoy dice textual lo contrario. Se destruían documentos para
+evitar un choque que no puede ocurrir.
 
-El motivo escrito en el código es que, si no, «su email queda tomado» por un
-`@@unique([inmobiliariaId, email])`. **Ese unique ya no existe.** El schema de hoy dice textual
-lo contrario: *«El email NO es único a nivel Inquilino»* — cambió con el multi-alquiler, para
-que la misma persona pueda tener tres contratos con el mismo mail.
+### Qué se hizo, y por qué la opción A no costaba lo que este documento decía
 
-O sea: se destruyen documentos para evitar un choque que no puede ocurrir.
+Se implementó **A (dejar de borrar)**, en una variante que este documento no había considerado:
+en vez de conservar el inquilino *enganchado*, se lo **desengancha** (`contratoId: null`).
 
-### 🔴 Por qué nadie lo vio
+Este documento le atribuía a A un costo: *«el selector «Mis alquileres» del login no filtra por
+estado, así que vería un borrador rechazado listado como un alquiler suyo»*. **Fui a medirlo y no
+es así:** `alquileresDeEmail` (`auth.ts:89`) filtra por `contratoId: { not: null }`. Con el
+desenganche el contrato rechazado no aparece, y **no hizo falta tocar el camino de login**, que
+era la parte sensible.
 
-El tablero **decía que esto no pasaba**, y lo decía como una corrección verificada: *«no hay
-ningún `delete` en ese camino. Lo verifiqué línea por línea»*. Era falso, y la versión anterior
-—la que esa corrección tachó— tenía razón. Ya está arreglado el documento.
+O sea que el costo que frenaba la decisión no existía. Vale como método más que como resultado:
+el documento tenía razón en el defecto y se equivocaba en el precio, y lo único que separaba una
+cosa de la otra era abrir el archivo y leer la query.
 
-Es la peor forma del error: un papel que afirma que el defecto no está, con el tono de quien ya
-fue a mirar. El que lo lee no vuelve a abrir el archivo.
+Además el desenganche saca de encima un riesgo que el propio comentario del código describía: si
+el inquilino había pedido un OTP, el `deleteMany` podía tirar P2003 → rollback → la aprobación
+volvía a PENDIENTE **y no se podía rechazar nunca más**.
 
-### Por qué no lo saqué yo
+### 🔴 Lo que sigue siendo tuyo
 
-Porque sacar el borrado tiene una consecuencia visible, y elegirla es tuyo:
+**¿Se construye `POST /contratos/:id/reenviar-aprobacion`?**
 
-**A · Dejar de borrar.** Los documentos se conservan. **Costo:** el inquilino de un contrato
-rechazado queda con su fila viva, y el selector «Mis alquileres» del login **no filtra por
-estado** — así que vería un borrador rechazado listado como un alquiler suyo. Se arregla
-excluyendo los BORRADOR de ese selector (un contrato que nunca existió no es un alquiler), pero
-es un segundo cambio, en el camino de login.
+Corregir un borrador rechazado ya se puede (#51). Volver a mandarlo a aprobación, no: ese
+endpoint no existe (`grep` → 0 resultados). Sin eso, **quien tipeó una ficha entera y se la
+rechazan por una coma la vuelve a tipear**. Los documentos ahora sobreviven en la base, pero no
+hay pantalla que los alcance, así que el ahorro es potencial hasta que exista el reenvío.
 
-**B · Seguir borrando, pero no los documentos.** No se puede: el `Inquilino` no se puede borrar
-sin sus hijos, es una FK.
+El PR **#49** construye las dos mitades y sigue abierto.
 
-**C · Dejarlo como está.** Se pierden los documentos de cada contrato rechazado. Hoy eso es
-gratis porque no hay datos; el día que Camila rechace un contrato al que el inquilino ya le
-subió el DNI y el recibo de sueldo, no.
+### La lección del tablero, que sigue valiendo
 
-### La pregunta
+El documento **decía que esto no pasaba**, y lo decía como corrección verificada: *«no hay ningún
+`delete` en ese camino. Lo verifiqué línea por línea»*. Era falso, y la versión anterior —la que
+esa corrección tachó— tenía razón. Es la peor forma del error: un papel que afirma que el defecto
+no está, con el tono de quien ya fue a mirar. El que lo lee no vuelve a abrir el archivo.
 
-**¿Va A?** Es lo que yo haría —los documentos son irrecuperables y el motivo del borrado se
-evaporó—, pero arrastra el cambio en el selector del login, que es una superficie sensible.
+## N7 · ¿El inquilino puede pagar expensas de consorcio desde la app? — NO, y no hay tarea que lo construya
 
-Y la de al lado, que es la que cierra el círculo: **¿se construye
-`POST /contratos/:id/reenviar-aprobacion`?** Corregir un borrador rechazado ya se puede desde
-hoy (#51); volver a mandarlo a aprobación, no. Sin eso, un contrato rechazado es papel mojado
-igual, se borren o no los documentos. El PR **#49** construye las dos mitades y sigue abierto.
+**Fecha:** 03/09/2026 · **Bloquea:** no, pero es una respuesta que Camila pidió y nadie le dio.
+
+Camila lo preguntó el 03/08 `[1:00:01]` y quedó marcado «⚠️ sin verificar». **Nunca llegó a ser
+una ficha**: no está en `09-TAREAS-REUNION-CAMILA.md` ni por número ni por texto. Se lo confunde
+con T-21 (contrato `SOLO_EXPENSAS`, cerrado) y con T-22 (avisar y cargar la expensa del período),
+pero N7 pregunta otra cosa: **quién paga**.
+
+**La respuesta, verificada:** hoy no. `UnidadFuncional` tiene `titular`, `telefono`,
+`coeficiente`, `saldoDeudor` y `cargoFijo`, y **no tiene email, ni `propiedadId`, ni contrato** —
+no hay una persona con login del otro lado. Los endpoints de consorcio son todos del panel
+(`requireUsuario`); ninguno le cobra a nadie, y `/boletas` no es un pago.
+
+Es distinto del inquilino de `SOLO_EXPENSAS`, que **sí** paga por la app: ése tiene contrato y
+por lo tanto login. La unidad de consorcio suelta, no.
+
+**Lo que hay que decidir es si se construye**, y no es chico: sería darle identidad y login a la
+unidad funcional. Va acá para que la respuesta exista, no para que se construya sin que lo pidas.
 
 ## Los PRs de julio: qué quedó vivo del alta de contrato
 
