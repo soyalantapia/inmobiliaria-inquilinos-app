@@ -15,61 +15,18 @@
  * demo sí puede: ahí las pantallas muestran su versión mock, que es de lo que la demo vive.
  */
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
 import { pasosDelTour, TODOS_LOS_PASOS } from './pasos-del-tour';
-
-const APP = fileURLToPath(new URL('../app', import.meta.url));
-
-function paginas(dir: string, acc: string[] = []): string[] {
-  for (const entrada of readdirSync(dir)) {
-    if (entrada === 'node_modules' || entrada === '.next') continue;
-    const ruta = join(dir, entrada);
-    if (statSync(ruta).isDirectory()) paginas(ruta, acc);
-    else if (entrada === 'page.tsx') acc.push(ruta);
-  }
-  return acc;
-}
-
-/** `app/(app)/contrato/renovacion/page.tsx` → `/contrato/renovacion`. Los grupos no son ruta. */
-function rutaDe(archivo: string): string {
-  const rel = archivo.slice(APP.length).replace(/\\/g, '/').replace(/\/page\.tsx$/, '');
-  const segmentos = rel.split('/').filter((s) => s && !s.startsWith('('));
-  return `/${segmentos.join('/')}`;
-}
+import { GATEADAS, soloCodigo } from './pantallas-gateadas';
 
 /**
- * Las líneas que son ENTERAMENTE comentario, afuera.
+ * El barrido de pantallas y el filtro de comentarios se mudaron a `lib/pantallas-gateadas.ts`
+ * cuando apareció un SEGUNDO consumidor: el control de Mi Cuenta, la pantalla de al lado, que
+ * tenía este mismo defecto. Dos copias de esta regla se desincronizan.
  *
- * Sin esto el detector lee los comentarios como código, y en este repo los comentarios hablan
- * justo de esto: una pantalla que explique en su docblock que «antes acá había un
- * `<Proximamente>` detrás de `if (apiEnabled)`» quedaría contada como gateada, y el tour se
- * comería un rojo por un CTA que funciona.
- *
- * NO se hace strip de `//` a fin de línea, a propósito: una línea como
- * `if (apiEnabled) { // ver nota` perdería el gate real, y ese error va para el lado peligroso
- * —una pantalla gateada que el detector no ve, y el CTA roto pasa—. Los comentarios sueltos
- * que queden son inofensivos.
+ * En la mudanza `soloCodigo` ganó una regla que acá faltaba: los bloques `{/* … *\/}` de JSX.
+ * Abren con `{/*` —que no empieza por `//` ni por `*`— y sus líneas del medio empiezan por texto
+ * común, así que se colaban enteros. Lo destapó un rojo de verdad, no una hipótesis.
  */
-function soloCodigo(src: string): string {
-  return src
-    .split(/\r?\n/)
-    .filter((l) => {
-      const t = l.trim();
-      return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
-    })
-    .join('\n');
-}
-
-/**
- * Las rutas que producción tapa con un «Próximamente». Se piden las DOS marcas juntas —el gate
- * por `apiEnabled` y el componente— para no contar una pantalla que sólo lo importe de paso.
- */
-const GATEADAS = paginas(APP)
-  .map((archivo) => ({ archivo, src: soloCodigo(readFileSync(archivo, 'utf8')) }))
-  .filter(({ src }) => src.includes('<Proximamente') && src.includes('if (apiEnabled)'))
-  .map(({ archivo }) => rutaDe(archivo));
 
 describe('el tour no promete pantallas vacías', () => {
   it('el barrido encuentra pantallas gateadas: si no, el test no está midiendo nada', () => {
@@ -128,6 +85,27 @@ describe('el tour no promete pantallas vacías', () => {
     const gateReal = ['if (apiEnabled) { // ver nota de arriba', '  return <Proximamente />;', '}'].join('\n');
     expect(soloCodigo(gateReal)).toContain('if (apiEnabled)');
     expect(soloCodigo(gateReal)).toContain('<Proximamente');
+
+    // 🔴 Y LOS BLOQUES JSX `{/* … */}`, que es como comenta una pantalla. Ésta faltaba, y no es
+    // teórica: el comentario que explica el arreglo de Mi Cuenta empezó siendo un bloque así,
+    // nombrando las dos marcas, y puso ESTE test en rojo con
+    // «expected [ '«Y mucho más» → /cuenta' ] to deeply equal []» — un CTA que anda, marcado
+    // como roto, por la prosa que documenta el arreglo de la pantalla de al lado.
+    //
+    // Se cuela porque abre con `{/*`, que no empieza por `//` ni por `*`, y sus líneas del medio
+    // empiezan por texto común. El filtro sigue el estado de apertura línea por línea; un regex
+    // sobre todo el archivo se comería el código real que quede entre dos bloques lejanos.
+    const bloqueJsx = [
+      '<Card>',
+      '  {/* Las dos pantallas se gatean con `if (apiEnabled) return <Proximamente',
+      '      …>` porque se arman con mocks. Las filas no se sacan. */}',
+      '  <LinkRow href="/calendario" />',
+      '</Card>',
+    ].join('\n');
+    expect(soloCodigo(bloqueJsx)).not.toContain('<Proximamente');
+    expect(soloCodigo(bloqueJsx)).not.toContain('if (apiEnabled)');
+    // Y lo que NO es comentario sigue estando: filtrar de más es el error peligroso.
+    expect(soloCodigo(bloqueJsx)).toContain('<LinkRow href="/calendario" />');
   });
 
   it('las marcas `soloDemo` corresponden a una pantalla realmente gateada', () => {

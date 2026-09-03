@@ -198,11 +198,21 @@ function CuentaReal() {
               descripcion="DNI, recibos y garantes"
               href="/documentos"
             />
+            {/* Mi calendario y Profesionales son, en producción, dos carteles de «Disponible
+                pronto». Las filas NO se sacan —la capacidad está en camino y esconderla no
+                ayuda— pero sí dicen que todavía no andan: sin el badge se leen como algo que
+                funciona, y la descripción de Profesionales llega a prometer técnicos
+                «verificados».
+
+                El tour de onboarding tenía este mismo defecto y se cerró en #154; ésta es la
+                pantalla de al lado, que quedó afuera de esa pasada. Y pesa más acá: el tour se
+                ve una vez y se saltea, Mi Cuenta es el menú permanente. */}
             <LinkRow
               icon={<CalendarDays className="h-4 w-4" />}
               label="Mi calendario"
               descripcion="Pagos, ajustes y vencimientos en un solo lugar"
               href="/calendario"
+              pronto
             />
             <LinkRow
               icon={<Users className="h-4 w-4" />}
@@ -215,6 +225,7 @@ function CuentaReal() {
               label="Profesionales recomendados"
               descripcion="Plomeros, electricistas y técnicos verificados"
               href="/profesionales"
+              pronto
             />
           </Card>
         </section>
@@ -588,12 +599,16 @@ function LinkRow({
   descripcion,
   href,
   external,
+  pronto,
 }: {
   icon: React.ReactNode;
   label: string;
   descripcion: string;
   href: string;
   external?: boolean;
+  /** La pantalla existe pero en producción es un cartel de «Disponible pronto». Sin esto la
+   *  fila se lee como una capacidad que anda, y el inquilino la toca y se come el cartel. */
+  pronto?: boolean;
 }) {
   const content = (
     <div className="flex w-full items-center gap-3 p-4 transition-colors hover:bg-muted/40">
@@ -601,7 +616,14 @@ function LinkRow({
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">{label}</p>
+        <p className="flex items-center gap-1.5 text-sm font-medium">
+          {label}
+          {pronto && (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Pronto
+            </span>
+          )}
+        </p>
         {/* line-clamp-2 en vez de truncate — las descripciones de "Tu hogar"
             son contextuales y se cortaban feo en mobile ("DNI, recibos,
             garantes — listos para r..."). 2 líneas permite leerlas completas
