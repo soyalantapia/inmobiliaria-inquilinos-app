@@ -3196,6 +3196,26 @@ export async function coreRoutes(app: FastifyInstance) {
     contactoEmail: b.contactoEmail || null,
   });
 
+  /**
+   * La garantía en una línea, para el rastro de auditoría.
+   *
+   * Existe porque el DELETE es BORRADO DURO —`Garante` no tiene `deletedAt`— y el `detalle`
+   * del evento es el único lugar donde va a sobrevivir lo que la póliza decía. Un rastro que
+   * sólo dijera «se borró un garante» no le sirve a nadie: lo que hace falta saber es cuál.
+   */
+  const describirGarante = (g: {
+    tipo: string;
+    nombreProveedor: string;
+    dni: string | null;
+    numeroPoliza: string | null;
+  } | null): string => {
+    if (!g) return 'garante inexistente';
+    const partes = [g.tipo, g.nombreProveedor];
+    if (g.dni) partes.push(`DNI ${g.dni}`);
+    if (g.numeroPoliza) partes.push(`póliza ${g.numeroPoliza}`);
+    return partes.join(' · ');
+  };
+
   app.get('/contratos/:id/garantes', async (request, reply) => {
     const u = await requireUsuario(request, reply, 'contratos.ver');
     if (!u) return;
@@ -3219,9 +3239,18 @@ export async function coreRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ message: 'Datos del garante incompletos', detalle: parsed.error.flatten() });
     }
-    return prisma.garante.create({
+    const creado = await prisma.garante.create({
       data: { inmobiliariaId: u.inmobiliariaId, contratoId: id, ...garanteData(parsed.data) },
     });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'GARANTIA_AGREGADA',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion: describirGarante(creado),
+    });
+    return creado;
   });
 
   app.put('/contratos/:id/garantes/:garanteId', async (request, reply) => {
@@ -3254,13 +3283,30 @@ export async function coreRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ message: 'Datos del garante incompletos', detalle: parsed.error.flatten() });
     }
+    // Se lee ANTES de escribir: el evento tiene que poder decir qué decía la garantía, y
+    // después del update ese dato ya no existe en ningún lado.
+    const antes = await prisma.garante.findFirst({
+      where: { id: garanteId, contratoId: id, inmobiliariaId: u.inmobiliariaId },
+    });
     // updateMany scopeado por contrato + tenant → 404 si no es tuyo (regla de oro).
     const upd = await prisma.garante.updateMany({
       where: { id: garanteId, contratoId: id, inmobiliariaId: u.inmobiliariaId },
       data: garanteData(parsed.data),
     });
     if (upd.count === 0) return reply.code(404).send({ message: 'Garante inexistente' });
-    return prisma.garante.findFirst({ where: { id: garanteId, inmobiliariaId: u.inmobiliariaId } });
+    const despues = await prisma.garante.findFirst({ where: { id: garanteId, inmobiliariaId: u.inmobiliariaId } });
+    // Reescribirle el DNI o el número de póliza al garante de un contrato en curso no lo nota
+    // nadie: por eso el evento guarda las DOS versiones, no sólo la nueva.
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'GARANTIA_EDITADA',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion: describirGarante(despues),
+      detalle: `Antes: ${describirGarante(antes)}`,
+    });
+    return despues;
   });
 
   app.delete('/contratos/:id/garantes/:garanteId', async (request, reply) => {
@@ -3290,10 +3336,24 @@ export async function coreRoutes(app: FastifyInstance) {
       });
     }
 
+    // El borrado es DURO —`Garante` no tiene `deletedAt`—, así que lo que la garantía decía
+    // sólo sobrevive si se lee acá. Es el único registro que va a quedar.
+    const borrado = await prisma.garante.findFirst({
+      where: { id: garanteId, contratoId: id, inmobiliariaId: u.inmobiliariaId },
+    });
     const del = await prisma.garante.deleteMany({
       where: { id: garanteId, contratoId: id, inmobiliariaId: u.inmobiliariaId },
     });
     if (del.count === 0) return reply.code(404).send({ message: 'Garante inexistente' });
+    await registrarEvento({
+      inmobiliariaId: u.inmobiliariaId,
+      tipo: 'GARANTIA_ELIMINADA',
+      autorId: u.userId,
+      rolAutor: u.rol,
+      entidadId: id,
+      entidadDescripcion: describirGarante(borrado),
+      detalle: 'Borrado definitivo: el garante ya no existe en la base.',
+    });
     return { ok: true };
   });
 
@@ -4770,7 +4830,12 @@ export async function coreRoutes(app: FastifyInstance) {
     // Scopeado por inmobiliariaId (multi-tenant): un id ajeno => 404.
     const contrato = await prisma.contrato.findFirst({
       where: { id, inmobiliariaId: u.inmobiliariaId },
-      select: { id: true, inquilinoTitular: { select: { id: true } } },
+      // El contacto de ANTES viaja en el mismo select: es lo que el evento va a comparar, y
+      // después del update ya no existe en ningún lado.
+      select: {
+        id: true,
+        inquilinoTitular: { select: { id: true, telefono: true, email: true } },
+      },
     });
     if (!contrato) return reply.code(404).send({ message: 'Contrato inexistente' });
     if (!contrato.inquilinoTitular) {
@@ -4788,6 +4853,33 @@ export async function coreRoutes(app: FastifyInstance) {
         data: { telefono, ...(email !== undefined ? { email } : {}) },
         select: { telefono: true, email: true },
       });
+      // T-11 · Queda registrado quién lo hizo. Es la tercera cláusula del criterio de
+      // aceptación de Camila, y la que faltaba: este endpoint y el CRUD de garantes eran los
+      // dos únicos caminos de edición de contrato sin autor.
+      //
+      // Pesa por el EMAIL: es la credencial del inquilino —el OTP viaja ahí—, así que
+      // reapuntarlo es reapuntar el acceso a la app. Mismo motivo por el que existe
+      // `PROPIETARIO_CUENTA_CAMBIADA` del otro lado del mostrador.
+      const antes = contrato.inquilinoTitular;
+      const cambios: string[] = [];
+      if (antes.telefono !== actualizado.telefono) {
+        cambios.push(`teléfono ${antes.telefono ?? '—'} → ${actualizado.telefono ?? '—'}`);
+      }
+      if (email !== undefined && antes.email !== actualizado.email) {
+        cambios.push(`email ${antes.email ?? '—'} → ${actualizado.email ?? '—'}`);
+      }
+      // Un PATCH que no cambió nada no ensucia el rastro: lo que se audita es el cambio real,
+      // no el click. Un rastro lleno de filas vacías es un rastro que nadie lee.
+      if (cambios.length > 0) {
+        await registrarEvento({
+          inmobiliariaId: u.inmobiliariaId,
+          tipo: 'INQUILINO_CONTACTO_EDITADO',
+          autorId: u.userId,
+          rolAutor: u.rol,
+          entidadId: contrato.id,
+          entidadDescripcion: cambios.join(' · '),
+        });
+      }
       return { ok: true, telefono: actualizado.telefono, email: actualizado.email };
     } catch (e) {
       // `@@unique([inmobiliariaId, email])`: dos inquilinos del mismo tenant no pueden compartir

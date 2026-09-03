@@ -331,9 +331,9 @@ function generarSeedSinteticos(): EventoAuditoria[] {
         break;
       case 'EQUIPO_INVITADO':
         entidadDescripcion = `Invitación · ${pick([
-          'martin@inmosol.com.ar',
-          'ana.lopez@inmosol.com.ar',
-          'cristian@inmosol.com.ar',
+          'martin@inmosol.example.com',
+          'ana.lopez@inmosol.example.com',
+          'cristian@inmosol.example.com',
         ])}`;
         detalle = 'Rol OPERADOR';
         break;

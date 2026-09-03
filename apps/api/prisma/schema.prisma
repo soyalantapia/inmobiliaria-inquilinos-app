@@ -369,6 +369,20 @@ enum TipoEventoAuditoria {
   CONMUTACION_RECHAZADA
   PIN_DESBLOQUEADO
   PIN_ELIMINADO
+  // T-11 · Las dos ediciones que Camila pidió por nombre —el contacto del inquilino y la
+  // garantía— eran las ÚNICAS del contrato que no dejaban autor. Toda edición que toca plata
+  // ya lo dejaba (monto, expensas, mora, modo de cobranza, baja, renovación).
+  //
+  // El email del inquilino no es un dato de contacto: es su LOGIN, porque el OTP viaja ahí.
+  // Es el gemelo exacto de `PROPIETARIO_CUENTA_CAMBIADA`, que existe por el mismo motivo del
+  // otro lado del mostrador.
+  INQUILINO_CONTACTO_EDITADO
+  GARANTIA_AGREGADA
+  GARANTIA_EDITADA
+  // `Garante` no tiene baja lógica: el DELETE es borrado duro. Sin este evento, de una
+  // garantía borrada no quedaba NI quién la sacó NI qué decía — y el `detalle` de este evento
+  // es el único lugar donde sobrevive lo que la póliza decía antes.
+  GARANTIA_ELIMINADA
 }
 
 enum GrupoCapacidad {

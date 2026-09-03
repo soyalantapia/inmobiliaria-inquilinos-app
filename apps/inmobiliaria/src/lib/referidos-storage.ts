@@ -51,7 +51,7 @@ const SEED: ReferidosState = {
     {
       id: 'ref_001',
       nombre: 'Lautaro Méndez',
-      email: 'lautaro@mendezprop.com.ar',
+      email: 'lautaro@mendezprop.example.com',
       inmobiliaria: 'Méndez Propiedades',
       estado: 'ACTIVO',
       invitadoAt: '2026-03-04',
@@ -61,7 +61,7 @@ const SEED: ReferidosState = {
     {
       id: 'ref_002',
       nombre: 'Florencia Russo',
-      email: 'frusso@florrussocia.com',
+      email: 'frusso@florrussocia.example.com',
       inmobiliaria: 'Russo & Cía',
       estado: 'ACTIVO',
       invitadoAt: '2026-03-22',
@@ -71,7 +71,7 @@ const SEED: ReferidosState = {
     {
       id: 'ref_003',
       nombre: 'Diego Pereyra',
-      email: 'diego.pereyra@palermohome.com',
+      email: 'diego.pereyra@palermohome.example.com',
       inmobiliaria: 'Palermo Home',
       estado: 'REGISTRADO',
       invitadoAt: '2026-05-02',
@@ -81,7 +81,7 @@ const SEED: ReferidosState = {
     {
       id: 'ref_004',
       nombre: 'Carla Iribarne',
-      email: 'carla@iribarne.com.ar',
+      email: 'carla@iribarne.example.com',
       estado: 'INVITADO',
       invitadoAt: '2026-05-14',
       registradoAt: null,

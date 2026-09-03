@@ -590,9 +590,8 @@ export default function PagosPage() {
         formatPeriodo(p.periodo),
         formatFecha(p.fechaTransferencia),
         metodoPagoLabel[p.metodo],
-        formatMonto(p.monto),
+        formatMonto(p.monto, p.moneda),
       ]);
-      const totalReal = delMes.reduce((acc, p) => acc + p.monto, 0);
       abrirReporteImprimible({
         titulo: 'Cobranzas del mes',
         subtitulo: `${formatPeriodo(periodo)} · ${delMes.length} pago${delMes.length === 1 ? '' : 's'} acreditado${delMes.length === 1 ? '' : 's'} en el mes`,
@@ -608,7 +607,9 @@ export default function PagosPage() {
         filas: filasReales,
         totales: [
           { label: 'Cantidad', valor: delMes.length.toString() },
-          { label: 'Total cobrado', valor: formatMonto(totalReal) },
+          // Desglosado y no sumado: sin cotización en el sistema, «$ 2.572.000» sobre pesos
+          // más dólares es un número que no existe, impreso en un reporte que se firma.
+          { label: 'Total cobrado', valor: formatTotalPorMoneda(delMes) },
         ],
         notaFinal:
           'Este reporte detalla los pagos acreditados y conciliados durante el mes (por fecha de cobro; ' +
