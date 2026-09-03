@@ -15,38 +15,15 @@
  * demo sí puede: ahí las pantallas muestran su versión mock, que es de lo que la demo vive.
  */
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
 import { pasosDelTour, TODOS_LOS_PASOS } from './pasos-del-tour';
-
-const APP = fileURLToPath(new URL('../app', import.meta.url));
-
-function paginas(dir: string, acc: string[] = []): string[] {
-  for (const entrada of readdirSync(dir)) {
-    if (entrada === 'node_modules' || entrada === '.next') continue;
-    const ruta = join(dir, entrada);
-    if (statSync(ruta).isDirectory()) paginas(ruta, acc);
-    else if (entrada === 'page.tsx') acc.push(ruta);
-  }
-  return acc;
-}
-
-/** `app/(app)/contrato/renovacion/page.tsx` → `/contrato/renovacion`. Los grupos no son ruta. */
-function rutaDe(archivo: string): string {
-  const rel = archivo.slice(APP.length).replace(/\\/g, '/').replace(/\/page\.tsx$/, '');
-  const segmentos = rel.split('/').filter((s) => s && !s.startsWith('('));
-  return `/${segmentos.join('/')}`;
-}
+import { GATEADAS } from './pantallas-gateadas';
 
 /**
- * Las rutas que producción tapa con un «Próximamente». Se piden las DOS marcas juntas —el gate
- * por `apiEnabled` y el componente— para no contar una pantalla que sólo lo importe de paso.
+ * El detector vive en `pantallas-gateadas.ts` desde que un SEGUNDO control lo necesitó (el de Mi
+ * Cuenta, que es la pantalla de al lado y tenía el mismo defecto). Dos copias de esta regla se
+ * desincronizan — es el defecto que este repo ya pagó en `uploads.ts`, donde una copia de la
+ * vigencia del link mágico se quedó con dos de las tres reglas.
  */
-const GATEADAS = paginas(APP)
-  .map((archivo) => ({ archivo, src: readFileSync(archivo, 'utf8') }))
-  .filter(({ src }) => src.includes('<Proximamente') && src.includes('if (apiEnabled)'))
-  .map(({ archivo }) => rutaDe(archivo));
 
 describe('el tour no promete pantallas vacías', () => {
   it('el barrido encuentra pantallas gateadas: si no, el test no está midiendo nada', () => {
