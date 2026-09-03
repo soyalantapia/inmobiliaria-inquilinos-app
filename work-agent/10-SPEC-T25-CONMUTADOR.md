@@ -1,7 +1,15 @@
 # T-25 · Conmutador de usuarios del mostrador — especificación
 
-**Estado: spec cerrada, implementación NO iniciada.** Bloqueada por T-35 y por dos decisiones
-tuyas (al final del documento).
+**Estado: spec cerrada, IMPLEMENTACIÓN HECHA Y DESPLEGADA** (corregido el 2026-09-03 — este
+encabezado decía «implementación NO iniciada» y hacía meses que no era cierto).
+
+Existen: `apps/api/src/auth/pin-conmutador.ts`, `POST /auth/usuario/conmutar`
+(`routes/auth.ts:840`), `components/conmutador-usuario.tsx`, `pin-mostrador-card.tsx`,
+`lib/sesion-limpieza.ts` con su test, y la migración `20260819180000_conmutador_usuarios`.
+
+Lo que sigue abajo vale como el PORQUÉ de cada decisión, no como un plan pendiente. Las dos
+decisiones del final que estaban abiertas siguen abiertas: leelas antes de cambiar el
+comportamiento, no antes de construirlo.
 
 Producida por un panel de 10 agentes: 3 relevamientos, 3 diseños en competencia, 3 jueces con
 lentes distintas y un modelo de amenazas. Las citas `archivo:línea` que sostienen las decisiones
