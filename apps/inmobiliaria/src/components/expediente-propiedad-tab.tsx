@@ -15,7 +15,7 @@ import {
   usePropiedadGastos,
   type Garantia,
 } from '@/lib/api/use-propiedad-expediente';
-import { formatMonto, formatFecha } from '@/lib/format';
+import { formatMonto, formatFecha, formatTotalPorMoneda } from '@/lib/format';
 import type { Moneda } from '@/lib/types';
 
 function titulo(s: string) {
@@ -171,7 +171,7 @@ export function ExpedientePropiedadTab({ propiedadId }: { propiedadId: string })
             <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Gastos / mantenimiento
             </CardTitle>
-            <span className="text-sm font-semibold">{formatMonto(gastos.total, 'ARS')}</span>
+            <span className="text-sm font-semibold">{formatTotalPorMoneda(gastos.totalesPorMoneda)}</span>
           </CardHeader>
           <CardContent className="text-sm">
             {gastos.gastos.length === 0 ? (
@@ -181,7 +181,7 @@ export function ExpedientePropiedadTab({ propiedadId }: { propiedadId: string })
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(gastos.porCategoria).map(([cat, v]) => (
                     <Badge key={cat} variant="secondary">
-                      {titulo(cat)}: {formatMonto(v.monto, 'ARS')}
+                      {titulo(cat.split('|')[0] ?? cat)}: {formatMonto(v.monto, v.moneda)}
                     </Badge>
                   ))}
                 </div>
