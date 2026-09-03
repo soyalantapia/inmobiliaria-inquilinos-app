@@ -3302,30 +3302,45 @@ export async function plataRoutes(app: FastifyInstance) {
                 }
               }
               if (accion === 'rechazar') {
-                // El borrador rechazado se descarta: borramos el inquilino que se creó
-                // para él. Si no, su email queda tomado (@@unique [inmobiliariaId,email])
-                // y bloquea para siempre volver a cargar un contrato con ese inquilino.
-                // El contrato queda BORRADOR-rechazado (inquilinoTitular pasa a null, ya
-                // manejado por los mappers); no genera liquidaciones ni reclamó propiedad.
-                // Antes de borrar el inquilino hay que borrar sus hijos con FK requerida
-                // (sin onDelete → Restrict por default): CodigoOtp / AnuncioAcuse /
-                // Documento / CertificadoInquilino. Si el inquilino abrió la PWA y pidió
-                // un OTP (crea un CodigoOtp), el deleteMany tiraría P2003 → rollback → la
-                // aprobación volvía a PENDIENTE y no se podía rechazar nunca más.
-                const inqs = await tx.inquilino.findMany({
+                // EL BORRADOR RECHAZADO SE DESENGANCHA; NO SE BORRA NADA.
+                //
+                // Acá había cinco `deleteMany` que se llevaban puestos `CodigoOtp`,
+                // `AnuncioAcuse`, **`Documento`**, **`CertificadoInquilino`** y el `Inquilino`.
+                // Los dos del medio son datos reales de una persona: el DNI, el recibo de
+                // sueldo y el extracto que subió, y el certificado que el sistema le calculó.
+                //
+                // La justificación que los sostenía era, textual, que sin borrar «su email
+                // queda tomado (@@unique [inmobiliariaId,email]) y bloquea para siempre volver
+                // a cargar un contrato con ese inquilino». **Ese `@@unique` ya no existe.** El
+                // schema declara hoy lo contrario, y explica por qué se sacó: un mismo inquilino
+                // puede tener varios contratos en la misma inmobiliaria (3 locales, 10 deptos de
+                // un consorcio) y todos comparten su email de login. O sea que se estaban
+                // destruyendo documentos de una persona para sostener una restricción retirada.
+                //
+                // Desenganchar da lo mismo que borrar en todo lo que importaba, y nada de lo que
+                // costaba:
+                //   · el contrato queda BORRADOR-rechazado y sin titular —`Inquilino.contratoId`
+                //     es el lado `@unique` de ese 1:1, así que ponerlo en null lo libera igual
+                //     que borrar la fila, y los mappers ya esperan `inquilinoTitular` en null;
+                //   · el login no muestra un alquiler fantasma: `alquileresDeEmail` filtra por
+                //     `contratoId: { not: null }` (`auth.ts:89`);
+                //   · y volver a cargar un contrato con esa persona nunca estuvo bloqueado,
+                //     porque la unicidad del email vive en `Persona`, no acá.
+                //
+                // De paso desaparece el riesgo que el comentario viejo describía: si el
+                // inquilino había abierto la PWA y pedido un OTP, el `deleteMany` podía tirar
+                // P2003 → rollback → la aprobación volvía a PENDIENTE y no se podía rechazar
+                // nunca más. Un `updateMany` no tiene ese problema: no borra nada.
+                //
+                // LO QUE ESTO NO RESUELVE: no hay forma de RE-ENVIAR un borrador rechazado
+                // (`PUT /contratos/:id/borrador` existe, `POST /contratos/:id/reenviar-aprobacion`
+                // no), así que quien tipeó una ficha entera y se la rechazan por una coma la
+                // vuelve a tipear. Los documentos ahora sobreviven, pero todavía no hay pantalla
+                // que los alcance. Está anotado en `work-agent/PARA-ALAN.md`.
+                await tx.inquilino.updateMany({
                   where: { contratoId: apr.entidadId, inmobiliariaId: u.inmobiliariaId },
-                  select: { id: true },
+                  data: { contratoId: null },
                 });
-                const inqIds = inqs.map((i) => i.id);
-                if (inqIds.length > 0) {
-                  await tx.codigoOtp.deleteMany({ where: { inquilinoId: { in: inqIds } } });
-                  await tx.anuncioAcuse.deleteMany({ where: { inquilinoId: { in: inqIds } } });
-                  await tx.documento.deleteMany({ where: { inquilinoId: { in: inqIds } } });
-                  await tx.certificadoInquilino.deleteMany({
-                    where: { inquilinoId: { in: inqIds } },
-                  });
-                  await tx.inquilino.deleteMany({ where: { id: { in: inqIds } } });
-                }
               }
             }
             // Mismo shape que GET /aprobaciones: el front mapea cargadoPor.nombre.
