@@ -62,7 +62,7 @@ async function main() {
         data: {
           nombre: 'Alquileres del Norte',
           cuit: '30-70000000-9',
-          email: 'hola@delnorte.com.ar',
+          email: 'hola@delnorte.example.com',
           telefono: '+54 11 4000 0000',
           matricula: 'CUCICBA 9999',
           direccionCalle: 'Av. Cabildo',
@@ -82,7 +82,7 @@ async function main() {
           nombre: 'Marta',
           apellido: 'Duarte',
           cuit: '27-99999999-9',
-          email: 'marta.duarte@gmail.com',
+          email: 'marta.duarte@example.com',
           telefono: '+54 11 4111 2222',
           comisionPct: 8,
         },

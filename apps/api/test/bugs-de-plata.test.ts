@@ -43,7 +43,11 @@ beforeAll(async () => {
   await seedBase(prisma);
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   token = await loginTest(app, 'roberto@delsol.com', 'delsol123');
-  tid = (await prisma.inmobiliaria.findFirstOrThrow({ where: { email: 'contacto@inmosol.com.ar' } })).id;
+  // Derivado del usuario con el que se acaba de loguear, y no del mail de la inmobiliaria:
+  // ese literal ya rompió un test antes. Cuando el seed cambia una dirección, un
+  // `findFirstOrThrow` por mail se cae —o peor, empieza a mirar otro tenant— y nadie lo ata al
+  // cambio del seed.
+  tid = (await prisma.usuario.findFirstOrThrow({ where: { email: 'roberto@delsol.com' } })).inmobiliariaId;
 });
 
 afterAll(async () => {
