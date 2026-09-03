@@ -2,22 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  ArrowLeft,
-  ArrowRight,
-  CalendarDays,
-  CheckCircle2,
-  CreditCard,
-  FileText,
-  Receipt,
-  Sparkles,
-  Users,
-  Wrench,
-  X,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Sparkles, X } from 'lucide-react';
 import { Button } from '@llave/ui/button';
 import { cn } from '@llave/ui/cn';
+import { apiEnabled } from '@/lib/api/client';
+import { pasosDelTour } from '@/lib/pasos-del-tour';
 
 // Tutorial guiado paso a paso. NO se auto-abre como un muro: se ofrece de
 // forma discreta y opt-in con <OnboardingInvite /> en el home (J3, walkthrough
@@ -30,145 +19,12 @@ const STORAGE_KEY = 'llave:onboarding-completed:v1';
 // montar dos copias del componente.
 const RELAUNCH_EVENT = 'llave:onboarding-relaunch';
 
-interface Step {
-  icon: LucideIcon;
-  iconBg: string;
-  titulo: string;
-  descripcion: string;
-  bullets: string[];
-  cta?: { label: string; href: string };
-}
-
-const STEPS: Step[] = [
-  {
-    icon: Sparkles,
-    iconBg: 'from-primary to-primary/70',
-    titulo: '¡Bienvenido a My Alquiler!',
-    descripcion: 'Tu alquiler en un solo lugar. Te muestro las cosas importantes en 1 minuto.',
-    bullets: [
-      'Sin papeles ni llamadas innecesarias',
-      'Todo lo que necesitás está a un toque',
-      'Podés saltar este tour cuando quieras',
-    ],
-  },
-  // ⛔ ACÁ DECÍA "Pagás con transferencia, MP o QR", y el título, "en un toque".
-  //
-  // Ni MP ni QR existen como forma de pagar: el enum MetodoPago del schema es TRANSFERENCIA |
-  // MERCADOPAGO | EFECTIVO, y MERCADOPAGO es sólo la etiqueta con la que la inmo REGISTRA a
-  // mano un pago que ya recibió — no hay checkout de ninguna pasarela en el monorepo. QR no
-  // está ni en MetodoPago ni en MetodoPagoInformado; el único QR del schema es un valor de
-  // MetodoComprobante, que respalda Comprobante.metodo y que no escribe nadie. El checkout
-  // real de la app se llama, literalmente, "Pagar por
-  // transferencia": muestra el CBU y el alias para copiar, y recién después pide el comprobante.
-  //
-  // A diferencia del slide del asistente (más abajo), este se reescribe en vez de sacarse: el
-  // paso existe y es el más importante de la app, lo que no existía era el medio. El "en un
-  // toque" se va por lo mismo — sostenía la promesa de pago instantáneo con otras palabras, y
-  // encima le tapaba al inquilino el paso que más se olvida: volver a subir el comprobante. Sin
-  // eso transfirió plata real y para el sistema no pagó, porque no hay informe que validar.
-  {
-    icon: CreditCard,
-    iconBg: 'from-primary to-primary/70',
-    titulo: 'Pagás tu alquiler sin vueltas',
-    descripcion: 'En la pantalla principal ves el monto exacto del mes y si está al día.',
-    bullets: [
-      'Te mostramos vencimiento, monto y punitorios si los hay',
-      'Copiás el CBU o el alias y transferís desde tu banco',
-      'Volvés, subís el comprobante y seguís acá la validación',
-    ],
-    cta: { label: 'Ver mis pagos', href: '/' },
-  },
-  {
-    icon: FileText,
-    iconBg: 'from-primary to-primary/70',
-    titulo: 'Conocé tu contrato',
-    descripcion: 'Datos clave, próximos ajustes, evolución del alquiler y estado del depósito.',
-    bullets: [
-      'Línea de tiempo del contrato',
-      'Cuánto vas a recuperar del depósito',
-      'Compartilo con tu garante con un link',
-    ],
-    cta: { label: 'Abrir mi contrato', href: '/contrato' },
-  },
-  // ⛔ ACÁ HABÍA UN SLIDE que decía "Chateá con el Asistente — Una IA que leyó tus cláusulas y
-  // te responde al instante" y "Te cita la cláusula exacta del contrato", con un CTA "Probar el
-  // Asistente" hacia /broker.
-  //
-  // No existe: no hay ningún LLM en el monorepo, el "chat" es keyword-matching que sólo vive en
-  // el build demo, y /broker en producción devuelve un cartel de "Próximamente". O sea que el
-  // onboarding le prometía una capacidad entera a CADA inquilino nuevo, y el primer botón que
-  // tocaba lo llevaba a una pantalla vacía.
-  //
-  // Se saca en vez de reescribirse: los otros slides ya cubren lo que la app hace de verdad
-  // (pagar, ver el contrato, reportar un problema), y agregar un cuarto para rellenar sería
-  // decorar. Cuando exista el asistente, el slide vuelve — con lo que haga, no con lo que
-  // querríamos que hiciera.
-  {
-    icon: Wrench,
-    iconBg: 'from-primary to-primary/70',
-    titulo: 'Reportá problemas',
-    descripcion: 'Plomería, electricidad, cerraduras — todo desde la app.',
-    bullets: [
-      'Sumás foto y descripción rápida',
-      'Seguís el estado en tiempo real',
-      'Calificás al final y te ahorra futuras visitas',
-    ],
-    cta: { label: 'Ver reclamos', href: '/reclamos' },
-  },
-  {
-    icon: Receipt,
-    iconBg: 'from-primary to-primary/70',
-    titulo: 'Comprobantes a mano',
-    descripcion: 'Todos tus pagos descargables en PDF, año por año.',
-    bullets: [
-      'Histórico mensual completo',
-      'Útil para deducir si trabajás en relación de dependencia',
-      'Lo compartís con tu contador en un clic',
-    ],
-    cta: { label: 'Ver comprobantes', href: '/comprobantes' },
-  },
-  {
-    icon: CalendarDays,
-    iconBg: 'from-primary to-primary/70',
-    titulo: 'Mi calendario',
-    descripcion: 'Todo lo que va a pasar con tu alquiler: pagos, ajustes, vencimientos.',
-    bullets: [
-      'Vista unificada de eventos',
-      'No te olvides de nada importante',
-      'Con los vencimientos a la vista',
-    ],
-    cta: { label: 'Ver mi calendario', href: '/calendario' },
-  },
-  {
-    icon: Users,
-    iconBg: 'from-primary to-primary/70',
-    titulo: 'Y mucho más',
-    descripcion: 'Profesionales, co-inquilinos, documentos, renovación — todo desde Mi Cuenta.',
-    bullets: [
-      'Plomero, electricista y técnicos recomendados',
-      'Compartí el contrato con tu pareja o familia',
-      'DNI y recibos guardados para renovar fácil',
-    ],
-    cta: { label: 'Explorar Mi Cuenta', href: '/cuenta' },
-  },
-  {
-    icon: CheckCircle2,
-    iconBg: 'from-primary to-primary/70',
-    titulo: '¡Listo!',
-    // Decía "Cualquier duda, el Asistente o la inmobiliaria están a un toque". Quedó de cuando
-    // existía el slide del Asistente que se sacó más arriba: nombraba una capacidad que no
-    // existe, y encima ya ni botón tiene desde que se le sacó `/broker` al nav. Era lo ÚLTIMO
-    // que leía un inquilino nuevo antes de empezar a usar la app.
-    //
-    // La inmobiliaria sí está a un toque, y de verdad: /ayuda tiene el `wa.me` para escribirle.
-    descripcion: 'Ya conocés My Alquiler. Cualquier duda, tu inmobiliaria está a un toque desde Ayuda.',
-    bullets: [
-      'Podés volver a ver este tour desde Mi Cuenta',
-      'WhatsApp directo con tu inmobiliaria',
-      'Que tengas una buena estadía 💜',
-    ],
-  },
-];
+/**
+ * Los slides salieron a `lib/pasos-del-tour.ts` para que un test pueda cruzar cada CTA contra
+ * las pantallas que producción gatea con `<Proximamente>`. El tour es lo primero que lee un
+ * inquilino nuevo, y ya mandó a más de uno a una pantalla vacía.
+ */
+const STEPS = pasosDelTour(!apiEnabled);
 
 export function Onboarding() {
   const router = useRouter();
