@@ -395,6 +395,62 @@ por lo tanto login. La unidad de consorcio suelta, no.
 **Lo que hay que decidir es si se construye**, y no es chico: sería darle identidad y login a la
 unidad funcional. Va acá para que la respuesta exista, no para que se construya sin que lo pidas.
 
+## Reportes del piloto · construido entero y apagado en producción
+
+**Fecha:** 03/09/2026 · **Bloquea:** no, pero mientras siga así el piloto no tiene canal de
+feedback dentro de la app.
+
+### El hecho
+
+`POST /reportes` y `GET /reportes` están construidos: autenticados, con corte por capacidad para
+leer (`auditoria.ver`), y con el tracking capturado **del lado del servidor** —IP, userAgent, rol
+y tenant VIGENTES de la tabla, sesión, build—. Es exactamente lo que `piloto-storage.ts` había
+dejado escrito como TODO.
+
+**Y ninguna pantalla los puede alcanzar.** La única UI que los usaría es el FAB del piloto, y
+`piloto-fab.tsx:82` corta con `if (apiEnabled) return null` — o sea que **no se monta en
+producción**, sólo en el build demo, donde escribe en `localStorage`. La bandeja tampoco tiene
+pantalla: `listarReportes()` no tiene un solo consumidor.
+
+### 🔴 Una corrección a mí mismo, porque la primera lectura fue peor y era falsa
+
+Lo reporté primero como «el canal por el que Camila reporta muere en su navegador». **No es así**,
+y conviene que quede escrito: como el FAB no se monta en producción, **Camila nunca lo vio**. No
+hay reportes suyos atrapados en ningún lado. Lo que sí usa en producción es el botón del sidebar,
+que manda a Sonar y funciona.
+
+El error fue leer el `crearReporte()` → `localStorage` y el `setTimeout(600)` comentado como
+«pequeño delay simulado para que se sienta como una llamada al back» sin verificar antes **si esa
+pantalla existe donde importa**. En un build demo, guardar local y simular latencia es lo
+correcto, no una mentira.
+
+### La pregunta
+
+**¿Se prende el reporter del piloto en producción?**
+
+- **Si va:** hay que cablear el FAB al endpoint (y decidir si el «¡Recibido! El equipo lo revisa
+  en las próximas horas» se sostiene, porque hoy nadie tiene pantalla para leerlos) y construir la
+  bandeja sobre `GET /reportes`. Sin la bandeja, prenderlo es prometer de nuevo algo que no pasa.
+- **Si no va:** los dos endpoints son peso muerto y conviene decirlo en el código, para que el
+  próximo no los cuente como capacidad disponible.
+
+No lo cableé yo porque prender un reporter en la app de un cliente es producto, no ingeniería.
+Queda declarado en `ninguna-capacidad-queda-sin-quien-la-ejerza.test.ts` con este motivo, así que
+el test no lo tapa: lo nombra.
+
+### Lo que sí quedó hecho
+
+El control de la clase: un test barre los 139 endpoints que mutan y exige que cada uno tenga
+llamador en alguno de los tres fronts o una declaración con su motivo. Ya son tres los que
+aparecieron así (T-46, la baja de propietario, y estos dos).
+
+Y de ahí salió otro que conviene que veas: **`POST /auth/login` tampoco lo llama ninguna
+pantalla** — el panel entra por OTP. Está declarado como backstop de emergencia en `auth.ts:277`,
+o sea que es una decisión, no un olvido. Pero leído al revés es una puerta por contraseña que
+nadie mira, y es justo por donde corre el riesgo de **T-35**: la migración de PINes no tocó
+`passwordHash`, así que si el tenant real se dio de alta con el script viejo puede haber cuentas
+con la contraseña del admin. Hoy lo único que ejercita esa puerta son los tests.
+
 ## Los PRs de julio: qué quedó vivo del alta de contrato
 
 **Fecha:** 02/09/2026 · **Bloquea:** decidir el alcance. Nada urgente, pero cada semana que
