@@ -36,7 +36,7 @@ let cargoId = '';
 
 beforeAll(async () => {
   prisma = new PrismaClient();
-  await seedBase(prisma);
+  const base = await seedBase(prisma);
   app = await buildApp({ NODE_ENV: 'test', DEMO_MODE: 'true' });
   // ADMIN, no la OPERADORA: desde que `finalizar` exige `deposito.devolver` para resolver el
   // depósito, un OPERADOR se come un 403 antes de llegar al tope. Este archivo prueba EL TOPE
@@ -47,7 +47,12 @@ beforeAll(async () => {
   // Contrato PROPIO, no uno del seed: finalizar es destructivo y esta base es compartida
   // entre los 55 archivos de la suite. Se apoya en una propiedad existente, pero como NO es
   // su `contratoActual`, el updateMany de la propiedad que hace finalizar no la toca.
-  const prop = await prisma.propiedad.findFirst({ select: { id: true, inmobiliariaId: true } });
+  // 🔴 SCOPEADO AL TENANT DEL SEED. Estaba SIN `where`: agarraba la primera propiedad de
+  // CUALQUIER inmobiliaria. Mientras la base sólo tuvo el tenant del seed no se notó, pero
+  // basta con que otro archivo cree una propiedad ajena —cosa legítima, es como se prueba el
+  // aislamiento— para que este test la agarre y el endpoint conteste 404 con el token del
+  // seed. El rojo aparece acá y la causa está en el archivo de al lado.
+  const prop = await prisma.propiedad.findFirst({ where: { inmobiliariaId: base.inmobiliariaId }, select: { id: true, inmobiliariaId: true } });
   if (!prop) return;
   const cnt = await prisma.contrato.create({
     data: {
