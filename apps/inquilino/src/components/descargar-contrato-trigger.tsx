@@ -4,6 +4,7 @@ import { Download } from 'lucide-react';
 import { Button, type ButtonProps } from '@llave/ui/button';
 import type { Contrato } from '@/lib/types';
 import { formatFecha, formatMonto } from '@/lib/format';
+import { esSoloExpensas } from '@/lib/tipo-contrato';
 
 interface Props {
   contrato: Contrato;
@@ -71,6 +72,12 @@ export function DescargarContratoTrigger({
       alert('Tu navegador bloqueó el popup. Habilitalo para descargar el PDF.');
       return;
     }
+    // Un SOLO_EXPENSAS no paga alquiler: el canon es 0 a propósito y lo arregla el propietario
+    // por fuera. Este documento imprimía «Alquiler mensual: $0» y, debajo, el índice y la fecha
+    // del próximo ajuste — o sea, el ajuste de un canon que no existe. Es el mismo criterio que
+    // ya aplica el certificado (`certificado/imprimible.tsx:188`), que rotula «Expensas
+    // mensuales» cuando corresponde.
+    const soloExpensas = esSoloExpensas(contrato);
     const html = `<!doctype html>
 <html lang="es-AR">
   <head>
@@ -96,10 +103,12 @@ export function DescargarContratoTrigger({
     <p class="dato"><strong>Administradora:</strong> ${escapeHtml(contrato.inmobiliaria)}</p>
 
     <h2>Condiciones económicas</h2>
-    <p class="dato"><strong>Alquiler mensual:</strong> ${escapeHtml(formatMonto(contrato.montoActual, contrato.moneda))}</p>
+    <p class="dato"><strong>${soloExpensas ? 'Expensas mensuales' : 'Alquiler mensual'}:</strong> ${escapeHtml(formatMonto(soloExpensas ? (contrato.montoExpensas ?? 0) : contrato.montoActual, contrato.moneda))}</p>
     <p class="dato"><strong>Día de pago:</strong> ${contrato.diaPago} de cada mes</p>
-    <p class="dato"><strong>Índice de ajuste:</strong> ${escapeHtml(contrato.indiceAjuste)}</p>
-    <p class="dato"><strong>Próximo ajuste:</strong> ${escapeHtml(formatFecha(contrato.proximoAjuste))}</p>
+    ${soloExpensas
+      ? ''
+      : `<p class="dato"><strong>Índice de ajuste:</strong> ${escapeHtml(contrato.indiceAjuste)}</p>
+    <p class="dato"><strong>Próximo ajuste:</strong> ${escapeHtml(formatFecha(contrato.proximoAjuste))}</p>`}
 
     <h2>Vigencia</h2>
     <p class="dato"><strong>Fecha de inicio:</strong> ${escapeHtml(formatFecha(contrato.fechaInicio))}</p>
